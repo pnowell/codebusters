@@ -6,6 +6,29 @@ import { OptionsModal } from './components/options/OptionsModal';
 
 const DEFAULT_UNLOCKED: CipherType[] = ['offsets', 'atbash', 'pigpen', 'galactic'];
 
+const parseUrlRoute = () => {
+  const params = new URLSearchParams(window.location.search);
+  const drill = params.get('drill') as CipherType | null;
+  const qStr = params.get('q');
+  const quoteId = qStr !== null ? parseInt(qStr, 10) : undefined;
+  const validDrills: CipherType[] = [
+    'offsets',
+    'atbash',
+    'pigpen',
+    'galactic',
+    'caesar',
+    'tap',
+    'knights',
+    'vigenere',
+    'aristocrat',
+  ];
+
+  return {
+    drill: drill && validDrills.includes(drill) ? drill : null,
+    quoteId: quoteId !== undefined && !isNaN(quoteId) ? quoteId : undefined,
+  };
+};
+
 export const App: React.FC = () => {
   const [settings, setSettings] = useState<UserSettings>(() => {
     const saved = localStorage.getItem('davinci_settings');
@@ -24,7 +47,8 @@ export const App: React.FC = () => {
     };
   });
 
-  const [activeDrill, setActiveDrill] = useState<CipherType | null>(null);
+  const [activeDrill, setActiveDrill] = useState<CipherType | null>(() => parseUrlRoute().drill);
+  const [activeQuoteId, setActiveQuoteId] = useState<number | undefined>(() => parseUrlRoute().quoteId);
   const [isOptionsOpen, setIsOptionsOpen] = useState<boolean>(false);
 
   // Check URL query parameters on load to allow one-click sync from coach
@@ -41,6 +65,86 @@ export const App: React.FC = () => {
     }
   }, []);
 
+  // Listen to browser Back / Forward buttons
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      if (isOptionsOpen && (!e.state || e.state.modal !== 'options')) {
+        setIsOptionsOpen(false);
+      }
+      const route = parseUrlRoute();
+      setActiveDrill(route.drill);
+      setActiveQuoteId(route.quoteId);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [isOptionsOpen]);
+
+  // Handle deep-link history: if user lands directly on a drill from a link,
+  // seed the history stack with the menu first so browser back goes to menu instead of closing app
+  useEffect(() => {
+    const route = parseUrlRoute();
+    if (route.drill && (!window.history.state || !('drill' in window.history.state))) {
+      window.history.replaceState({ drill: null }, '', window.location.pathname);
+      const drillUrl = `${window.location.pathname}${window.location.search}`;
+      window.history.pushState({ drill: route.drill, quoteId: route.quoteId }, '', drillUrl);
+    }
+  }, []);
+
+  const navigateToDrill = (drill: CipherType, quoteId?: number) => {
+    setActiveDrill(drill);
+    setActiveQuoteId(quoteId);
+    const params = new URLSearchParams(window.location.search);
+    params.set('drill', drill);
+    if (quoteId !== undefined) {
+      params.set('q', quoteId.toString());
+    } else {
+      params.delete('q');
+    }
+    const query = params.toString();
+    const newUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
+    window.history.pushState({ drill, quoteId }, '', newUrl);
+  };
+
+  const navigateToMenu = () => {
+    if (window.history.state && window.history.state.drill) {
+      window.history.back();
+    } else {
+      setActiveDrill(null);
+      setActiveQuoteId(undefined);
+      const params = new URLSearchParams(window.location.search);
+      params.delete('drill');
+      params.delete('q');
+      const query = params.toString();
+      const newUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
+      window.history.pushState({ drill: null }, '', newUrl);
+    }
+  };
+
+  const handleQuoteChange = (newQuoteId: number) => {
+    setActiveQuoteId(newQuoteId);
+    const params = new URLSearchParams(window.location.search);
+    if (activeDrill) {
+      params.set('drill', activeDrill);
+      params.set('q', newQuoteId.toString());
+      const newUrl = `${window.location.pathname}?${params.toString()}`;
+      window.history.replaceState({ drill: activeDrill, quoteId: newQuoteId }, '', newUrl);
+    }
+  };
+
+  const openOptions = () => {
+    window.history.pushState({ modal: 'options' }, '', window.location.href);
+    setIsOptionsOpen(true);
+  };
+
+  const closeOptions = () => {
+    if (window.history.state?.modal === 'options') {
+      window.history.back();
+    } else {
+      setIsOptionsOpen(false);
+    }
+  };
+
   const handleSaveSettings = (newSettings: UserSettings) => {
     setSettings(newSettings);
     localStorage.setItem('davinci_settings', JSON.stringify(newSettings));
@@ -53,7 +157,7 @@ export const App: React.FC = () => {
     );
     if (activePool.length > 0) {
       const chosen = activePool[Math.floor(Math.random() * activePool.length)];
-      setActiveDrill(chosen);
+      navigateToDrill(chosen);
     }
   };
 
@@ -71,7 +175,7 @@ export const App: React.FC = () => {
             <span className="student-tag">👤 {settings.studentName}</span>
             <button
               className="btn-simple"
-              onClick={() => setIsOptionsOpen(true)}
+              onClick={openOptions}
               title="Classroom Settings"
             >
               ⚙️ Options
@@ -82,19 +186,34 @@ export const App: React.FC = () => {
 
       {/* Active Drill View */}
       {activeDrill === 'offsets' && (
-        <LetterOffsetDrill onBack={() => setActiveDrill(null)} />
+        <LetterOffsetDrill onBack={navigateToMenu} />
       )}
 
       {activeDrill === 'atbash' && (
-        <LookupCipherDrill cipher="atbash" onBack={() => setActiveDrill(null)} />
+        <LookupCipherDrill
+          cipher="atbash"
+          initialQuoteId={activeQuoteId}
+          onQuoteChange={handleQuoteChange}
+          onBack={navigateToMenu}
+        />
       )}
 
       {activeDrill === 'pigpen' && (
-        <LookupCipherDrill cipher="pigpen" onBack={() => setActiveDrill(null)} />
+        <LookupCipherDrill
+          cipher="pigpen"
+          initialQuoteId={activeQuoteId}
+          onQuoteChange={handleQuoteChange}
+          onBack={navigateToMenu}
+        />
       )}
 
       {activeDrill === 'galactic' && (
-        <LookupCipherDrill cipher="galactic" onBack={() => setActiveDrill(null)} />
+        <LookupCipherDrill
+          cipher="galactic"
+          initialQuoteId={activeQuoteId}
+          onQuoteChange={handleQuoteChange}
+          onBack={navigateToMenu}
+        />
       )}
 
       {/* Simplified Main Menu Dashboard */}
@@ -115,35 +234,35 @@ export const App: React.FC = () => {
           <div className="menu-buttons-list">
             <button
               className="menu-drill-btn"
-              onClick={() => setActiveDrill('offsets')}
+              onClick={() => navigateToDrill('offsets')}
             >
               Letter Offsets
             </button>
 
             <button
               className="menu-drill-btn"
-              onClick={() => setActiveDrill('atbash')}
+              onClick={() => navigateToDrill('atbash')}
             >
               Atbash Cipher
             </button>
 
             <button
               className="menu-drill-btn"
-              onClick={() => setActiveDrill('pigpen')}
+              onClick={() => navigateToDrill('pigpen')}
             >
               Pigpen / Masonic Cipher
             </button>
 
             <button
               className="menu-drill-btn"
-              onClick={() => setActiveDrill('galactic')}
+              onClick={() => navigateToDrill('galactic')}
             >
               Standard Galactic Alphabet
             </button>
           </div>
 
           {/* Divider: Coming Soon */}
-          <div className="menu-divider">
+          <div className="menu-divider coming-soon-divider">
             <span>Coming Soon</span>
           </div>
 
@@ -170,7 +289,7 @@ export const App: React.FC = () => {
       {/* Settings Modal */}
       <OptionsModal
         isOpen={isOptionsOpen}
-        onClose={() => setIsOptionsOpen(false)}
+        onClose={closeOptions}
         settings={settings}
         onSaveSettings={handleSaveSettings}
       />

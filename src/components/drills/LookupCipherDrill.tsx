@@ -9,11 +9,15 @@ import type { Quote, EvaluationResult } from '../../types';
 interface LookupCipherDrillProps {
   cipher: 'atbash' | 'pigpen' | 'galactic';
   onBack: () => void;
+  initialQuoteId?: number;
+  onQuoteChange?: (quoteId: number) => void;
 }
 
 export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
   cipher,
   onBack,
+  initialQuoteId,
+  onQuoteChange,
 }) => {
   const [quote, setQuote] = useState<Quote | null>(null);
   const [userInputs, setUserInputs] = useState<string[]>([]);
@@ -25,11 +29,19 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
   // References to input elements for seamless typing navigation
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // Load a quote suitable for lookup drills
-  const loadNewQuote = useCallback(() => {
-    const pool = (quotesData as Quote[]).filter(q => q.length <= 60);
-    const chosen = pool[Math.floor(Math.random() * pool.length)] || (quotesData[0] as Quote);
+  // Load a quote (either by specified target ID or picked from suitable pool)
+  const loadQuote = useCallback((targetQuoteId?: number) => {
+    let chosen: Quote | undefined;
+    if (targetQuoteId !== undefined) {
+      chosen = (quotesData as Quote[]).find(q => q.id === targetQuoteId);
+    }
+    if (!chosen) {
+      const pool = (quotesData as Quote[]).filter(q => q.length <= 60);
+      chosen = pool[Math.floor(Math.random() * pool.length)] || (quotesData[0] as Quote);
+    }
+
     setQuote(chosen);
+    onQuoteChange?.(chosen.id);
 
     const chars = chosen.quote.toUpperCase().split('');
     const initialInputs = chars.map(c => (/^[A-Z]$/.test(c) ? '' : c));
@@ -45,11 +57,23 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     setTimeout(() => {
       inputRefs.current[targetIdx]?.focus();
     }, 50);
-  }, []);
+  }, [onQuoteChange]);
 
   useEffect(() => {
-    loadNewQuote();
-  }, [loadNewQuote]);
+    loadQuote(initialQuoteId);
+  }, [loadQuote, initialQuoteId]);
+
+  // Keep focused character tile centered in horizontal scroll view
+  useEffect(() => {
+    const el = inputRefs.current[activeIdx];
+    if (el) {
+      el.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+        inline: 'center',
+      });
+    }
+  }, [activeIdx]);
 
   // Find next/prev alpha index
   const getNextAlphaIndex = (start: number): number => {
@@ -128,7 +152,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
       if (!isSubmitted) {
         handleSubmit();
       } else {
-        loadNewQuote();
+        loadQuote();
       }
     }
   };
@@ -143,14 +167,14 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     if (cipher === 'atbash') {
       return <span className="atbash-cipher-char">{atbashChar(upper)}</span>;
     } else if (cipher === 'pigpen') {
-      return <PigpenGlyph letter={upper} size={32} />;
+      return <PigpenGlyph letter={upper} size={22} />;
     } else if (cipher === 'galactic') {
-      return <GalacticGlyph letter={upper} size={30} />;
+      return <GalacticGlyph letter={upper} size={22} />;
     }
     return upper;
   };
 
-  // Group characters into words for clean responsive wrapping
+  // Group characters into words for clean responsive display
   const renderWords = () => {
     if (!quote) return null;
     const chars = quote.quote.toUpperCase().split('');
@@ -236,18 +260,22 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
 
   return (
     <div className="drill-container lookup-drill">
-      {/* Compact single-line drill header */}
+      {/* 1. Compact single-line drill header */}
       <div className="drill-header-compact">
         <button className="btn-simple btn-back" onClick={onBack}>
           ← Menu
         </button>
         <h2 className="drill-title-compact">{cipherTitles[cipher]}</h2>
-        <button className="btn-simple btn-reload" onClick={loadNewQuote} title="New Quote">
+        <button
+          className="btn-simple btn-reload"
+          onClick={() => loadQuote()}
+          title="New Quote"
+        >
           New ↻
         </button>
       </div>
 
-      {/* Sticky Reference Table that sticks to top on scroll */}
+      {/* 2. Sticky Reference Table that sticks to top on scroll */}
       {showRef ? (
         <div className="sticky-ref-container">
           <ReferenceSheet
@@ -268,50 +296,53 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
         </div>
       )}
 
-      {/* Interactive Quote Workspace */}
-      <div className="quote-workspace simple-card">
-        {renderWords()}
+      {/* 3. Horizontal Scroll Viewport for Cipher Lines */}
+      <div className="cipher-scroll-panel">
+        <div className="quote-content-canvas">
+          {renderWords()}
 
-        {quote && (
-          <div className="quote-meta-author">
-            — {quote.author}
-          </div>
-        )}
-
-        <div className="drill-action-row">
-          <div className="progress-info">
-            Progress: <strong>{filledLetters} / {totalLetters}</strong> letters
-          </div>
-
-          {!isSubmitted ? (
-            <button
-              className="btn-submit"
-              onClick={handleSubmit}
-              disabled={filledLetters === 0}
-            >
-              Submit & Check Solution ✓
-            </button>
-          ) : (
-            <button className="btn-submit btn-next" onClick={loadNewQuote}>
-              Next Puzzle →
-            </button>
+          {quote && (
+            <div className="quote-meta-author">
+              — {quote.author}
+            </div>
           )}
         </div>
+      </div>
 
-        {result && (
-          <div className={`result-banner score-${result.scoreTier}`}>
-            {result.scoreTier === 'full' && (
-              <>🎉 <strong>Full Credit!</strong> Decoded with {result.errorCount} error{result.errorCount === 1 ? '' : 's'} (allowed: ≤ 2 errors).</>
-            )}
-            {result.scoreTier === 'half' && (
-              <>⚖️ <strong>Half Credit!</strong> Decoded with {result.errorCount} errors (3–4 errors allowed).</>
-            )}
-            {result.scoreTier === 'none' && (
-              <>❌ <strong>{result.errorCount} Errors!</strong> Keep practicing with the reference table.</>
-            )}
-          </div>
+      {/* 4. Action Row & Results (separated from scroll viewport, 100% screen width) */}
+      <div className="drill-action-row">
+        <div className="progress-info">
+          Progress: <strong>{filledLetters} / {totalLetters}</strong> letters
+        </div>
+
+        {!isSubmitted ? (
+          <button
+            className="btn-submit"
+            onClick={handleSubmit}
+            disabled={filledLetters === 0}
+          >
+            Submit & Check Solution ✓
+          </button>
+        ) : (
+          <button className="btn-submit btn-next" onClick={() => loadQuote()}>
+            Next Puzzle →
+          </button>
         )}
       </div>
+
+      {result && (
+        <div className={`result-banner score-${result.scoreTier}`}>
+          {result.scoreTier === 'full' && (
+            <>🎉 <strong>Full Credit!</strong> Decoded with {result.errorCount} error{result.errorCount === 1 ? '' : 's'} (allowed: ≤ 2 errors).</>
+          )}
+          {result.scoreTier === 'half' && (
+            <>⚖️ <strong>Half Credit!</strong> Decoded with {result.errorCount} errors (3–4 errors allowed).</>
+          )}
+          {result.scoreTier === 'none' && (
+            <>❌ <strong>{result.errorCount} Errors!</strong> Keep practicing with the reference table.</>
+          )}
+        </div>
+      )}
     </div>
   );
 };
