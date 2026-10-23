@@ -1,5 +1,29 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
+@font-face {
+  font-family: 'StandardGalacticAlphabetSO';
+  src: url('./assets/fonts/StandardGalacticAlphabetSO.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'KnightsTemplar';
+  src: url('./assets/fonts/KnightsTemplar.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'PigpenCipher';
+  src: url('./assets/fonts/PigpenCipher.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
 :root {
   --bg-primary: #0f172a;
   --bg-secondary: #1e293b;
@@ -720,19 +744,41 @@ body {
   border-color: #10b981;
 }
 
-.keyboard-tip {
-  display: block;
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  margin-top: 0.35rem;
+.letter-keypad-with-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  max-width: 620px;
+  width: 100%;
 }
 
 .letter-keypad {
   display: grid;
   grid-template-columns: repeat(9, 1fr);
   gap: 0.35rem;
-  max-width: 620px;
   width: 100%;
+}
+
+.keypad-confirm-row {
+  display: flex;
+  gap: 0.6rem;
+  width: 100%;
+  max-width: 320px;
+  justify-content: center;
+}
+
+.keypad-confirm-row .key-btn {
+  flex: 1;
+  max-width: none;
+  font-size: 0.95rem;
+}
+
+.key-btn.selected-key {
+  background: var(--accent-blue);
+  color: #0f172a;
+  border-color: var(--accent-blue);
+  font-weight: 800;
 }
 
 .input-keypad-wrapper {

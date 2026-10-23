@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { offsetToLetter, ALPHABET } from '../../utils/ciphers';
 
 interface LetterOffsetDrillProps {
@@ -28,16 +28,8 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
   const [correctQuestions, setCorrectQuestions] = useState<number>(0);
   const [ghosts, setGhosts] = useState<FloatingGhost[]>([]);
 
-  // Ref to hold pending timer for auto-submitting single digits '1' and '2'
-  const debounceSubmitTimer = useRef<number | null>(null);
-
   // Pick next question
   const nextQuestion = useCallback((overrideMode?: DrillMode) => {
-    if (debounceSubmitTimer.current) {
-      clearTimeout(debounceSubmitTimer.current);
-      debounceSubmitTimer.current = null;
-    }
-
     const activeMode = overrideMode || mode;
     const randOffset = Math.floor(Math.random() * 26);
     const randLetter = offsetToLetter(randOffset);
@@ -65,13 +57,8 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
     nextQuestion(newMode);
   };
 
-  const checkAnswer = useCallback((answer: string) => {
-    if (debounceSubmitTimer.current) {
-      clearTimeout(debounceSubmitTimer.current);
-      debounceSubmitTimer.current = null;
-    }
-
-    const trimmed = answer.trim().toUpperCase();
+  const confirmAnswer = useCallback(() => {
+    const trimmed = inputVal.trim().toUpperCase();
     if (!trimmed) return;
 
     setTotalQuestions(prev => prev + 1);
@@ -95,7 +82,7 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
       const ghostText = `${currentLetter} = ${currentOffset} ✓`;
       setGhosts(prev => [...prev, { id: ghostId, text: ghostText }]);
 
-      // Immediately jump to next question for rapid combos!
+      // Immediately jump to next question
       nextQuestion();
     } else {
       setWrongFeedback(promptType === 'letter' ? `${currentOffset}` : currentLetter);
@@ -105,7 +92,7 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
         setInputVal('');
       }, 1200);
     }
-  }, [bestStreak, currentLetter, currentOffset, nextQuestion, promptType, streak]);
+  }, [bestStreak, currentLetter, currentOffset, inputVal, nextQuestion, promptType, streak]);
 
   // Remove ghost when animation finishes
   const handleRemoveGhost = (id: string) => {
@@ -114,64 +101,17 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
 
   const handleDigit = useCallback((digit: string) => {
     if (promptType !== 'letter') return;
-    if (debounceSubmitTimer.current) {
-      clearTimeout(debounceSubmitTimer.current);
-      debounceSubmitTimer.current = null;
-    }
-
-    const nextVal = inputVal + digit;
-    setInputVal(nextVal);
-
-    // Rule 1: '0' can only be 0 (A=0, no offsets are 01-09)
-    if (nextVal === '0') {
-      checkAnswer('0');
-      return;
-    }
-
-    // Rule 2: Single digit >= 3 (offsets 3..9) can only be 1 digit since max offset is 25
-    if (nextVal.length === 1 && parseInt(nextVal, 10) >= 3) {
-      checkAnswer(nextVal);
-      return;
-    }
-
-    // Rule 3: Two digits (10..25)
-    if (nextVal.length >= 2) {
-      checkAnswer(nextVal);
-      return;
-    }
-
-    // Rule 4: If '1' or '2', it could be single-digit (1 or 2) or part of a two-digit (10-25).
-    // If the student pauses for 450ms, auto-submit the single digit.
-    if (nextVal.length === 1 && (nextVal === '1' || nextVal === '2')) {
-      debounceSubmitTimer.current = window.setTimeout(() => {
-        checkAnswer(nextVal);
-      }, 450);
-    }
-  }, [checkAnswer, inputVal, promptType]);
+    setInputVal(prev => (prev.length < 2 ? prev + digit : digit));
+  }, [promptType]);
 
   const handleLetter = useCallback((char: string) => {
     if (promptType !== 'number') return;
     setInputVal(char);
-    checkAnswer(char);
-  }, [checkAnswer, promptType]);
+  }, [promptType]);
 
   const handleBackspace = useCallback(() => {
-    if (debounceSubmitTimer.current) {
-      clearTimeout(debounceSubmitTimer.current);
-      debounceSubmitTimer.current = null;
-    }
     setInputVal(prev => prev.slice(0, -1));
   }, []);
-
-  const handleSubmitCurrent = useCallback(() => {
-    if (debounceSubmitTimer.current) {
-      clearTimeout(debounceSubmitTimer.current);
-      debounceSubmitTimer.current = null;
-    }
-    if (inputVal) {
-      checkAnswer(inputVal);
-    }
-  }, [checkAnswer, inputVal]);
 
   // Physical Keyboard listener
   useEffect(() => {
@@ -186,7 +126,7 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
         handleBackspace();
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        handleSubmitCurrent();
+        confirmAnswer();
       } else if (promptType === 'letter') {
         if (e.key >= '0' && e.key <= '9') {
           e.preventDefault();
@@ -202,7 +142,7 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleBackspace, handleDigit, handleLetter, handleSubmitCurrent, promptType]);
+  }, [confirmAnswer, handleBackspace, handleDigit, handleLetter, promptType]);
 
   return (
     <div className="drill-container card-panel">
@@ -304,6 +244,7 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
                 (e.currentTarget as HTMLButtonElement).blur();
                 handleBackspace();
               }}
+              title="Backspace"
             >
               ⌫
             </button>
@@ -322,35 +263,61 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
               className="key-btn submit-btn"
               onClick={(e) => {
                 (e.currentTarget as HTMLButtonElement).blur();
-                handleSubmitCurrent();
+                confirmAnswer();
               }}
-              title="Submit Answer"
+              title="Confirm Answer (Enter)"
             >
               ⏎
             </button>
           </div>
         ) : (
-          <div className="letter-keypad">
-            {ALPHABET.split('').map(char => (
+          <div className="letter-keypad-with-actions">
+            <div className="letter-keypad">
+              {ALPHABET.split('').map(char => (
+                <button
+                  key={char}
+                  type="button"
+                  className={`key-btn ${inputVal === char ? 'selected-key' : ''}`}
+                  onClick={(e) => {
+                    (e.currentTarget as HTMLButtonElement).blur();
+                    handleLetter(char);
+                  }}
+                >
+                  {char}
+                </button>
+              ))}
+            </div>
+            <div className="keypad-confirm-row">
               <button
-                key={char}
                 type="button"
-                className="key-btn"
+                className="key-btn special-btn"
                 onClick={(e) => {
                   (e.currentTarget as HTMLButtonElement).blur();
-                  handleLetter(char);
+                  handleBackspace();
                 }}
+                title="Backspace"
               >
-                {char}
+                ⌫ Clear
               </button>
-            ))}
+              <button
+                type="button"
+                className="key-btn submit-btn"
+                onClick={(e) => {
+                  (e.currentTarget as HTMLButtonElement).blur();
+                  confirmAnswer();
+                }}
+                disabled={!inputVal}
+                title="Confirm Answer (Enter)"
+              >
+                Confirm ⏎
+              </button>
+            </div>
           </div>
         )}
       </div>
 
       <div className="stats-footer">
         Accuracy: {totalQuestions > 0 ? Math.round((correctQuestions / totalQuestions) * 100) : 100}% ({correctQuestions}/{totalQuestions})
-        <span className="keyboard-tip">⌨️ Physical keyboard enabled</span>
       </div>
     </div>
   );

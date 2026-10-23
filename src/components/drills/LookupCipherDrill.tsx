@@ -115,13 +115,33 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     setUserInputs(updated);
   };
 
-  // Explicit submit button click
-  const handleSubmit = () => {
+  // Explicit submit solution
+  const handleSubmit = useCallback(() => {
     if (!quote) return;
     const res = evaluateSolution(quote.quote, userInputs.join(''));
     setResult(res);
     setIsSubmitted(true);
-  };
+  }, [quote, userInputs]);
+
+  // Keyboard shortcut: Enter submits or advances to next puzzle
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) {
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (!isSubmitted) {
+          handleSubmit();
+        } else {
+          loadNewQuote();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [handleSubmit, isSubmitted, loadNewQuote]);
 
   // Render cipher representation for a single char
   const renderCipherChar = (char: string) => {
