@@ -232,7 +232,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
 
       {showRef && (
         <div className="reference-panel-wrapper">
-          <ReferenceSheet initialCipher={cipher} compact={true} />
+          <ReferenceSheet singleCipher={cipher} compact={true} />
         </div>
       )}
 

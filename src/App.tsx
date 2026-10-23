@@ -114,7 +114,7 @@ export const App: React.FC = () => {
               className="menu-drill-btn"
               onClick={() => setActiveDrill('offsets')}
             >
-              Letter Offsets (A=0…Z=25)
+              Letter Offsets
             </button>
 
             <button

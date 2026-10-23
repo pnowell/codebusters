@@ -8,16 +8,16 @@ interface OptionsModalProps {
   onSaveSettings: (newSettings: UserSettings) => void;
 }
 
-const ALL_CIPHERS: { id: CipherType; name: string; session: string }[] = [
-  { id: 'offsets', name: 'Letter Offsets (A=0...Z=25)', session: 'Meeting 1' },
-  { id: 'atbash', name: 'Atbash Cipher', session: 'Meeting 1' },
-  { id: 'pigpen', name: 'Pigpen / Masonic Cipher', session: 'Meeting 1' },
-  { id: 'galactic', name: 'Standard Galactic Alphabet', session: 'Meeting 1' },
-  { id: 'caesar', name: 'Caesar Cipher (±3)', session: 'Meeting 2' },
-  { id: 'tap', name: 'Tap Code Cipher', session: 'Meeting 2' },
-  { id: 'knights', name: 'Knights Templar Cipher', session: 'Meeting 2' },
-  { id: 'vigenere', name: 'Vigenère Cipher', session: 'Meeting 3' },
-  { id: 'aristocrat', name: 'Aristocrat Cryptanalysis', session: 'Meeting 3-4' },
+const ALL_CIPHERS: { id: CipherType; name: string }[] = [
+  { id: 'offsets', name: 'Letter Offsets' },
+  { id: 'atbash', name: 'Atbash Cipher' },
+  { id: 'pigpen', name: 'Pigpen / Masonic Cipher' },
+  { id: 'galactic', name: 'Standard Galactic Alphabet' },
+  { id: 'caesar', name: 'Caesar Cipher (±3)' },
+  { id: 'tap', name: 'Tap Code Cipher' },
+  { id: 'knights', name: 'Knights Templar Cipher' },
+  { id: 'vigenere', name: 'Vigenère Cipher' },
+  { id: 'aristocrat', name: 'Aristocrat Cryptanalysis' },
 ];
 
 export const OptionsModal: React.FC<OptionsModalProps> = ({
@@ -88,7 +88,6 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                       onChange={() => toggleCipher(c.id)}
                     />
                     <span className="cipher-label-text">{c.name}</span>
-                    <span className="session-tag">{c.session}</span>
                   </label>
                 );
               })}
@@ -97,14 +96,14 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
 
           <div className="teacher-share-box">
             <p><strong>Coach Tip:</strong> Copy this link to share in Zoom chat so students automatically get the right ciphers unlocked on their devices:</p>
-            <button className="btn-secondary" onClick={handleCopyClassLink}>
+            <button className="btn-simple" onClick={handleCopyClassLink}>
               {copiedLink ? '✓ Link Copied to Clipboard!' : '📋 Copy Class Sync Link'}
             </button>
           </div>
         </div>
 
         <div className="modal-footer">
-          <button className="btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn-simple" onClick={onClose}>Cancel</button>
           <button className="btn-primary" onClick={handleSave}>Save Settings</button>
         </div>
       </div>

@@ -98,6 +98,41 @@ body {
   border-color: rgba(255, 255, 255, 0.3);
 }
 
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #0284c7, #2563eb);
+  color: white;
+  border: none;
+  padding: 0.5rem 1.1rem;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.3);
+  transition: all 0.15s ease;
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.45);
+}
+
 .btn-active {
   background: var(--accent-purple);
   color: white;
@@ -561,6 +596,59 @@ body {
 }
 
 /* Letter Offsets Specific */
+.offset-card-wrapper {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.ghost-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  overflow: visible;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 100;
+}
+
+@keyframes slideUpFade {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(0.95);
+  }
+  20% {
+    opacity: 1;
+    transform: translateY(-20px) scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-90px) scale(1.18);
+  }
+}
+
+.floating-ghost {
+  position: absolute;
+  background: rgba(16, 185, 129, 0.25);
+  border: 2px solid #10b981;
+  color: #34d399;
+  padding: 0.4rem 1.25rem;
+  border-radius: 9999px;
+  font-size: 1.5rem;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.4);
+  backdrop-filter: blur(4px);
+  animation: slideUpFade 0.85s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 .offset-card {
   display: flex;
   flex-direction: column;
@@ -571,6 +659,8 @@ body {
   border: 2px solid var(--border-color);
   border-radius: 12px;
   text-align: center;
+  width: 100%;
+  max-width: 440px;
 }
 
 .offset-card.feedback-correct {
@@ -612,10 +702,29 @@ body {
 
 .number-keypad {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 0.4rem;
-  max-width: 440px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.45rem;
+  max-width: 240px;
   width: 100%;
+}
+
+.key-btn.submit-btn {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: rgba(16, 185, 129, 0.5);
+  color: #34d399;
+  font-size: 1.25rem;
+}
+
+.key-btn.submit-btn:hover {
+  background: rgba(16, 185, 129, 0.35);
+  border-color: #10b981;
+}
+
+.keyboard-tip {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 0.35rem;
 }
 
 .letter-keypad {
