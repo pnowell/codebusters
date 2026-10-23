@@ -742,6 +742,74 @@ body {
 }
 
 /* Letter Offsets Specific */
+/* Sparse Anchors Reference Table */
+.sparse-ref-panel {
+  position: relative;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.sparse-table-wrapper {
+  overflow-x: auto;
+  width: 100%;
+}
+
+.sparse-anchor-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  text-align: center;
+  font-family: var(--font-mono);
+}
+
+.sparse-anchor-table col.col-label {
+  width: 52px;
+}
+
+.sparse-anchor-table col.col-data {
+  width: calc((100% - 52px) / 8);
+}
+
+.sparse-anchor-table th,
+.sparse-anchor-table td {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  padding: 0.35rem 0.1rem;
+  font-size: 0.95rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
+}
+
+.anchor-header-cell {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.35rem 0.15rem !important;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.anchor-letter {
+  background: rgba(56, 189, 248, 0.12);
+  color: var(--accent-blue);
+  font-weight: 800;
+  font-size: 1.1rem !important;
+}
+
+.anchor-offset {
+  background: rgba(255, 255, 255, 0.03);
+  color: #f8fafc;
+  font-weight: 800;
+  font-size: 1.05rem !important;
+}
+
 .offset-card-wrapper {
   position: relative;
   display: flex;

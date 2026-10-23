@@ -12,6 +12,17 @@ interface FloatingGhost {
   text: string;
 }
 
+const ANCHORS = [
+  { letter: 'C', offset: 2 },
+  { letter: 'F', offset: 5 },
+  { letter: 'I', offset: 8 },
+  { letter: 'L', offset: 11 },
+  { letter: 'O', offset: 14 },
+  { letter: 'R', offset: 17 },
+  { letter: 'U', offset: 20 },
+  { letter: 'X', offset: 23 },
+];
+
 export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) => {
   const [mode, setMode] = useState<DrillMode>('letterToNum');
   const [currentLetter, setCurrentLetter] = useState<string>('A');
@@ -27,6 +38,7 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
   const [totalQuestions, setTotalQuestions] = useState<number>(0);
   const [correctQuestions, setCorrectQuestions] = useState<number>(0);
   const [ghosts, setGhosts] = useState<FloatingGhost[]>([]);
+  const [showRef, setShowRef] = useState<boolean>(true);
 
   const answerInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -180,6 +192,61 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
           Mixed
         </button>
       </div>
+
+      {/* Sparse Anchors Reference Panel */}
+      {showRef ? (
+        <div className="sparse-ref-panel">
+          <button
+            type="button"
+            className="ref-close-btn"
+            onClick={() => setShowRef(false)}
+            title="Hide reference"
+            aria-label="Hide reference"
+          >
+            ✕
+          </button>
+          <div className="sparse-table-wrapper">
+            <table className="sparse-anchor-table">
+              <colgroup>
+                <col className="col-label" />
+                {ANCHORS.map(a => (
+                  <col key={a.letter} className="col-data" />
+                ))}
+              </colgroup>
+              <thead>
+                <tr>
+                  <th className="anchor-header-cell">Letter</th>
+                  {ANCHORS.map(a => (
+                    <th key={a.letter} className="anchor-col-cell anchor-letter">
+                      {a.letter}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="anchor-header-cell">Offset</td>
+                  {ANCHORS.map(a => (
+                    <td key={a.letter} className="anchor-col-cell anchor-offset">
+                      {a.offset}
+                    </td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <div className="show-ref-row">
+          <button
+            type="button"
+            className="btn-simple show-ref-btn"
+            onClick={() => setShowRef(true)}
+          >
+            📖 Show Anchors Reference
+          </button>
+        </div>
+      )}
 
       <div className="offset-card-wrapper">
         {/* Floating animated ghost badges stacking upwards upon correct answers */}
