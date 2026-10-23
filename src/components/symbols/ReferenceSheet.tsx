@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
-import { PigpenGlyph } from './PigpenGlyph';
-import { GalacticGlyph } from './GalacticGlyph';
 import { ALPHABET, atbashChar } from '../../utils/ciphers';
 
 interface ReferenceSheetProps {
-  initialCipher?: 'atbash' | 'pigpen' | 'galactic';
+  initialCipher?: 'atbash' | 'pigpen' | 'galactic' | 'knights';
   compact?: boolean;
 }
 
@@ -12,7 +10,7 @@ export const ReferenceSheet: React.FC<ReferenceSheetProps> = ({
   initialCipher = 'pigpen',
   compact = false,
 }) => {
-  const [activeTab, setActiveTab] = useState<'atbash' | 'pigpen' | 'galactic'>(initialCipher);
+  const [activeTab, setActiveTab] = useState<'atbash' | 'pigpen' | 'galactic' | 'knights'>(initialCipher);
 
   return (
     <div className={`reference-sheet ${compact ? 'compact' : ''}`}>
@@ -35,74 +33,72 @@ export const ReferenceSheet: React.FC<ReferenceSheetProps> = ({
         >
           Galactic
         </button>
+        <button
+          className={`ref-tab-btn ${activeTab === 'knights' ? 'active' : ''}`}
+          onClick={() => setActiveTab('knights')}
+        >
+          Knights Templar
+        </button>
       </div>
 
-      <div className="ref-content">
+      <div className="ref-content-image-box">
         {activeTab === 'atbash' && (
-          <div className="atbash-ref-table">
-            <div className="ref-row">
-              <span className="ref-label">Plain:</span>
-              <div className="ref-chars">
-                {ALPHABET.split('').map(c => (
-                  <span key={c} className="char-cell">{c}</span>
-                ))}
+          <div className="ref-image-wrapper">
+            {/* Direct Official PDF Resource Sheet Table */}
+            <img
+              src="references/atbash_table.png"
+              alt="Atbash Cipher Table from Official Resource Sheet"
+              className="official-ref-img"
+            />
+            {/* Crisp High-Contrast HTML Alignment Grid */}
+            <div className="atbash-aligned-grid">
+              <div className="grid-row-header">
+                <span className="row-tag">Plain:</span>
+                <div className="grid-cells-row">
+                  {ALPHABET.split('').map(c => (
+                    <span key={c} className="cell cell-plain">{c}</span>
+                  ))}
+                </div>
               </div>
-            </div>
-            <div className="ref-row cipher-row">
-              <span className="ref-label">Cipher:</span>
-              <div className="ref-chars">
-                {ALPHABET.split('').map(c => (
-                  <span key={c} className="char-cell highlighted">{atbashChar(c)}</span>
-                ))}
+              <div className="grid-row-header">
+                <span className="row-tag">Cipher:</span>
+                <div className="grid-cells-row">
+                  {ALPHABET.split('').map(c => (
+                    <span key={c} className="cell cell-cipher">{atbashChar(c)}</span>
+                  ))}
+                </div>
               </div>
-            </div>
-            <div className="ref-hint">
-              💡 Hint: Letters add up to 25! (A↔Z, B↔Y, C↔X, M↔N)
             </div>
           </div>
         )}
 
         {activeTab === 'pigpen' && (
-          <div className="pigpen-ref-grid">
-            <div className="pigpen-grid-group">
-              <div className="group-title">Standard Grids (A–I & J–R)</div>
-              <div className="symbols-row">
-                {ALPHABET.slice(0, 18).split('').map(c => (
-                  <div key={c} className="symbol-pair">
-                    <PigpenGlyph letter={c} size={28} />
-                    <span className="symbol-letter">{c}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="pigpen-grid-group">
-              <div className="group-title">X-Grids (S–V & W–Z)</div>
-              <div className="symbols-row">
-                {ALPHABET.slice(18).split('').map(c => (
-                  <div key={c} className="symbol-pair">
-                    <PigpenGlyph letter={c} size={28} />
-                    <span className="symbol-letter">{c}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+          <div className="ref-image-wrapper">
+            <img
+              src="references/pigpen_table.png"
+              alt="Pigpen / Masonic Decryption Table from Official Resource Sheet"
+              className="official-ref-img"
+            />
           </div>
         )}
 
         {activeTab === 'galactic' && (
-          <div className="galactic-ref-grid">
-            <div className="symbols-row wrap-grid">
-              {ALPHABET.split('').map(c => (
-                <div key={c} className="symbol-pair">
-                  <GalacticGlyph letter={c} size={26} />
-                  <span className="symbol-letter">{c}</span>
-                </div>
-              ))}
-            </div>
-            <div className="ref-hint">
-              Minecraft Enchanting Table Alphabet (Standard Galactic Alphabet)
-            </div>
+          <div className="ref-image-wrapper">
+            <img
+              src="references/galactic_table.png"
+              alt="Standard Galactic Alphabet from Official Resource Sheet"
+              className="official-ref-img"
+            />
+          </div>
+        )}
+
+        {activeTab === 'knights' && (
+          <div className="ref-image-wrapper">
+            <img
+              src="references/knights_templar_table.png"
+              alt="Knights Templar Decryption Table from Official Resource Sheet"
+              className="official-ref-img"
+            />
           </div>
         )}
       </div>

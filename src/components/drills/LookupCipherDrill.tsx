@@ -23,7 +23,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
   const [result, setResult] = useState<EvaluationResult | null>(null);
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
 
-  // Load a quote suitable for lookup drills (shorter quotes are better for early sessions)
+  // Load a quote suitable for lookup drills
   const loadNewQuote = useCallback(() => {
     const pool = (quotesData as Quote[]).filter(q => q.length <= 60);
     const chosen = pool[Math.floor(Math.random() * pool.length)] || (quotesData[0] as Quote);
@@ -65,7 +65,13 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
   };
 
   const handleInputChar = (char: string) => {
-    if (!quote || isSubmitted) return;
+    if (!quote) return;
+
+    // If already submitted and user types, allow them to continue editing
+    if (isSubmitted) {
+      setIsSubmitted(false);
+      setResult(null);
+    }
 
     const chars = quote.quote.toUpperCase().split('');
     if (!/^[A-Z]$/.test(chars[activeIdx])) return;
@@ -74,20 +80,17 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     updated[activeIdx] = char.toUpperCase();
     setUserInputs(updated);
 
-    // Auto-advance
+    // Auto-advance to next blank or next character without auto-submitting
     const nextIdx = getNextAlphaIndex(activeIdx);
     setActiveIdx(nextIdx);
-
-    // Check if fully answered
-    const res = evaluateSolution(quote.quote, updated.join(''));
-    if (res.isComplete) {
-      setResult(res);
-      setIsSubmitted(true);
-    }
   };
 
   const handleBackspace = () => {
-    if (!quote || isSubmitted) return;
+    if (!quote) return;
+    if (isSubmitted) {
+      setIsSubmitted(false);
+      setResult(null);
+    }
 
     const updated = [...userInputs];
     if (updated[activeIdx] !== '') {
@@ -102,10 +105,22 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
   };
 
   const handleClear = () => {
-    if (!quote || isSubmitted) return;
+    if (!quote) return;
+    if (isSubmitted) {
+      setIsSubmitted(false);
+      setResult(null);
+    }
     const updated = [...userInputs];
     updated[activeIdx] = '';
     setUserInputs(updated);
+  };
+
+  // Explicit submit button click
+  const handleSubmit = () => {
+    if (!quote) return;
+    const res = evaluateSolution(quote.quote, userInputs.join(''));
+    setResult(res);
+    setIsSubmitted(true);
   };
 
   // Render cipher representation for a single char
@@ -155,7 +170,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
               const isActive = activeIdx === index;
               const userVal = userInputs[index] || '';
               const isCorrect = isSubmitted && userVal === char;
-              const isWrong = isSubmitted && isAlpha && userVal !== char;
+              const isWrong = isSubmitted && isAlpha && userVal !== '' && userVal !== char;
 
               return (
                 <div
@@ -184,24 +199,32 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     galactic: 'Standard Galactic Alphabet',
   };
 
+  // Check how many letters are filled
+  const totalLetters = quote
+    ? quote.quote.toUpperCase().split('').filter(c => /^[A-Z]$/.test(c)).length
+    : 0;
+  const filledLetters = userInputs.filter((c, idx) => {
+    const orig = quote ? quote.quote[idx] : '';
+    return /^[A-Z]$/i.test(orig) && c !== '';
+  }).length;
+
   return (
     <div className="drill-container lookup-drill">
       <div className="drill-header">
-        <button className="btn-secondary" onClick={onBack}>
-          ← Back
+        <button className="btn-simple" onClick={onBack}>
+          ← Back to Menu
         </button>
-        <div className="drill-title">
+        <div className="drill-title-simple">
           <h2>{cipherNames[cipher]}</h2>
-          <span className="badge">Division A</span>
         </div>
         <div className="header-actions">
           <button
-            className={`btn-toggle ${showRef ? 'active' : ''}`}
+            className={`btn-simple ${showRef ? 'btn-active' : ''}`}
             onClick={() => setShowRef(prev => !prev)}
           >
             {showRef ? 'Hide Reference' : 'Show Reference'}
           </button>
-          <button className="btn-secondary" onClick={loadNewQuote}>
+          <button className="btn-simple" onClick={loadNewQuote}>
             New Quote ↻
           </button>
         </div>
@@ -213,7 +236,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
         </div>
       )}
 
-      <div className="quote-workspace card-panel">
+      <div className="quote-workspace simple-card">
         {renderWords()}
 
         {quote && (
@@ -222,20 +245,37 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
           </div>
         )}
 
+        <div className="drill-action-row">
+          <div className="progress-info">
+            Progress: <strong>{filledLetters} / {totalLetters}</strong> letters
+          </div>
+
+          {!isSubmitted ? (
+            <button
+              className="btn-submit"
+              onClick={handleSubmit}
+              disabled={filledLetters === 0}
+            >
+              Submit & Check Solution ✓
+            </button>
+          ) : (
+            <button className="btn-submit btn-next" onClick={loadNewQuote}>
+              Next Puzzle →
+            </button>
+          )}
+        </div>
+
         {result && (
           <div className={`result-banner score-${result.scoreTier}`}>
             {result.scoreTier === 'full' && (
-              <>🎉 <strong>Full Credit!</strong> Decoded with {result.errorCount} errors (allowed: ≤ 2 errors).</>
+              <>🎉 <strong>Full Credit!</strong> Decoded with {result.errorCount} error{result.errorCount === 1 ? '' : 's'} (allowed: ≤ 2 errors).</>
             )}
             {result.scoreTier === 'half' && (
-              <>⚖️ <strong>Half Credit!</strong> Decoded with {result.errorCount} errors (3–4 errors).</>
+              <>⚖️ <strong>Half Credit!</strong> Decoded with {result.errorCount} errors (3–4 errors allowed).</>
             )}
             {result.scoreTier === 'none' && (
-              <>❌ <strong>Needs Review!</strong> {result.errorCount} errors (more than 4 errors).</>
+              <>❌ <strong>{result.errorCount} Errors!</strong> Keep practicing with the reference table.</>
             )}
-            <button className="btn-primary" onClick={loadNewQuote} style={{ marginLeft: '1rem' }}>
-              Next Puzzle →
-            </button>
           </div>
         )}
       </div>
