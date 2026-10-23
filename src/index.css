@@ -862,67 +862,19 @@ body {
   color: rgba(255, 255, 255, 0.2);
 }
 
-.number-keypad {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.45rem;
-  max-width: 240px;
-  width: 100%;
-}
-
-.key-btn.submit-btn {
-  background: rgba(16, 185, 129, 0.2);
-  border-color: rgba(16, 185, 129, 0.5);
-  color: #34d399;
-  font-size: 1.25rem;
-}
-
-.key-btn.submit-btn:hover {
-  background: rgba(16, 185, 129, 0.35);
-  border-color: #10b981;
-}
-
-.letter-keypad-with-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.6rem;
-  max-width: 620px;
-  width: 100%;
-}
-
-.letter-keypad {
-  display: grid;
-  grid-template-columns: repeat(9, 1fr);
-  gap: 0.35rem;
-  width: 100%;
-}
-
-.keypad-confirm-row {
-  display: flex;
-  gap: 0.6rem;
-  width: 100%;
-  max-width: 320px;
-  justify-content: center;
-}
-
-.keypad-confirm-row .key-btn {
-  flex: 1;
-  max-width: none;
-  font-size: 0.95rem;
-}
-
-.key-btn.selected-key {
-  background: var(--accent-blue);
-  color: #0f172a;
-  border-color: var(--accent-blue);
-  font-weight: 800;
-}
-
-.input-keypad-wrapper {
+.offset-submit-row {
   display: flex;
   justify-content: center;
-  margin-top: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.offset-confirm-btn {
+  width: 100%;
+  max-width: 280px;
+  padding: 0.75rem 1.5rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  border-radius: 10px;
 }
 
 .mode-selector {

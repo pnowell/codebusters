@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { offsetToLetter, ALPHABET } from '../../utils/ciphers';
+import { offsetToLetter } from '../../utils/ciphers';
 
 interface LetterOffsetDrillProps {
   onBack: () => void;
@@ -106,57 +106,37 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
     setGhosts(prev => prev.filter(g => g.id !== id));
   };
 
-  const handleDigit = useCallback((digit: string) => {
-    if (promptType !== 'letter') return;
-    setInputVal(prev => (prev.length < 2 ? prev + digit : digit));
-    answerInputRef.current?.focus();
-  }, [promptType]);
-
-  const handleLetter = useCallback((char: string) => {
-    if (promptType !== 'number') return;
-    setInputVal(char);
-    answerInputRef.current?.focus();
-  }, [promptType]);
-
-  const handleBackspace = useCallback(() => {
-    setInputVal(prev => prev.slice(0, -1));
-    answerInputRef.current?.focus();
-  }, []);
-
-  // Physical Keyboard listener for global keypresses if input is not focused
+  // Global listener so typing immediately focuses the native input
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // If the answer input already has focus, its own handler works
       if (document.activeElement === answerInputRef.current) {
         return;
       }
-
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
 
-      if (e.key === 'Backspace') {
-        e.preventDefault();
-        handleBackspace();
-      } else if (e.key === 'Enter') {
+      if (e.key === 'Enter') {
         e.preventDefault();
         confirmAnswer();
-      } else if (promptType === 'letter') {
-        if (e.key >= '0' && e.key <= '9') {
-          e.preventDefault();
-          handleDigit(e.key);
-        }
-      } else if (promptType === 'number') {
-        if (/^[a-zA-Z]$/.test(e.key)) {
-          e.preventDefault();
-          handleLetter(e.key.toUpperCase());
-        }
+      } else if (e.key === 'Backspace') {
+        e.preventDefault();
+        setInputVal(prev => prev.slice(0, -1));
+        answerInputRef.current?.focus();
+      } else if (promptType === 'letter' && e.key >= '0' && e.key <= '9') {
+        e.preventDefault();
+        setInputVal(prev => (prev.length < 2 ? prev + e.key : e.key));
+        answerInputRef.current?.focus();
+      } else if (promptType === 'number' && /^[a-zA-Z]$/.test(e.key)) {
+        e.preventDefault();
+        setInputVal(e.key.toUpperCase());
+        answerInputRef.current?.focus();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [confirmAnswer, handleBackspace, handleDigit, handleLetter, promptType]);
+  }, [confirmAnswer, promptType]);
 
   return (
     <div className="drill-container card-panel">
@@ -268,100 +248,16 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
         </div>
       </div>
 
-      {/* On-screen Keypad */}
-      <div className="input-keypad-wrapper">
-        {promptType === 'letter' ? (
-          <div className="number-keypad">
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => (
-              <button
-                key={n}
-                type="button"
-                className="key-btn"
-                onClick={(e) => {
-                  (e.currentTarget as HTMLButtonElement).blur();
-                  handleDigit(n.toString());
-                }}
-              >
-                {n}
-              </button>
-            ))}
-            <button
-              type="button"
-              className="key-btn special-btn"
-              onClick={(e) => {
-                (e.currentTarget as HTMLButtonElement).blur();
-                handleBackspace();
-              }}
-              title="Backspace"
-            >
-              ⌫
-            </button>
-            <button
-              type="button"
-              className="key-btn"
-              onClick={(e) => {
-                (e.currentTarget as HTMLButtonElement).blur();
-                handleDigit('0');
-              }}
-            >
-              0
-            </button>
-            <button
-              type="button"
-              className="key-btn submit-btn"
-              onClick={(e) => {
-                (e.currentTarget as HTMLButtonElement).blur();
-                confirmAnswer();
-              }}
-              title="Confirm Answer (Enter)"
-            >
-              ⏎
-            </button>
-          </div>
-        ) : (
-          <div className="letter-keypad-with-actions">
-            <div className="letter-keypad">
-              {ALPHABET.split('').map(char => (
-                <button
-                  key={char}
-                  type="button"
-                  className={`key-btn ${inputVal === char ? 'selected-key' : ''}`}
-                  onClick={(e) => {
-                    (e.currentTarget as HTMLButtonElement).blur();
-                    handleLetter(char);
-                  }}
-                >
-                  {char}
-                </button>
-              ))}
-            </div>
-            <div className="keypad-confirm-row">
-              <button
-                type="button"
-                className="key-btn special-btn"
-                onClick={(e) => {
-                  (e.currentTarget as HTMLButtonElement).blur();
-                  handleBackspace();
-                }}
-                title="Backspace"
-              >
-                ⌫ Clear
-              </button>
-              <button
-                type="button"
-                className="key-btn submit-btn"
-                onClick={(e) => {
-                  (e.currentTarget as HTMLButtonElement).blur();
-                  confirmAnswer();
-                }}
-                disabled={!inputVal}
-                title="Confirm Answer (Enter)"
-              >
-                Confirm ⏎
-              </button>
-            </div>
-          </div>
-        )}
+      {/* Clean submit action using native keyboard */}
+      <div className="offset-submit-row">
+        <button
+          type="button"
+          className="btn-submit offset-confirm-btn"
+          onClick={confirmAnswer}
+          disabled={!inputVal}
+        >
+          Submit Answer ⏎
+        </button>
       </div>
 
       <div className="stats-footer">
