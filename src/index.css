@@ -548,8 +548,8 @@ body {
 
 .quote-content-canvas {
   display: inline-block;
-  min-width: 100%;
-  width: max-content;
+  width: 100%;
+  min-width: min-content;
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: 12px;
