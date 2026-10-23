@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { PigpenGlyph } from '../symbols/PigpenGlyph';
 import { GalacticGlyph } from '../symbols/GalacticGlyph';
 import { ReferenceSheet } from '../symbols/ReferenceSheet';
-import { VirtualKeyboard } from '../common/VirtualKeyboard';
 import { atbashChar, evaluateSolution } from '../../utils/ciphers';
 import quotesData from '../../data/quotes.json';
 import type { Quote, EvaluationResult } from '../../types';
@@ -23,6 +22,9 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
   const [result, setResult] = useState<EvaluationResult | null>(null);
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
 
+  // References to input elements for seamless typing navigation
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
   // Load a quote suitable for lookup drills
   const loadNewQuote = useCallback(() => {
     const pool = (quotesData as Quote[]).filter(q => q.length <= 60);
@@ -30,15 +32,19 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     setQuote(chosen);
 
     const chars = chosen.quote.toUpperCase().split('');
-    // Pre-populate non-alphabet characters (spaces, punctuation)
     const initialInputs = chars.map(c => (/^[A-Z]$/.test(c) ? '' : c));
     setUserInputs(initialInputs);
 
-    // Set active index to first alphabet character
     const firstAlpha = chars.findIndex(c => /^[A-Z]$/.test(c));
-    setActiveIdx(firstAlpha >= 0 ? firstAlpha : 0);
+    const targetIdx = firstAlpha >= 0 ? firstAlpha : 0;
+    setActiveIdx(targetIdx);
     setResult(null);
     setIsSubmitted(false);
+
+    // Refocus first input after quote renders
+    setTimeout(() => {
+      inputRefs.current[targetIdx]?.focus();
+    }, 50);
   }, []);
 
   useEffect(() => {
@@ -64,57 +70,6 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     return start;
   };
 
-  const handleInputChar = (char: string) => {
-    if (!quote) return;
-
-    // If already submitted and user types, allow them to continue editing
-    if (isSubmitted) {
-      setIsSubmitted(false);
-      setResult(null);
-    }
-
-    const chars = quote.quote.toUpperCase().split('');
-    if (!/^[A-Z]$/.test(chars[activeIdx])) return;
-
-    const updated = [...userInputs];
-    updated[activeIdx] = char.toUpperCase();
-    setUserInputs(updated);
-
-    // Auto-advance to next blank or next character without auto-submitting
-    const nextIdx = getNextAlphaIndex(activeIdx);
-    setActiveIdx(nextIdx);
-  };
-
-  const handleBackspace = () => {
-    if (!quote) return;
-    if (isSubmitted) {
-      setIsSubmitted(false);
-      setResult(null);
-    }
-
-    const updated = [...userInputs];
-    if (updated[activeIdx] !== '') {
-      updated[activeIdx] = '';
-      setUserInputs(updated);
-    } else {
-      const prevIdx = getPrevAlphaIndex(activeIdx);
-      updated[prevIdx] = '';
-      setUserInputs(updated);
-      setActiveIdx(prevIdx);
-    }
-  };
-
-  const handleClear = () => {
-    if (!quote) return;
-    if (isSubmitted) {
-      setIsSubmitted(false);
-      setResult(null);
-    }
-    const updated = [...userInputs];
-    updated[activeIdx] = '';
-    setUserInputs(updated);
-  };
-
   // Explicit submit solution
   const handleSubmit = useCallback(() => {
     if (!quote) return;
@@ -123,25 +78,60 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     setIsSubmitted(true);
   }, [quote, userInputs]);
 
-  // Keyboard shortcut: Enter submits or advances to next puzzle
-  useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) {
-        return;
-      }
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        if (!isSubmitted) {
-          handleSubmit();
-        } else {
-          loadNewQuote();
-        }
-      }
-    };
+  // Tile input change
+  const handleTileChange = (index: number, val: string) => {
+    if (!quote) return;
+    if (isSubmitted) {
+      setIsSubmitted(false);
+      setResult(null);
+    }
 
-    window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [handleSubmit, isSubmitted, loadNewQuote]);
+    const lastChar = val.slice(-1).toUpperCase();
+    const updated = [...userInputs];
+
+    if (/^[A-Z]$/.test(lastChar)) {
+      updated[index] = lastChar;
+      setUserInputs(updated);
+      const nextIdx = getNextAlphaIndex(index);
+      setActiveIdx(nextIdx);
+      inputRefs.current[nextIdx]?.focus();
+    } else if (val === '') {
+      updated[index] = '';
+      setUserInputs(updated);
+    }
+  };
+
+  // Keyboard navigation & Enter shortcuts
+  const handleTileKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace') {
+      if (!userInputs[index]) {
+        e.preventDefault();
+        const prevIdx = getPrevAlphaIndex(index);
+        setActiveIdx(prevIdx);
+        const updated = [...userInputs];
+        updated[prevIdx] = '';
+        setUserInputs(updated);
+        inputRefs.current[prevIdx]?.focus();
+      }
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      const prevIdx = getPrevAlphaIndex(index);
+      setActiveIdx(prevIdx);
+      inputRefs.current[prevIdx]?.focus();
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      const nextIdx = getNextAlphaIndex(index);
+      setActiveIdx(nextIdx);
+      inputRefs.current[nextIdx]?.focus();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (!isSubmitted) {
+        handleSubmit();
+      } else {
+        loadNewQuote();
+      }
+    }
+  };
 
   // Render cipher representation for a single char
   const renderCipherChar = (char: string) => {
@@ -196,11 +186,28 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
                 <div
                   key={index}
                   className={`char-tile ${isActive ? 'active-tile' : ''} ${isCorrect ? 'correct-tile' : ''} ${isWrong ? 'wrong-tile' : ''}`}
-                  onClick={() => isAlpha && setActiveIdx(index)}
+                  onClick={() => isAlpha && inputRefs.current[index]?.focus()}
                 >
                   <div className="tile-cipher">{renderCipherChar(char)}</div>
                   {isAlpha ? (
-                    <div className="tile-input">{userVal || ' '}</div>
+                    <input
+                      ref={el => {
+                        inputRefs.current[index] = el;
+                      }}
+                      type="text"
+                      inputMode="text"
+                      autoCapitalize="characters"
+                      autoCorrect="off"
+                      autoComplete="off"
+                      spellCheck="false"
+                      enterKeyHint="done"
+                      className="tile-native-input"
+                      value={userVal}
+                      onChange={e => handleTileChange(index, e.target.value)}
+                      onKeyDown={e => handleTileKeyDown(index, e)}
+                      onFocus={() => setActiveIdx(index)}
+                      maxLength={2}
+                    />
                   ) : (
                     <div className="tile-punct">{char}</div>
                   )}
@@ -213,13 +220,12 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     );
   };
 
-  const cipherNames = {
-    atbash: 'Atbash Cipher',
-    pigpen: 'Pigpen / Masonic Cipher',
-    galactic: 'Standard Galactic Alphabet',
+  const cipherTitles = {
+    atbash: 'Atbash',
+    pigpen: 'Pigpen',
+    galactic: 'Galactic',
   };
 
-  // Check how many letters are filled
   const totalLetters = quote
     ? quote.quote.toUpperCase().split('').filter(c => /^[A-Z]$/.test(c)).length
     : 0;
@@ -230,32 +236,39 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
 
   return (
     <div className="drill-container lookup-drill">
-      <div className="drill-header">
-        <button className="btn-simple" onClick={onBack}>
-          ← Back to Menu
+      {/* Compact single-line drill header */}
+      <div className="drill-header-compact">
+        <button className="btn-simple btn-back" onClick={onBack}>
+          ← Menu
         </button>
-        <div className="drill-title-simple">
-          <h2>{cipherNames[cipher]}</h2>
-        </div>
-        <div className="header-actions">
-          <button
-            className={`btn-simple ${showRef ? 'btn-active' : ''}`}
-            onClick={() => setShowRef(prev => !prev)}
-          >
-            {showRef ? 'Hide Reference' : 'Show Reference'}
-          </button>
-          <button className="btn-simple" onClick={loadNewQuote}>
-            New Quote ↻
-          </button>
-        </div>
+        <h2 className="drill-title-compact">{cipherTitles[cipher]}</h2>
+        <button className="btn-simple btn-reload" onClick={loadNewQuote} title="New Quote">
+          New ↻
+        </button>
       </div>
 
-      {showRef && (
-        <div className="reference-panel-wrapper">
-          <ReferenceSheet singleCipher={cipher} compact={true} />
+      {/* Sticky Reference Table that sticks to top on scroll */}
+      {showRef ? (
+        <div className="sticky-ref-container">
+          <ReferenceSheet
+            singleCipher={cipher}
+            compact={true}
+            onClose={() => setShowRef(false)}
+          />
+        </div>
+      ) : (
+        <div className="show-ref-row">
+          <button
+            type="button"
+            className="btn-simple show-ref-btn"
+            onClick={() => setShowRef(true)}
+          >
+            📖 Show Reference Table
+          </button>
         </div>
       )}
 
+      {/* Interactive Quote Workspace */}
       <div className="quote-workspace simple-card">
         {renderWords()}
 
@@ -299,12 +312,6 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
           </div>
         )}
       </div>
-
-      <VirtualKeyboard
-        onChar={handleInputChar}
-        onBackspace={handleBackspace}
-        onClear={handleClear}
-      />
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { offsetToLetter, ALPHABET } from '../../utils/ciphers';
 
 interface LetterOffsetDrillProps {
@@ -28,6 +28,8 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
   const [correctQuestions, setCorrectQuestions] = useState<number>(0);
   const [ghosts, setGhosts] = useState<FloatingGhost[]>([]);
 
+  const answerInputRef = useRef<HTMLInputElement | null>(null);
+
   // Pick next question
   const nextQuestion = useCallback((overrideMode?: DrillMode) => {
     const activeMode = overrideMode || mode;
@@ -46,6 +48,10 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
     } else {
       setPromptType(Math.random() > 0.5 ? 'letter' : 'number');
     }
+
+    setTimeout(() => {
+      answerInputRef.current?.focus();
+    }, 40);
   }, [mode]);
 
   useEffect(() => {
@@ -90,6 +96,7 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
       setTimeout(() => {
         setWrongFeedback(null);
         setInputVal('');
+        answerInputRef.current?.focus();
       }, 1200);
     }
   }, [bestStreak, currentLetter, currentOffset, inputVal, nextQuestion, promptType, streak]);
@@ -102,21 +109,28 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
   const handleDigit = useCallback((digit: string) => {
     if (promptType !== 'letter') return;
     setInputVal(prev => (prev.length < 2 ? prev + digit : digit));
+    answerInputRef.current?.focus();
   }, [promptType]);
 
   const handleLetter = useCallback((char: string) => {
     if (promptType !== 'number') return;
     setInputVal(char);
+    answerInputRef.current?.focus();
   }, [promptType]);
 
   const handleBackspace = useCallback(() => {
     setInputVal(prev => prev.slice(0, -1));
+    answerInputRef.current?.focus();
   }, []);
 
-  // Physical Keyboard listener
+  // Physical Keyboard listener for global keypresses if input is not focused
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't intercept if an input in modal has focus
+      // If the answer input already has focus, its own handler works
+      if (document.activeElement === answerInputRef.current) {
+        return;
+      }
+
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
@@ -146,15 +160,14 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
 
   return (
     <div className="drill-container card-panel">
-      <div className="drill-header">
-        <button className="btn-simple" onClick={onBack}>
-          ← Back to Menu
+      {/* Compact drill header */}
+      <div className="drill-header-compact">
+        <button className="btn-simple btn-back" onClick={onBack}>
+          ← Menu
         </button>
-        <div className="drill-title">
-          <h2>Letter Offsets Training</h2>
-        </div>
-        <div className="streak-badge">
-          🔥 Streak: <strong>{streak}</strong> <small>(Best: {bestStreak})</small>
+        <h2 className="drill-title-compact">Letter Offsets</h2>
+        <div className="streak-badge-compact">
+          🔥 <strong>{streak}</strong> <small>({bestStreak})</small>
         </div>
       </div>
 
@@ -166,7 +179,7 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
             handleModeChange('letterToNum');
           }}
         >
-          Letter → Number
+          Letter → #
         </button>
         <button
           className={`mode-btn ${mode === 'numToLetter' ? 'active' : ''}`}
@@ -175,7 +188,7 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
             handleModeChange('numToLetter');
           }}
         >
-          Number → Letter
+          # → Letter
         </button>
         <button
           className={`mode-btn ${mode === 'mixed' ? 'active' : ''}`}
@@ -184,7 +197,7 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
             handleModeChange('mixed');
           }}
         >
-          Mixed Sprint
+          Mixed
         </button>
       </div>
 
@@ -209,9 +222,44 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
           <div className="prompt-value">
             {promptType === 'letter' ? currentLetter : currentOffset}
           </div>
-          <div className="user-answer-box">
-            {inputVal || <span className="placeholder">?</span>}
+
+          {/* Interactive Native Input Box that opens numeric pad or letter keyboard on mobile */}
+          <div
+            className="user-answer-box-wrapper"
+            onClick={() => answerInputRef.current?.focus()}
+          >
+            <input
+              ref={answerInputRef}
+              type="text"
+              inputMode={promptType === 'letter' ? 'numeric' : 'text'}
+              pattern={promptType === 'letter' ? '[0-9]*' : undefined}
+              autoCapitalize={promptType === 'number' ? 'characters' : 'off'}
+              autoCorrect="off"
+              autoComplete="off"
+              spellCheck="false"
+              enterKeyHint="done"
+              className="user-answer-native-input"
+              value={inputVal}
+              placeholder="?"
+              onChange={e => {
+                const val = e.target.value.toUpperCase();
+                if (promptType === 'letter') {
+                  const cleaned = val.replace(/[^0-9]/g, '').slice(0, 2);
+                  setInputVal(cleaned);
+                } else {
+                  const cleaned = val.replace(/[^A-Z]/g, '').slice(-1);
+                  setInputVal(cleaned);
+                }
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  confirmAnswer();
+                }
+              }}
+            />
           </div>
+
           {wrongFeedback && (
             <div className="answer-hint">
               Answer was: <strong>{wrongFeedback}</strong>

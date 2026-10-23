@@ -59,23 +59,26 @@ export const App: React.FC = () => {
 
   return (
     <div className="app-container">
-      <header className="main-header">
-        <div className="brand-text">
-          <h1>DaVinci Decoders</h1>
-          <div className="subtitle">Science Olympiad Division A Trainer</div>
-        </div>
+      {/* Main Header only visible on the main menu */}
+      {!activeDrill && (
+        <header className="main-header">
+          <div className="brand-text">
+            <h1>DaVinci Decoders</h1>
+            <div className="subtitle">Science Olympiad Division A Trainer</div>
+          </div>
 
-        <div className="header-user-actions">
-          <span className="student-tag">👤 {settings.studentName}</span>
-          <button
-            className="btn-simple"
-            onClick={() => setIsOptionsOpen(true)}
-            title="Classroom Settings"
-          >
-            ⚙️ Options
-          </button>
-        </div>
-      </header>
+          <div className="header-user-actions">
+            <span className="student-tag">👤 {settings.studentName}</span>
+            <button
+              className="btn-simple"
+              onClick={() => setIsOptionsOpen(true)}
+              title="Classroom Settings"
+            >
+              ⚙️ Options
+            </button>
+          </div>
+        </header>
+      )}
 
       {/* Active Drill View */}
       {activeDrill === 'offsets' && (

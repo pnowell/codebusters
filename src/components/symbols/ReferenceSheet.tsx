@@ -6,12 +6,14 @@ interface ReferenceSheetProps {
   initialCipher?: CipherRefType;
   singleCipher?: CipherRefType;
   compact?: boolean;
+  onClose?: () => void;
 }
 
 export const ReferenceSheet: React.FC<ReferenceSheetProps> = ({
   initialCipher = 'pigpen',
   singleCipher,
   compact = false,
+  onClose,
 }) => {
   const [activeTab, setActiveTab] = useState<CipherRefType>(singleCipher || initialCipher);
 
@@ -19,6 +21,18 @@ export const ReferenceSheet: React.FC<ReferenceSheetProps> = ({
 
   return (
     <div className={`reference-sheet ${compact ? 'compact' : ''}`}>
+      {onClose && (
+        <button
+          type="button"
+          className="ref-close-btn"
+          onClick={onClose}
+          title="Hide reference"
+          aria-label="Hide reference"
+        >
+          ✕
+        </button>
+      )}
+
       {/* Only show category tabs if no single specific cipher is mandated */}
       {!singleCipher && (
         <div className="ref-tabs">
