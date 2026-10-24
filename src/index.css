@@ -420,29 +420,30 @@ body {
 /* Subdued Slate/Blue "X" close button matching app aesthetic */
 .ref-close-btn {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: -8px;
+  right: -6px;
   z-index: 50;
-  background: rgba(30, 41, 59, 0.9);
-  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(30, 41, 59, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.45);
   color: #94a3b8;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   border-radius: 6px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
-  font-weight: 600;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
   transition: all 0.15s ease;
 }
 
 .ref-close-btn:hover {
-  background: rgba(56, 189, 248, 0.15);
+  background: rgba(56, 189, 248, 0.2);
   border-color: var(--accent-blue);
   color: var(--accent-blue);
+  transform: scale(1.08);
 }
 
 .show-ref-row {
@@ -853,12 +854,14 @@ body {
 /* Letter Offsets Specific */
 /* Sparse Anchors Reference Table */
 .sparse-ref-panel {
+  flex-shrink: 0;
   position: relative;
   background: rgba(15, 23, 42, 0.95);
   border: 1px solid var(--border-color);
   border-radius: 10px;
-  padding: 0.5rem;
-  margin-bottom: 0.75rem;
+  padding: 0.35rem 0.2rem;
+  margin-top: 0.45rem;
+  margin-bottom: 0.35rem;
 }
 
 .sparse-table-wrapper {
@@ -868,18 +871,18 @@ body {
 
 .sparse-anchor-table {
   width: 100%;
-  table-layout: fixed;
   border-collapse: collapse;
   text-align: center;
   font-family: var(--font-mono);
 }
 
 .sparse-anchor-table col.col-label {
-  width: 52px;
+  width: 1%;
+  white-space: nowrap;
 }
 
 .sparse-anchor-table col.col-data {
-  width: calc((100% - 52px) / 8);
+  width: 12.5%;
 }
 
 .sparse-anchor-table th,
@@ -887,8 +890,6 @@ body {
   border: 1px solid rgba(148, 163, 184, 0.35);
   padding: 0.35rem 0.1rem;
   font-size: 0.95rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
   box-sizing: border-box;
 }
 
@@ -896,11 +897,10 @@ body {
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-muted);
   font-family: var(--font-sans);
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  padding: 0.35rem 0.15rem !important;
+  letter-spacing: 0.02em;
+  padding: 0.35rem 0.5rem !important;
   text-align: center;
   white-space: nowrap;
 }
@@ -909,14 +909,14 @@ body {
   background: rgba(56, 189, 248, 0.12);
   color: var(--accent-blue);
   font-weight: 800;
-  font-size: 1.1rem !important;
+  font-size: 1.15rem !important;
 }
 
 .anchor-offset {
   background: rgba(255, 255, 255, 0.03);
   color: #f8fafc;
   font-weight: 800;
-  font-size: 1.05rem !important;
+  font-size: 1.1rem !important;
 }
 
 .offset-card-wrapper {
