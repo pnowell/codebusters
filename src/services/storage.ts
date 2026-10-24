@@ -4,6 +4,7 @@ import { DEFAULT_UNLOCKED, isCipherType } from '../data/drills';
 const KEYS = {
   settings: 'davinci_settings',
   offsetsBestStreak: 'davinci_offsets_best_streak',
+  completedQuotes: 'davinci_completed_quotes',
 } as const;
 
 export const DEFAULT_SETTINGS: UserSettings = {
@@ -34,3 +35,38 @@ export const loadBestStreak = () =>
 
 export const saveBestStreak = (n: number) =>
   localStorage.setItem(KEYS.offsetsBestStreak, String(n));
+
+export function loadCompletedQuoteIds(): number[] {
+  try {
+    const raw = localStorage.getItem(KEYS.completedQuotes);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter(n => typeof n === 'number') : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveCompletedQuoteId(id: number): void {
+  try {
+    const current = new Set(loadCompletedQuoteIds());
+    if (!current.has(id)) {
+      current.add(id);
+      localStorage.setItem(KEYS.completedQuotes, JSON.stringify(Array.from(current)));
+    }
+  } catch {
+    // Ignore storage quota or disabled localStorage
+  }
+}
+
+export function isQuoteCompleted(id: number): boolean {
+  return loadCompletedQuoteIds().includes(id);
+}
+
+export function clearCompletedQuotes(): void {
+  try {
+    localStorage.removeItem(KEYS.completedQuotes);
+  } catch {
+    // Ignore
+  }
+}

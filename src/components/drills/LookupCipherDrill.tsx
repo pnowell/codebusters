@@ -10,6 +10,7 @@ import { atbashChar, evaluateSolution, isLetter, findLetterIndex, groupIntoWords
 import { pickLookupQuote } from '../../data/quotes';
 import { getDrill, type LookupCipherType } from '../../data/drills';
 import { useKeepInView } from '../../hooks/useKeepInView';
+import { saveCompletedQuoteId } from '../../services/storage';
 import type { Quote, EvaluationResult } from '../../types';
 
 interface LookupCipherDrillProps {
@@ -90,7 +91,8 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     const res = evaluateSolution(quote.quote, userInputs.join(''));
     setResult(res);
     setIsSubmitted(true);
-  }, [quote.quote, userInputs]);
+    saveCompletedQuoteId(quote.id);
+  }, [quote.id, quote.quote, userInputs]);
 
   const handleTileChange = (index: number, val: string) => {
     if (isSubmitted) {
