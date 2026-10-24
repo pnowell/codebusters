@@ -420,8 +420,8 @@ body {
 /* Subdued Slate/Blue "X" close button matching app aesthetic */
 .ref-close-btn {
   position: absolute;
-  top: -8px;
-  right: -6px;
+  top: 6px;
+  right: 6px;
   z-index: 50;
   background: rgba(30, 41, 59, 0.95);
   border: 1px solid rgba(148, 163, 184, 0.45);
@@ -859,21 +859,30 @@ body {
   background: rgba(15, 23, 42, 0.95);
   border: 1px solid var(--border-color);
   border-radius: 10px;
-  padding: 0.35rem 0.2rem;
-  margin-top: 0.45rem;
-  margin-bottom: 0.35rem;
+  padding: 0.35rem 0.25rem;
+  margin: 0.45rem 6px 0.35rem 6px;
+}
+
+.sparse-ref-panel .ref-close-btn {
+  top: -8px;
+  right: -5px;
 }
 
 .sparse-table-wrapper {
-  overflow-x: auto;
+  overflow: hidden;
+  border-radius: 8px;
   width: 100%;
 }
 
 .sparse-anchor-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   text-align: center;
   font-family: var(--font-mono);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 .sparse-anchor-table col.col-label {
@@ -887,10 +896,36 @@ body {
 
 .sparse-anchor-table th,
 .sparse-anchor-table td {
-  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-right: 1px solid rgba(148, 163, 184, 0.35);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.35);
   padding: 0.35rem 0.1rem;
   font-size: 0.95rem;
   box-sizing: border-box;
+}
+
+.sparse-anchor-table th:last-child,
+.sparse-anchor-table td:last-child {
+  border-right: none;
+}
+
+.sparse-anchor-table tr:last-child td {
+  border-bottom: none;
+}
+
+.sparse-anchor-table tr:first-child th:first-child {
+  border-top-left-radius: 7px;
+}
+
+.sparse-anchor-table tr:first-child th:last-child {
+  border-top-right-radius: 7px;
+}
+
+.sparse-anchor-table tr:last-child td:first-child {
+  border-bottom-left-radius: 7px;
+}
+
+.sparse-anchor-table tr:last-child td:last-child {
+  border-bottom-right-radius: 7px;
 }
 
 .anchor-header-cell {
