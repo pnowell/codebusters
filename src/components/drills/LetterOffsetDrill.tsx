@@ -315,20 +315,20 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
         </div>
       </div>
 
-      {/* Clean submit action using native keyboard */}
-      <div className="offset-submit-row">
+      {/* Action Row matching cipher drill layout: Accuracy info on left, Submit Answer on right */}
+      <div className="drill-action-row">
+        <div className="progress-info">
+          Accuracy: <strong>{totalQuestions > 0 ? Math.round((correctQuestions / totalQuestions) * 100) : 100}%</strong> ({correctQuestions}/{totalQuestions})
+        </div>
+
         <button
           type="button"
-          className="btn-submit offset-confirm-btn"
+          className="btn-submit"
           onClick={confirmAnswer}
           disabled={!inputVal}
         >
           Submit Answer ⏎
         </button>
-      </div>
-
-      <div className="stats-footer">
-        Accuracy: {totalQuestions > 0 ? Math.round((correctQuestions / totalQuestions) * 100) : 100}% ({correctQuestions}/{totalQuestions})
       </div>
     </div>
   );
