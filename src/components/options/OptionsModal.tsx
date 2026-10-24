@@ -65,7 +65,7 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
           </div>
 
           <div className="form-group">
-            <label>Unlocked Ciphers for Practice:</label>
+            <label>Ciphers included in General Practice:</label>
             <div className="cipher-checkbox-list">
               {DRILLS.map(c => {
                 const isChecked = unlocked.includes(c.id);

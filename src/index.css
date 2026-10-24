@@ -395,30 +395,6 @@ body {
   padding: 0.4rem 0.8rem;
 }
 
-.ref-tabs {
-  display: flex;
-  gap: 0.4rem;
-  margin-bottom: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.ref-tab-btn {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border-color);
-  color: var(--text-muted);
-  padding: 0.35rem 0.75rem;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.82rem;
-  font-weight: 600;
-}
-
-.ref-tab-btn.active {
-  background: var(--accent-purple);
-  color: white;
-  border-color: var(--accent-purple);
-}
-
 .ref-content-image-box {
   display: flex;
   justify-content: center;
@@ -884,6 +860,17 @@ body {
 
 .user-answer-native-input::placeholder {
   color: rgba(255, 255, 255, 0.2);
+}
+
+.answer-hint {
+  margin-top: 0.6rem;
+  font-size: 0.95rem;
+  color: #fb7185;
+}
+
+.answer-hint strong {
+  font-family: var(--font-mono);
+  font-size: 1.15rem;
 }
 
 .mode-selector {

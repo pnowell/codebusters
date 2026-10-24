@@ -6,61 +6,37 @@ import { OptionsModal } from './components/options/OptionsModal';
 import {
   IMPLEMENTED_DRILLS,
   COMING_SOON_DRILLS,
+  isLookupCipher,
 } from './data/drills';
 import { loadSettings, saveSettings } from './services/storage';
 import { parseUrlRoute, buildRouteUrl, parseUnlockedParam } from './utils/routing';
+import { useVisualViewportHeight } from './hooks/useVisualViewportHeight';
+
+function initSettings(): UserSettings {
+  const loaded = loadSettings();
+  const ciphersFromUrl = parseUnlockedParam();
+  if (ciphersFromUrl) {
+    const updated = { ...loaded, unlockedCiphers: ciphersFromUrl };
+    saveSettings(updated);
+    return updated;
+  }
+  return loaded;
+}
 
 export const App: React.FC = () => {
-  const [settings, setSettings] = useState<UserSettings>(loadSettings);
+  const [settings, setSettings] = useState<UserSettings>(initSettings);
 
   const [activeDrill, setActiveDrill] = useState<CipherType | null>(() => parseUrlRoute().drill);
   const [activeQuoteId, setActiveQuoteId] = useState<number | undefined>(() => parseUrlRoute().quoteId);
   const [isOptionsOpen, setIsOptionsOpen] = useState<boolean>(false);
 
-  // Track the actual visible viewport height above mobile virtual keyboard
-  useEffect(() => {
-    const updateViewportHeight = () => {
-      if (window.visualViewport) {
-        document.documentElement.style.setProperty(
-          '--visual-viewport-height',
-          `${window.visualViewport.height}px`
-        );
-        // Ensure the outer window is pinned at (0, 0)
-        if (window.scrollY !== 0) {
-          window.scrollTo(0, 0);
-        }
-      }
-    };
-
-    updateViewportHeight();
-    const vv = window.visualViewport;
-    vv?.addEventListener('resize', updateViewportHeight);
-    vv?.addEventListener('scroll', updateViewportHeight);
-    window.addEventListener('resize', updateViewportHeight);
-
-    return () => {
-      vv?.removeEventListener('resize', updateViewportHeight);
-      vv?.removeEventListener('scroll', updateViewportHeight);
-      window.removeEventListener('resize', updateViewportHeight);
-    };
-  }, []);
-
-  // Check URL query parameters on load to allow one-click sync from coach
-  useEffect(() => {
-    const ciphersFromUrl = parseUnlockedParam();
-    if (ciphersFromUrl) {
-      setSettings(prev => {
-        const updated = { ...prev, unlockedCiphers: ciphersFromUrl };
-        saveSettings(updated);
-        return updated;
-      });
-    }
-  }, []);
+  // Pin outer window and track visual viewport height above mobile virtual keyboard
+  useVisualViewportHeight();
 
   // Listen to browser Back / Forward buttons
   useEffect(() => {
     const handlePopState = (e: PopStateEvent) => {
-      if (isOptionsOpen && (!e.state || e.state.modal !== 'options')) {
+      if (!e.state || e.state.modal !== 'options') {
         setIsOptionsOpen(false);
       }
       const route = parseUrlRoute();
@@ -70,7 +46,7 @@ export const App: React.FC = () => {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [isOptionsOpen]);
+  }, []);
 
   // Handle deep-link history: if user lands directly on a drill from a link,
   // seed the history stack with the menu first so browser back goes to menu instead of closing app
@@ -166,27 +142,10 @@ export const App: React.FC = () => {
         <LetterOffsetDrill onBack={navigateToMenu} />
       )}
 
-      {activeDrill === 'atbash' && (
+      {activeDrill && isLookupCipher(activeDrill) && (
         <LookupCipherDrill
-          cipher="atbash"
-          initialQuoteId={activeQuoteId}
-          onQuoteChange={handleQuoteChange}
-          onBack={navigateToMenu}
-        />
-      )}
-
-      {activeDrill === 'pigpen' && (
-        <LookupCipherDrill
-          cipher="pigpen"
-          initialQuoteId={activeQuoteId}
-          onQuoteChange={handleQuoteChange}
-          onBack={navigateToMenu}
-        />
-      )}
-
-      {activeDrill === 'galactic' && (
-        <LookupCipherDrill
-          cipher="galactic"
+          key={`${activeDrill}:${activeQuoteId ?? 'random'}`}
+          cipher={activeDrill}
           initialQuoteId={activeQuoteId}
           onQuoteChange={handleQuoteChange}
           onBack={navigateToMenu}
@@ -236,12 +195,14 @@ export const App: React.FC = () => {
       )}
 
       {/* Settings Modal */}
-      <OptionsModal
-        isOpen={isOptionsOpen}
-        onClose={closeOptions}
-        settings={settings}
-        onSaveSettings={handleSaveSettings}
-      />
+      {isOptionsOpen && (
+        <OptionsModal
+          isOpen={true}
+          onClose={closeOptions}
+          settings={settings}
+          onSaveSettings={handleSaveSettings}
+        />
+      )}
     </div>
   );
 };

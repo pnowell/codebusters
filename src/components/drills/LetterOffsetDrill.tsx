@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { offsetToLetter } from '../../utils/ciphers';
 import { loadBestStreak, saveBestStreak } from '../../services/storage';
+import { DrillHeader } from '../drill/DrillHeader';
+import { CollapsibleReference } from '../drill/CollapsibleReference';
+import { AnchorTable } from '../drill/AnchorTable';
+import { DrillActionRow } from '../drill/DrillActionRow';
 
 interface LetterOffsetDrillProps {
   onBack: () => void;
@@ -13,23 +17,41 @@ interface FloatingGhost {
   text: string;
 }
 
-const ANCHORS = [
-  { letter: 'C', offset: 2 },
-  { letter: 'F', offset: 5 },
-  { letter: 'I', offset: 8 },
-  { letter: 'L', offset: 11 },
-  { letter: 'O', offset: 14 },
-  { letter: 'R', offset: 17 },
-  { letter: 'U', offset: 20 },
-  { letter: 'X', offset: 23 },
+interface Question {
+  offset: number;
+  letter: string;
+  promptType: 'letter' | 'number';
+}
+
+const ANCHOR_OFFSETS = [2, 5, 8, 11, 14, 17, 20, 23] as const;
+const ANCHORS = ANCHOR_OFFSETS.map(offset => ({
+  offset,
+  letter: offsetToLetter(offset),
+}));
+
+const MODES: readonly { readonly id: DrillMode; readonly label: string }[] = [
+  { id: 'letterToNum', label: 'Letter → #' },
+  { id: 'numToLetter', label: '# → Letter' },
+  { id: 'mixed', label: 'Mixed' },
 ];
+
+function makeQuestion(mode: DrillMode): Question {
+  const offset = Math.floor(Math.random() * 26);
+  const letter = offsetToLetter(offset);
+  let promptType: 'letter' | 'number';
+  if (mode === 'letterToNum') {
+    promptType = 'letter';
+  } else if (mode === 'numToLetter') {
+    promptType = 'number';
+  } else {
+    promptType = Math.random() > 0.5 ? 'letter' : 'number';
+  }
+  return { offset, letter, promptType };
+}
 
 export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) => {
   const [mode, setMode] = useState<DrillMode>('letterToNum');
-  const [currentLetter, setCurrentLetter] = useState<string>('A');
-  const [currentOffset, setCurrentOffset] = useState<number>(0);
-  const [promptType, setPromptType] = useState<'letter' | 'number'>('letter');
-
+  const [question, setQuestion] = useState<Question>(() => makeQuestion('letterToNum'));
   const [inputVal, setInputVal] = useState<string>('');
   const [wrongFeedback, setWrongFeedback] = useState<string | null>(null);
   const [streak, setStreak] = useState<number>(0);
@@ -37,37 +59,29 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
   const [totalQuestions, setTotalQuestions] = useState<number>(0);
   const [correctQuestions, setCorrectQuestions] = useState<number>(0);
   const [ghosts, setGhosts] = useState<FloatingGhost[]>([]);
-  const [showRef, setShowRef] = useState<boolean>(true);
 
   const answerInputRef = useRef<HTMLInputElement | null>(null);
+  const ghostSeq = useRef(0);
+  const wrongTimerRef = useRef<number | null>(null);
 
-  // Pick next question
+  // Clean up any pending wrong feedback timer on unmount
+  useEffect(() => {
+    return () => {
+      if (wrongTimerRef.current !== null) {
+        window.clearTimeout(wrongTimerRef.current);
+      }
+    };
+  }, []);
+
   const nextQuestion = useCallback((overrideMode?: DrillMode) => {
     const activeMode = overrideMode || mode;
-    const randOffset = Math.floor(Math.random() * 26);
-    const randLetter = offsetToLetter(randOffset);
-
-    setCurrentOffset(randOffset);
-    setCurrentLetter(randLetter);
+    setQuestion(makeQuestion(activeMode));
     setInputVal('');
     setWrongFeedback(null);
-
-    if (activeMode === 'letterToNum') {
-      setPromptType('letter');
-    } else if (activeMode === 'numToLetter') {
-      setPromptType('number');
-    } else {
-      setPromptType(Math.random() > 0.5 ? 'letter' : 'number');
-    }
-
     setTimeout(() => {
       answerInputRef.current?.focus();
     }, 40);
   }, [mode]);
-
-  useEffect(() => {
-    nextQuestion();
-  }, [nextQuestion]);
 
   const handleModeChange = (newMode: DrillMode) => {
     setMode(newMode);
@@ -75,15 +89,18 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
   };
 
   const confirmAnswer = useCallback(() => {
+    // Block multiple submissions while wrong answer feedback is showing
+    if (wrongTimerRef.current !== null) return;
+
     const trimmed = inputVal.trim().toUpperCase();
     if (!trimmed) return;
 
     setTotalQuestions(prev => prev + 1);
 
     const isCorrect =
-      promptType === 'letter'
-        ? parseInt(trimmed, 10) === currentOffset
-        : trimmed === currentLetter;
+      question.promptType === 'letter'
+        ? parseInt(trimmed, 10) === question.offset
+        : trimmed === question.letter;
 
     if (isCorrect) {
       setCorrectQuestions(prev => prev + 1);
@@ -95,27 +112,37 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
       }
 
       // Add a celebration ghost that floats away
-      const ghostId = Math.random().toString();
-      const ghostText = `${currentLetter} = ${currentOffset} ✓`;
+      const ghostId = `ghost-${++ghostSeq.current}`;
+      const ghostText = `${question.letter} = ${question.offset} ✓`;
       setGhosts(prev => [...prev, { id: ghostId, text: ghostText }]);
 
       // Immediately jump to next question
       nextQuestion();
     } else {
-      setWrongFeedback(promptType === 'letter' ? `${currentOffset}` : currentLetter);
+      if (wrongTimerRef.current !== null) {
+        window.clearTimeout(wrongTimerRef.current);
+      }
+      setWrongFeedback(question.promptType === 'letter' ? `${question.offset}` : question.letter);
       setStreak(0);
-      setTimeout(() => {
+      wrongTimerRef.current = window.setTimeout(() => {
+        wrongTimerRef.current = null;
         setWrongFeedback(null);
         setInputVal('');
         answerInputRef.current?.focus();
       }, 1200);
     }
-  }, [bestStreak, currentLetter, currentOffset, inputVal, nextQuestion, promptType, streak]);
+  }, [bestStreak, inputVal, nextQuestion, question, streak]);
 
   // Remove ghost when animation finishes
   const handleRemoveGhost = (id: string) => {
     setGhosts(prev => prev.filter(g => g.id !== id));
   };
+
+  // Keep latest refs so global keydown listener remains stable
+  const latestRef = useRef({ confirmAnswer, question });
+  useEffect(() => {
+    latestRef.current = { confirmAnswer, question };
+  }, [confirmAnswer, question]);
 
   // Global listener so typing immediately focuses the native input
   useEffect(() => {
@@ -127,18 +154,20 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
         return;
       }
 
+      const { confirmAnswer: handleConfirm, question: currentQ } = latestRef.current;
+
       if (e.key === 'Enter') {
         e.preventDefault();
-        confirmAnswer();
+        handleConfirm();
       } else if (e.key === 'Backspace') {
         e.preventDefault();
         setInputVal(prev => prev.slice(0, -1));
         answerInputRef.current?.focus();
-      } else if (promptType === 'letter' && e.key >= '0' && e.key <= '9') {
+      } else if (currentQ.promptType === 'letter' && e.key >= '0' && e.key <= '9') {
         e.preventDefault();
         setInputVal(prev => (prev.length < 2 ? prev + e.key : e.key));
         answerInputRef.current?.focus();
-      } else if (promptType === 'number' && /^[a-zA-Z]$/.test(e.key)) {
+      } else if (currentQ.promptType === 'number' && /^[a-zA-Z]$/.test(e.key)) {
         e.preventDefault();
         setInputVal(e.key.toUpperCase());
         answerInputRef.current?.focus();
@@ -147,108 +176,39 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [confirmAnswer, promptType]);
+  }, []);
+
+  const streakBadge = (
+    <div className="streak-badge-compact">
+      🔥 <strong>{streak}</strong> <small>({bestStreak})</small>
+    </div>
+  );
 
   return (
-    <div className="drill-container card-panel">
-      {/* Compact drill header */}
-      <div className="drill-header-compact">
-        <button className="btn-simple btn-back" onClick={onBack}>
-          ← Menu
-        </button>
-        <h2 className="drill-title-compact">Letter Offsets</h2>
-        <div className="streak-badge-compact">
-          🔥 <strong>{streak}</strong> <small>({bestStreak})</small>
-        </div>
-      </div>
+    <div className="drill-container">
+      <DrillHeader title="Letter Offsets" onBack={onBack} right={streakBadge} />
 
       <div className="mode-selector">
-        <button
-          className={`mode-btn ${mode === 'letterToNum' ? 'active' : ''}`}
-          onClick={(e) => {
-            (e.currentTarget as HTMLButtonElement).blur();
-            handleModeChange('letterToNum');
-          }}
-        >
-          Letter → #
-        </button>
-        <button
-          className={`mode-btn ${mode === 'numToLetter' ? 'active' : ''}`}
-          onClick={(e) => {
-            (e.currentTarget as HTMLButtonElement).blur();
-            handleModeChange('numToLetter');
-          }}
-        >
-          # → Letter
-        </button>
-        <button
-          className={`mode-btn ${mode === 'mixed' ? 'active' : ''}`}
-          onClick={(e) => {
-            (e.currentTarget as HTMLButtonElement).blur();
-            handleModeChange('mixed');
-          }}
-        >
-          Mixed
-        </button>
+        {MODES.map(m => (
+          <button
+            key={m.id}
+            type="button"
+            className={`mode-btn ${mode === m.id ? 'active' : ''}`}
+            onClick={e => {
+              e.currentTarget.blur();
+              handleModeChange(m.id);
+            }}
+          >
+            {m.label}
+          </button>
+        ))}
       </div>
 
-      {/* Sparse Anchors Reference Panel */}
-      {showRef ? (
-        <div className="sparse-ref-panel">
-          <button
-            type="button"
-            className="ref-close-btn"
-            onClick={() => setShowRef(false)}
-            title="Hide reference"
-            aria-label="Hide reference"
-          >
-            ✕
-          </button>
-          <div className="sparse-table-wrapper">
-            <table className="sparse-anchor-table">
-              <colgroup>
-                <col className="col-label" />
-                {ANCHORS.map(a => (
-                  <col key={a.letter} className="col-data" />
-                ))}
-              </colgroup>
-              <thead>
-                <tr>
-                  <th className="anchor-header-cell">Letter</th>
-                  {ANCHORS.map(a => (
-                    <th key={a.letter} className="anchor-col-cell anchor-letter">
-                      {a.letter}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td className="anchor-header-cell">Offset</td>
-                  {ANCHORS.map(a => (
-                    <td key={a.letter} className="anchor-col-cell anchor-offset">
-                      {a.offset}
-                    </td>
-                  ))}
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : (
-        <div className="show-ref-row">
-          <button
-            type="button"
-            className="btn-simple show-ref-btn"
-            onClick={() => setShowRef(true)}
-          >
-            📖 Show Anchors Reference
-          </button>
-        </div>
-      )}
+      <CollapsibleReference showLabel="Show Anchors Reference" className="sparse-ref-panel">
+        <AnchorTable anchors={ANCHORS} />
+      </CollapsibleReference>
 
       <div className="offset-card-wrapper">
-        {/* Floating animated ghost badges stacking upwards upon correct answers */}
         <div className="ghost-container">
           {ghosts.map(g => (
             <div
@@ -263,13 +223,14 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
 
         <div className={`offset-card ${wrongFeedback ? 'feedback-wrong' : ''}`}>
           <div className="prompt-label">
-            {promptType === 'letter' ? 'What is the number offset for:' : 'Which letter has offset:'}
+            {question.promptType === 'letter'
+              ? 'What is the number offset for:'
+              : 'Which letter has offset:'}
           </div>
           <div className="prompt-value">
-            {promptType === 'letter' ? currentLetter : currentOffset}
+            {question.promptType === 'letter' ? question.letter : question.offset}
           </div>
 
-          {/* Interactive Native Input Box that opens numeric pad or letter keyboard on mobile */}
           <div
             className="user-answer-box-wrapper"
             onClick={() => answerInputRef.current?.focus()}
@@ -277,9 +238,9 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
             <input
               ref={answerInputRef}
               type="text"
-              inputMode={promptType === 'letter' ? 'numeric' : 'text'}
-              pattern={promptType === 'letter' ? '[0-9]*' : undefined}
-              autoCapitalize={promptType === 'number' ? 'characters' : 'off'}
+              inputMode={question.promptType === 'letter' ? 'numeric' : 'text'}
+              pattern={question.promptType === 'letter' ? '[0-9]*' : undefined}
+              autoCapitalize={question.promptType === 'number' ? 'characters' : 'off'}
               autoCorrect="off"
               autoComplete="off"
               spellCheck="false"
@@ -289,7 +250,7 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
               placeholder="?"
               onChange={e => {
                 const val = e.target.value.toUpperCase();
-                if (promptType === 'letter') {
+                if (question.promptType === 'letter') {
                   const cleaned = val.replace(/[^0-9]/g, '').slice(0, 2);
                   setInputVal(cleaned);
                 } else {
@@ -314,21 +275,26 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
         </div>
       </div>
 
-      {/* Action Row matching cipher drill layout: Accuracy info on left, Submit Answer on right */}
-      <div className="drill-action-row">
-        <div className="progress-info">
-          Accuracy: <strong>{totalQuestions > 0 ? Math.round((correctQuestions / totalQuestions) * 100) : 100}%</strong> ({correctQuestions}/{totalQuestions})
-        </div>
-
+      <DrillActionRow
+        info={
+          <>
+            Accuracy:{' '}
+            <strong>
+              {totalQuestions > 0 ? Math.round((correctQuestions / totalQuestions) * 100) : 100}%
+            </strong>{' '}
+            ({correctQuestions}/{totalQuestions})
+          </>
+        }
+      >
         <button
           type="button"
           className="btn-submit"
           onClick={confirmAnswer}
-          disabled={!inputVal}
+          disabled={!inputVal || wrongFeedback !== null}
         >
           Submit Answer ⏎
         </button>
-      </div>
+      </DrillActionRow>
     </div>
   );
 };
