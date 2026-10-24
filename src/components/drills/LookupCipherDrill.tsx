@@ -5,9 +5,10 @@ import { ReferenceSheet } from '../symbols/ReferenceSheet';
 import { atbashChar, evaluateSolution } from '../../utils/ciphers';
 import quotesData from '../../data/quotes.json';
 import type { Quote, EvaluationResult } from '../../types';
+import { getDrill, type LookupCipherType } from '../../data/drills';
 
 interface LookupCipherDrillProps {
-  cipher: 'atbash' | 'pigpen' | 'galactic';
+  cipher: LookupCipherType;
   onBack: () => void;
   initialQuoteId?: number;
   onQuoteChange?: (quoteId: number) => void;
@@ -260,12 +261,6 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     );
   };
 
-  const cipherTitles = {
-    atbash: 'Atbash',
-    pigpen: 'Pigpen',
-    galactic: 'Galactic',
-  };
-
   const totalLetters = quote
     ? quote.quote.toUpperCase().split('').filter(c => /^[A-Z]$/.test(c)).length
     : 0;
@@ -281,7 +276,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
         <button className="btn-simple btn-back" onClick={onBack}>
           ← Menu
         </button>
-        <h2 className="drill-title-compact">{cipherTitles[cipher]}</h2>
+        <h2 className="drill-title-compact">{getDrill(cipher).shortTitle}</h2>
         <button
           className="btn-simple btn-reload"
           onClick={() => loadQuote()}

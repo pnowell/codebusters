@@ -3,28 +3,21 @@ import type { CipherType, UserSettings } from './types';
 import { LetterOffsetDrill } from './components/drills/LetterOffsetDrill';
 import { LookupCipherDrill } from './components/drills/LookupCipherDrill';
 import { OptionsModal } from './components/options/OptionsModal';
-
-const DEFAULT_UNLOCKED: CipherType[] = ['offsets', 'atbash', 'pigpen', 'galactic'];
+import {
+  DEFAULT_UNLOCKED,
+  IMPLEMENTED_DRILLS,
+  COMING_SOON_DRILLS,
+  isCipherType,
+} from './data/drills';
 
 const parseUrlRoute = () => {
   const params = new URLSearchParams(window.location.search);
-  const drill = params.get('drill') as CipherType | null;
+  const drill = params.get('drill');
   const qStr = params.get('q');
   const quoteId = qStr !== null ? parseInt(qStr, 10) : undefined;
-  const validDrills: CipherType[] = [
-    'offsets',
-    'atbash',
-    'pigpen',
-    'galactic',
-    'caesar',
-    'tap',
-    'knights',
-    'vigenere',
-    'aristocrat',
-  ];
 
   return {
-    drill: drill && validDrills.includes(drill) ? drill : null,
+    drill: isCipherType(drill) ? drill : null,
     quoteId: quoteId !== undefined && !isNaN(quoteId) ? quoteId : undefined,
   };
 };
@@ -178,8 +171,8 @@ export const App: React.FC = () => {
 
   // Launch a random unlocked drill for General Practice
   const handleRandomPractice = () => {
-    const activePool = settings.unlockedCiphers.filter(c =>
-      ['offsets', 'atbash', 'pigpen', 'galactic'].includes(c)
+    const activePool = settings.unlockedCiphers.filter(id =>
+      IMPLEMENTED_DRILLS.some(d => d.id === id)
     );
     if (activePool.length > 0) {
       const chosen = activePool[Math.floor(Math.random() * activePool.length)];
@@ -258,33 +251,15 @@ export const App: React.FC = () => {
           </div>
 
           <div className="menu-buttons-list">
-            <button
-              className="menu-drill-btn"
-              onClick={() => navigateToDrill('offsets')}
-            >
-              Letter Offsets
-            </button>
-
-            <button
-              className="menu-drill-btn"
-              onClick={() => navigateToDrill('atbash')}
-            >
-              Atbash Cipher
-            </button>
-
-            <button
-              className="menu-drill-btn"
-              onClick={() => navigateToDrill('pigpen')}
-            >
-              Pigpen / Masonic Cipher
-            </button>
-
-            <button
-              className="menu-drill-btn"
-              onClick={() => navigateToDrill('galactic')}
-            >
-              Standard Galactic Alphabet
-            </button>
+            {IMPLEMENTED_DRILLS.map(d => (
+              <button
+                key={d.id}
+                className="menu-drill-btn"
+                onClick={() => navigateToDrill(d.id)}
+              >
+                {d.name}
+              </button>
+            ))}
           </div>
 
           {/* Divider: Coming Soon */}
@@ -293,21 +268,11 @@ export const App: React.FC = () => {
           </div>
 
           <div className="menu-buttons-list disabled-list">
-            <button className="menu-drill-btn btn-disabled" disabled>
-              Caesar Cipher (±3)
-            </button>
-            <button className="menu-drill-btn btn-disabled" disabled>
-              Tap Code Cipher
-            </button>
-            <button className="menu-drill-btn btn-disabled" disabled>
-              Knights Templar Cipher
-            </button>
-            <button className="menu-drill-btn btn-disabled" disabled>
-              Vigenère Cipher
-            </button>
-            <button className="menu-drill-btn btn-disabled" disabled>
-              Aristocrat Cryptanalysis
-            </button>
+            {COMING_SOON_DRILLS.map(d => (
+              <button key={d.id} className="menu-drill-btn btn-disabled" disabled>
+                {d.name}
+              </button>
+            ))}
           </div>
         </main>
       )}

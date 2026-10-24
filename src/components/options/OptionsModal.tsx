@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { CipherType, UserSettings } from '../../types';
+import { DRILLS } from '../../data/drills';
 
 interface OptionsModalProps {
   isOpen: boolean;
@@ -7,18 +8,6 @@ interface OptionsModalProps {
   settings: UserSettings;
   onSaveSettings: (newSettings: UserSettings) => void;
 }
-
-const ALL_CIPHERS: { id: CipherType; name: string }[] = [
-  { id: 'offsets', name: 'Letter Offsets' },
-  { id: 'atbash', name: 'Atbash Cipher' },
-  { id: 'pigpen', name: 'Pigpen / Masonic Cipher' },
-  { id: 'galactic', name: 'Standard Galactic Alphabet' },
-  { id: 'caesar', name: 'Caesar Cipher (±3)' },
-  { id: 'tap', name: 'Tap Code Cipher' },
-  { id: 'knights', name: 'Knights Templar Cipher' },
-  { id: 'vigenere', name: 'Vigenère Cipher' },
-  { id: 'aristocrat', name: 'Aristocrat Cryptanalysis' },
-];
 
 export const OptionsModal: React.FC<OptionsModalProps> = ({
   isOpen,
@@ -78,7 +67,7 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
           <div className="form-group">
             <label>Unlocked Ciphers for Practice:</label>
             <div className="cipher-checkbox-list">
-              {ALL_CIPHERS.map(c => {
+              {DRILLS.map(c => {
                 const isChecked = unlocked.includes(c.id);
                 return (
                   <label key={c.id} className="checkbox-row">

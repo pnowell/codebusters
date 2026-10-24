@@ -1,13 +1,5 @@
-export type CipherType =
-  | 'offsets'
-  | 'atbash'
-  | 'pigpen'
-  | 'galactic'
-  | 'caesar'
-  | 'tap'
-  | 'knights'
-  | 'vigenere'
-  | 'aristocrat';
+import type { CipherType, LookupCipherType } from '../data/drills';
+export type { CipherType, LookupCipherType };
 
 export interface Quote {
   id: number;
