@@ -114,3 +114,47 @@ export function evaluateSolution(target: string, studentInput: string): Evaluati
     isComplete,
   };
 }
+
+/**
+ * Standard Beker & Piper (1982) English letter frequencies.
+ * Matches the Science Olympiad spreadsheet frequency table.
+ */
+export const ENGLISH_LETTER_FREQUENCIES: Record<string, number> = {
+  A: 0.08167, B: 0.01492, C: 0.02782, D: 0.04253, E: 0.12702,
+  F: 0.02228, G: 0.02015, H: 0.06094, I: 0.06966, J: 0.00153,
+  K: 0.00772, L: 0.04025, M: 0.02406, N: 0.06749, O: 0.07507,
+  P: 0.01929, Q: 0.00095, R: 0.05987, S: 0.06327, T: 0.09056,
+  U: 0.02758, V: 0.00978, W: 0.02360, X: 0.00150, Y: 0.01974,
+  Z: 0.00074,
+};
+
+/**
+ * Calculates chi-squared distance from standard English letter frequency.
+ * Mathematically identical to the spreadsheet formula:
+ * SUMPRODUCT((observed - expected)^2 / expected)
+ */
+export function calculateChiSquared(text: string): number {
+  const upper = text.toUpperCase();
+  const counts: Record<string, number> = {};
+  let totalLen = 0;
+
+  for (let i = 0; i < upper.length; i++) {
+    const ch = upper[i];
+    if (isLetter(ch)) {
+      counts[ch] = (counts[ch] || 0) + 1;
+      totalLen++;
+    }
+  }
+
+  if (totalLen === 0) return 0;
+
+  let chi = 0;
+  for (const letter of Object.keys(ENGLISH_LETTER_FREQUENCIES)) {
+    const observed = counts[letter] || 0;
+    const expected = totalLen * ENGLISH_LETTER_FREQUENCIES[letter];
+    chi += Math.pow(observed - expected, 2) / expected;
+  }
+
+  return Math.round(chi * 1000) / 1000;
+}
+
