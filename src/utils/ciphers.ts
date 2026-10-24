@@ -78,24 +78,24 @@ export function evaluateSolution(target: string, studentInput: string): Evaluati
 
   let totalAlpha = 0;
   let correctCount = 0;
-  let errorCount = 0;
   let filledCount = 0;
 
   for (let i = 0; i < targetUpper.length; i++) {
     const tChar = targetUpper[i];
-    if (tChar >= 'A' && tChar <= 'Z') {
+    if (isLetter(tChar)) {
       totalAlpha++;
       const sChar = inputUpper[i] || '';
       if (sChar !== '') {
         filledCount++;
         if (sChar === tChar) {
           correctCount++;
-        } else {
-          errorCount++;
         }
       }
     }
   }
+
+  // Official Science Olympiad rules: omitted/blank characters count as errors
+  const errorCount = totalAlpha - correctCount;
 
   let scoreTier: ScoreTier = 'none';
   if (errorCount <= 2) {
