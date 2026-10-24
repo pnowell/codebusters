@@ -1,10 +1,11 @@
 import type { EvaluationResult, ScoreTier } from '../types';
 
+export const isLetter = (c: string): boolean => c.length === 1 && c >= 'A' && c <= 'Z';
+
 export function letterToOffset(letter: string): number {
   const upper = letter.toUpperCase();
-  const code = upper.charCodeAt(0);
-  if (code >= 65 && code <= 90) {
-    return code - 65;
+  if (isLetter(upper)) {
+    return upper.charCodeAt(0) - 65;
   }
   return -1;
 }
@@ -12,6 +13,32 @@ export function letterToOffset(letter: string): number {
 export function offsetToLetter(offset: number): string {
   if (offset < 0 || offset > 25) return '';
   return String.fromCharCode(65 + offset);
+}
+
+/** Index of the next (dir=1) or previous (dir=-1) letter after `start`; returns `start` if none. */
+export function findLetterIndex(chars: readonly string[], start: number, dir: 1 | -1): number {
+  for (let i = start + dir; i >= 0 && i < chars.length; i += dir) {
+    if (isLetter(chars[i])) return i;
+  }
+  return start;
+}
+
+/** Splits characters into words on spaces, keeping each char's original index. */
+export function groupIntoWords(chars: readonly string[]): { char: string; index: number }[][] {
+  const words: { char: string; index: number }[][] = [];
+  let cur: { char: string; index: number }[] = [];
+  chars.forEach((char, index) => {
+    if (char === ' ') {
+      if (cur.length) {
+        words.push(cur);
+        cur = [];
+      }
+    } else {
+      cur.push({ char, index });
+    }
+  });
+  if (cur.length) words.push(cur);
+  return words;
 }
 
 /**
