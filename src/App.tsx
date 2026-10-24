@@ -51,6 +51,34 @@ export const App: React.FC = () => {
   const [activeQuoteId, setActiveQuoteId] = useState<number | undefined>(() => parseUrlRoute().quoteId);
   const [isOptionsOpen, setIsOptionsOpen] = useState<boolean>(false);
 
+  // Track the actual visible viewport height above mobile virtual keyboard
+  useEffect(() => {
+    const updateViewportHeight = () => {
+      if (window.visualViewport) {
+        document.documentElement.style.setProperty(
+          '--visual-viewport-height',
+          `${window.visualViewport.height}px`
+        );
+        // Ensure the outer window is pinned at (0, 0)
+        if (window.scrollY !== 0) {
+          window.scrollTo(0, 0);
+        }
+      }
+    };
+
+    updateViewportHeight();
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', updateViewportHeight);
+    vv?.addEventListener('scroll', updateViewportHeight);
+    window.addEventListener('resize', updateViewportHeight);
+
+    return () => {
+      vv?.removeEventListener('resize', updateViewportHeight);
+      vv?.removeEventListener('scroll', updateViewportHeight);
+      window.removeEventListener('resize', updateViewportHeight);
+    };
+  }, []);
+
   // Check URL query parameters on load to allow one-click sync from coach
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
