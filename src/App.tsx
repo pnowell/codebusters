@@ -4,11 +4,11 @@ import { LetterOffsetDrill } from './components/drills/LetterOffsetDrill';
 import { LookupCipherDrill } from './components/drills/LookupCipherDrill';
 import { OptionsModal } from './components/options/OptionsModal';
 import {
-  DEFAULT_UNLOCKED,
   IMPLEMENTED_DRILLS,
   COMING_SOON_DRILLS,
   isCipherType,
 } from './data/drills';
+import { loadSettings, saveSettings } from './services/storage';
 
 const parseUrlRoute = () => {
   const params = new URLSearchParams(window.location.search);
@@ -23,20 +23,7 @@ const parseUrlRoute = () => {
 };
 
 export const App: React.FC = () => {
-  const [settings, setSettings] = useState<UserSettings>(() => {
-    const saved = localStorage.getItem('davinci_settings');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        // Fallback
-      }
-    }
-    return {
-      studentName: 'Decoder',
-      unlockedCiphers: DEFAULT_UNLOCKED,
-    };
-  });
+  const [settings, setSettings] = useState<UserSettings>(loadSettings);
 
   const [activeDrill, setActiveDrill] = useState<CipherType | null>(() => parseUrlRoute().drill);
   const [activeQuoteId, setActiveQuoteId] = useState<number | undefined>(() => parseUrlRoute().quoteId);
@@ -78,7 +65,7 @@ export const App: React.FC = () => {
       const ciphersFromUrl = unlockedParam.split(',') as CipherType[];
       setSettings(prev => {
         const updated = { ...prev, unlockedCiphers: ciphersFromUrl };
-        localStorage.setItem('davinci_settings', JSON.stringify(updated));
+        saveSettings(updated);
         return updated;
       });
     }
@@ -166,7 +153,7 @@ export const App: React.FC = () => {
 
   const handleSaveSettings = (newSettings: UserSettings) => {
     setSettings(newSettings);
-    localStorage.setItem('davinci_settings', JSON.stringify(newSettings));
+    saveSettings(newSettings);
   };
 
   // Launch a random unlocked drill for General Practice

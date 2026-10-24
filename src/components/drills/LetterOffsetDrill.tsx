@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { offsetToLetter } from '../../utils/ciphers';
+import { loadBestStreak, saveBestStreak } from '../../services/storage';
 
 interface LetterOffsetDrillProps {
   onBack: () => void;
@@ -32,9 +33,7 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
   const [inputVal, setInputVal] = useState<string>('');
   const [wrongFeedback, setWrongFeedback] = useState<string | null>(null);
   const [streak, setStreak] = useState<number>(0);
-  const [bestStreak, setBestStreak] = useState<number>(() => {
-    return parseInt(localStorage.getItem('davinci_offsets_best_streak') || '0', 10);
-  });
+  const [bestStreak, setBestStreak] = useState<number>(loadBestStreak);
   const [totalQuestions, setTotalQuestions] = useState<number>(0);
   const [correctQuestions, setCorrectQuestions] = useState<number>(0);
   const [ghosts, setGhosts] = useState<FloatingGhost[]>([]);
@@ -92,7 +91,7 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
       setStreak(newStreak);
       if (newStreak > bestStreak) {
         setBestStreak(newStreak);
-        localStorage.setItem('davinci_offsets_best_streak', newStreak.toString());
+        saveBestStreak(newStreak);
       }
 
       // Add a celebration ghost that floats away
