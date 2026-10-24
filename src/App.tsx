@@ -6,21 +6,9 @@ import { OptionsModal } from './components/options/OptionsModal';
 import {
   IMPLEMENTED_DRILLS,
   COMING_SOON_DRILLS,
-  isCipherType,
 } from './data/drills';
 import { loadSettings, saveSettings } from './services/storage';
-
-const parseUrlRoute = () => {
-  const params = new URLSearchParams(window.location.search);
-  const drill = params.get('drill');
-  const qStr = params.get('q');
-  const quoteId = qStr !== null ? parseInt(qStr, 10) : undefined;
-
-  return {
-    drill: isCipherType(drill) ? drill : null,
-    quoteId: quoteId !== undefined && !isNaN(quoteId) ? quoteId : undefined,
-  };
-};
+import { parseUrlRoute, buildRouteUrl, parseUnlockedParam } from './utils/routing';
 
 export const App: React.FC = () => {
   const [settings, setSettings] = useState<UserSettings>(loadSettings);
@@ -59,10 +47,8 @@ export const App: React.FC = () => {
 
   // Check URL query parameters on load to allow one-click sync from coach
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const unlockedParam = params.get('unlocked');
-    if (unlockedParam) {
-      const ciphersFromUrl = unlockedParam.split(',') as CipherType[];
+    const ciphersFromUrl = parseUnlockedParam();
+    if (ciphersFromUrl) {
       setSettings(prev => {
         const updated = { ...prev, unlockedCiphers: ciphersFromUrl };
         saveSettings(updated);
@@ -100,15 +86,7 @@ export const App: React.FC = () => {
   const navigateToDrill = (drill: CipherType, quoteId?: number) => {
     setActiveDrill(drill);
     setActiveQuoteId(quoteId);
-    const params = new URLSearchParams(window.location.search);
-    params.set('drill', drill);
-    if (quoteId !== undefined) {
-      params.set('q', quoteId.toString());
-    } else {
-      params.delete('q');
-    }
-    const query = params.toString();
-    const newUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
+    const newUrl = buildRouteUrl({ drill, quoteId });
     window.history.pushState({ drill, quoteId }, '', newUrl);
   };
 
@@ -118,22 +96,15 @@ export const App: React.FC = () => {
     } else {
       setActiveDrill(null);
       setActiveQuoteId(undefined);
-      const params = new URLSearchParams(window.location.search);
-      params.delete('drill');
-      params.delete('q');
-      const query = params.toString();
-      const newUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
+      const newUrl = buildRouteUrl({ drill: null });
       window.history.pushState({ drill: null }, '', newUrl);
     }
   };
 
   const handleQuoteChange = (newQuoteId: number) => {
     setActiveQuoteId(newQuoteId);
-    const params = new URLSearchParams(window.location.search);
     if (activeDrill) {
-      params.set('drill', activeDrill);
-      params.set('q', newQuoteId.toString());
-      const newUrl = `${window.location.pathname}?${params.toString()}`;
+      const newUrl = buildRouteUrl({ drill: activeDrill, quoteId: newQuoteId });
       window.history.replaceState({ drill: activeDrill, quoteId: newQuoteId }, '', newUrl);
     }
   };
