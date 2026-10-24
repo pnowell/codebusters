@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { offsetToLetter } from '../../utils/ciphers';
-import { loadBestStreak, saveBestStreak } from '../../services/storage';
+import {
+  loadBestStreak,
+  saveBestStreak,
+  loadOffsetsProgress,
+  saveOffsetsProgress,
+  resetOffsetsProgress,
+  type OffsetsProgress,
+} from '../../services/storage';
 import { DrillHeader } from '../drill/DrillHeader';
 import { CollapsibleReference } from '../drill/CollapsibleReference';
 import { AnchorTable } from '../drill/AnchorTable';
@@ -29,14 +36,79 @@ const ANCHORS = ANCHOR_OFFSETS.map(offset => ({
   letter: offsetToLetter(offset),
 }));
 
+const ALL_OFFSETS = Array.from({ length: 26 }, (_, i) => i);
+const NON_ANCHOR_OFFSETS = ALL_OFFSETS.filter(o => !ANCHOR_OFFSETS.includes(o as any));
+
+const ROW_1_OFFSETS = ALL_OFFSETS.slice(0, 13); // A to M (0 to 12)
+const ROW_2_OFFSETS = ALL_OFFSETS.slice(13);     // N to Z (13 to 25)
+
 const MODES: readonly { readonly id: DrillMode; readonly label: string }[] = [
   { id: 'letterToNum', label: 'Letter → #' },
   { id: 'numToLetter', label: '# → Letter' },
   { id: 'mixed', label: 'Mixed' },
 ];
 
-function makeQuestion(mode: DrillMode): Question {
-  const offset = Math.floor(Math.random() * 26);
+function shuffle<T>(arr: readonly T[] | T[]): T[] {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+function initDeckAndPool(progress: OffsetsProgress): { deck: number[]; unseen: number[] } {
+  const unseen: number[] = [];
+  const active: number[] = [];
+  const mastered: number[] = [];
+
+  for (let o = 0; o < 26; o++) {
+    const letter = offsetToLetter(o);
+    const p = progress[letter];
+    if (!p || p.attempts === 0) {
+      unseen.push(o);
+    } else if (p.streak >= 3) {
+      mastered.push(o);
+    } else {
+      active.push(o);
+    }
+  }
+
+  // If this is a fresh start (all 26 unseen)
+  if (unseen.length === 26) {
+    const initialAnchors = shuffle(ANCHOR_OFFSETS);
+    const initialNeighbors = [0, 1]; // A, B
+    const initialDeck = shuffle([...initialAnchors, ...initialNeighbors]);
+    const initialUnseen = shuffle(NON_ANCHOR_OFFSETS.filter(o => !initialNeighbors.includes(o)));
+    return { deck: initialDeck, unseen: initialUnseen };
+  }
+
+  // Resumed progress:
+  let deck = shuffle(active);
+  const shuffledUnseen = shuffle(unseen);
+
+  // If active items < 10, pull in unseen items
+  while (deck.length < 10 && shuffledUnseen.length > 0) {
+    deck.push(shuffledUnseen.shift()!);
+  }
+
+  // If deck still < 10 (most items are mastered), pull from mastered
+  if (deck.length < 10 && mastered.length > 0) {
+    const shuffledMastered = shuffle(mastered);
+    while (deck.length < 10 && shuffledMastered.length > 0) {
+      deck.push(shuffledMastered.shift()!);
+    }
+  }
+
+  // If deck is still empty, include all offsets
+  if (deck.length === 0) {
+    deck = shuffle(ALL_OFFSETS);
+  }
+
+  return { deck, unseen: shuffledUnseen };
+}
+
+function makeQuestionForOffset(offset: number, mode: DrillMode): Question {
   const letter = offsetToLetter(offset);
   let promptType: 'letter' | 'number';
   if (mode === 'letterToNum') {
@@ -51,7 +123,16 @@ function makeQuestion(mode: DrillMode): Question {
 
 export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) => {
   const [mode, setMode] = useState<DrillMode>('letterToNum');
-  const [question, setQuestion] = useState<Question>(() => makeQuestion('letterToNum'));
+  const [progress, setProgress] = useState<OffsetsProgress>(loadOffsetsProgress);
+
+  const [initialData] = useState(() => {
+    const initialDeck = initDeckAndPool(loadOffsetsProgress());
+    const initialQ = makeQuestionForOffset(initialDeck.deck[0] ?? 0, 'letterToNum');
+    return { initialDeck, initialQ };
+  });
+
+  const deckQueueRef = useRef<{ deck: number[]; unseen: number[] }>(initialData.initialDeck);
+  const [question, setQuestion] = useState<Question>(initialData.initialQ);
   const [inputVal, setInputVal] = useState<string>('');
   const [wrongFeedback, setWrongFeedback] = useState<string | null>(null);
   const [streak, setStreak] = useState<number>(0);
@@ -75,7 +156,9 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
 
   const nextQuestion = useCallback((overrideMode?: DrillMode) => {
     const activeMode = overrideMode || mode;
-    setQuestion(makeQuestion(activeMode));
+    const currentDeck = deckQueueRef.current?.deck || [];
+    const nextOffset = currentDeck.length > 0 ? currentDeck[0] : Math.floor(Math.random() * 26);
+    setQuestion(makeQuestionForOffset(nextOffset, activeMode));
     setInputVal('');
     setWrongFeedback(null);
     setTimeout(() => {
@@ -85,7 +168,23 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
 
   const handleModeChange = (newMode: DrillMode) => {
     setMode(newMode);
-    nextQuestion(newMode);
+    // Keep current offset and just change prompt type to match new mode
+    setQuestion(prev => makeQuestionForOffset(prev.offset, newMode));
+    setInputVal('');
+    setWrongFeedback(null);
+    setTimeout(() => {
+      answerInputRef.current?.focus();
+    }, 40);
+  };
+
+  const handleResetProgress = () => {
+    if (window.confirm('Reset alphabet mastery progress?')) {
+      resetOffsetsProgress();
+      const freshProgress: OffsetsProgress = {};
+      setProgress(freshProgress);
+      deckQueueRef.current = initDeckAndPool(freshProgress);
+      nextQuestion();
+    }
   };
 
   const confirmAnswer = useCallback(() => {
@@ -102,6 +201,18 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
         ? parseInt(trimmed, 10) === question.offset
         : trimmed === question.letter;
 
+    const queue = deckQueueRef.current;
+    const currentOffset = question.offset;
+    const letter = question.letter;
+
+    // Pop the answered offset from the front of the active deck
+    if (queue && queue.deck[0] === currentOffset) {
+      queue.deck.shift();
+    } else if (queue) {
+      const idx = queue.deck.indexOf(currentOffset);
+      if (idx !== -1) queue.deck.splice(idx, 1);
+    }
+
     if (isCorrect) {
       setCorrectQuestions(prev => prev + 1);
       const newStreak = streak + 1;
@@ -109,6 +220,34 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
       if (newStreak > bestStreak) {
         setBestStreak(newStreak);
         saveBestStreak(newStreak);
+      }
+
+      // Update letter progress
+      const prevLetterProgress = progress[letter] || { streak: 0, attempts: 0, correct: 0 };
+      const updatedLetterProgress = {
+        streak: prevLetterProgress.streak + 1,
+        attempts: prevLetterProgress.attempts + 1,
+        correct: prevLetterProgress.correct + 1,
+      };
+      const newProgress: OffsetsProgress = {
+        ...progress,
+        [letter]: updatedLetterProgress,
+      };
+      setProgress(newProgress);
+      saveOffsetsProgress(newProgress);
+
+      // Re-insert current letter deep into the deck:
+      // Minimum 4 intervening letters, scaling with streak
+      if (queue) {
+        const insertIdx = Math.min(queue.deck.length, 4 + updatedLetterProgress.streak * 2);
+        queue.deck.splice(insertIdx, 0, currentOffset);
+
+        // Introduce an unseen letter if deck length < 14 and unseen pool has candidates
+        if (queue.unseen.length > 0 && queue.deck.length < 14) {
+          const newOffset = queue.unseen.shift()!;
+          const introIdx = Math.min(queue.deck.length, 4 + Math.floor(Math.random() * 3));
+          queue.deck.splice(introIdx, 0, newOffset);
+        }
       }
 
       // Add a celebration ghost that floats away
@@ -124,14 +263,34 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
       }
       setWrongFeedback(question.promptType === 'letter' ? `${question.offset}` : question.letter);
       setStreak(0);
+
+      // Update letter progress on miss
+      const prevLetterProgress = progress[letter] || { streak: 0, attempts: 0, correct: 0 };
+      const updatedLetterProgress = {
+        streak: 0,
+        attempts: prevLetterProgress.attempts + 1,
+        correct: prevLetterProgress.correct,
+      };
+      const newProgress: OffsetsProgress = {
+        ...progress,
+        [letter]: updatedLetterProgress,
+      };
+      setProgress(newProgress);
+      saveOffsetsProgress(newProgress);
+
+      // Re-insert shallowly (guaranteeing 2-3 intervening questions before re-test)
+      if (queue) {
+        const shallowIdx = Math.min(queue.deck.length, 3);
+        queue.deck.splice(shallowIdx, 0, currentOffset);
+      }
+
       wrongTimerRef.current = window.setTimeout(() => {
         wrongTimerRef.current = null;
         setWrongFeedback(null);
-        setInputVal('');
-        answerInputRef.current?.focus();
+        nextQuestion();
       }, 1200);
     }
-  }, [bestStreak, inputVal, nextQuestion, question, streak]);
+  }, [bestStreak, inputVal, nextQuestion, progress, question, streak]);
 
   // Remove ghost when animation finishes
   const handleRemoveGhost = (id: string) => {
@@ -184,6 +343,48 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
     </div>
   );
 
+  const masteredCount = Object.values(progress).filter(p => p.streak >= 3).length;
+
+  const renderBadge = (offset: number) => {
+    const letter = offsetToLetter(offset);
+    const p = progress[letter];
+    const isAnchor = ANCHOR_OFFSETS.includes(offset as any);
+    const isCurrent = question.offset === offset;
+
+    let statusClass = 'status-unseen';
+    let statusLabel = 'Unseen';
+
+    if (p && p.attempts > 0) {
+      if (p.streak >= 3) {
+        statusClass = 'status-mastered';
+        statusLabel = `Mastered (${p.correct}/${p.attempts}, streak ${p.streak})`;
+      } else if (p.streak === 0) {
+        statusClass = 'status-missed';
+        statusLabel = `Needs Practice (${p.correct}/${p.attempts})`;
+      } else {
+        statusClass = 'status-learning';
+        statusLabel = `Learning (${p.correct}/${p.attempts}, streak ${p.streak})`;
+      }
+    }
+
+    const classes = [
+      'mastery-badge',
+      statusClass,
+      isAnchor ? 'is-anchor' : '',
+      isCurrent ? 'is-current' : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+    const title = `${letter} (${offset}): ${statusLabel}${isAnchor ? ' • Anchor' : ''}`;
+
+    return (
+      <div key={letter} className={classes} title={title}>
+        {letter}
+      </div>
+    );
+  };
+
   return (
     <div className="drill-container">
       <DrillHeader title="Letter Offsets" onBack={onBack} right={streakBadge} />
@@ -207,6 +408,33 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
       <CollapsibleReference showLabel="Show Anchors Reference" className="sparse-ref-panel">
         <AnchorTable anchors={ANCHORS} />
       </CollapsibleReference>
+
+      <div className="mastery-tracker">
+        <div className="mastery-header">
+          <div className="mastery-stats">
+            <span className="mastery-title">Alphabet Mastery</span>
+            <span className="mastery-count">
+              <strong>{masteredCount}</strong> / 26 Mastered
+            </span>
+          </div>
+          <button
+            type="button"
+            className="mastery-reset-btn"
+            title="Reset alphabet mastery"
+            onClick={handleResetProgress}
+          >
+            ↺ Reset
+          </button>
+        </div>
+        <div className="mastery-grid">
+          <div className="mastery-row">
+            {ROW_1_OFFSETS.map(renderBadge)}
+          </div>
+          <div className="mastery-row">
+            {ROW_2_OFFSETS.map(renderBadge)}
+          </div>
+        </div>
+      </div>
 
       <div className="offset-card-wrapper">
         <div className="ghost-container">

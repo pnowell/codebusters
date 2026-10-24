@@ -5,6 +5,7 @@ const KEYS = {
   settings: 'davinci_settings',
   offsetsBestStreak: 'davinci_offsets_best_streak',
   completedQuotes: 'davinci_completed_quotes',
+  offsetsProgress: 'davinci_offsets_progress',
 } as const;
 
 export const DEFAULT_SETTINGS: UserSettings = {
@@ -70,3 +71,39 @@ export function clearCompletedQuotes(): void {
     // Ignore
   }
 }
+
+export interface LetterProgress {
+  streak: number; // consecutive correct answers
+  attempts: number;
+  correct: number;
+}
+
+export type OffsetsProgress = Record<string, LetterProgress>;
+
+export function loadOffsetsProgress(): OffsetsProgress {
+  try {
+    const raw = localStorage.getItem(KEYS.offsetsProgress);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return typeof parsed === 'object' && parsed !== null ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveOffsetsProgress(p: OffsetsProgress): void {
+  try {
+    localStorage.setItem(KEYS.offsetsProgress, JSON.stringify(p));
+  } catch {
+    // Ignore
+  }
+}
+
+export function resetOffsetsProgress(): void {
+  try {
+    localStorage.removeItem(KEYS.offsetsProgress);
+  } catch {
+    // Ignore
+  }
+}
+

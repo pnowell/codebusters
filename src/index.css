@@ -642,6 +642,147 @@ body {
 
 
 /* Letter Offsets Specific */
+/* Alphabet Mastery Tracker */
+.mastery-tracker {
+  flex-shrink: 0;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 0.45rem 0.6rem;
+  margin: 0.35rem 6px 0.25rem 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.mastery-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8rem;
+}
+
+.mastery-stats {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.mastery-title {
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.7rem;
+}
+
+.mastery-count {
+  color: #34d399;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.mastery-reset-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.mastery-reset-btn:hover {
+  color: #fb7185;
+  background: rgba(244, 63, 94, 0.1);
+}
+
+.mastery-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+}
+
+.mastery-row {
+  display: grid;
+  grid-template-columns: repeat(13, 1fr);
+  gap: 3px;
+  width: 100%;
+}
+
+.mastery-badge {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.75rem;
+  user-select: none;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
+}
+
+/* Status variants */
+.mastery-badge.status-unseen {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.mastery-badge.status-learning {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+}
+
+.mastery-badge.status-mastered {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.55);
+}
+
+.mastery-badge.status-missed {
+  background: rgba(244, 63, 94, 0.2);
+  color: #fb7185;
+  border: 1px solid rgba(244, 63, 94, 0.55);
+}
+
+/* Anchor letter indicator (under dot or line) */
+.mastery-badge.is-anchor::after {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  left: 20%;
+  right: 20%;
+  height: 2px;
+  background: var(--accent-blue);
+  border-radius: 1px;
+}
+
+/* Current letter highlight */
+.mastery-badge.is-current {
+  box-shadow: 0 0 0 2px var(--accent-blue);
+  font-weight: 900;
+  transform: scale(1.08);
+  z-index: 2;
+}
+
+@media (max-width: 440px) {
+  .mastery-badge {
+    font-size: 0.68rem;
+    height: 22px;
+  }
+  .mastery-row {
+    gap: 2px;
+  }
+}
+
 /* Sparse Anchors Reference Table */
 .sparse-ref-panel {
   flex-shrink: 0;
