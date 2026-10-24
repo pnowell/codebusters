@@ -28,6 +28,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
 
   // References to input elements for seamless typing navigation
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const scrollPanelRef = useRef<HTMLDivElement | null>(null);
 
   // Load a quote (either by specified target ID or picked from suitable pool)
   const loadQuote = useCallback((targetQuoteId?: number) => {
@@ -53,9 +54,9 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     setResult(null);
     setIsSubmitted(false);
 
-    // Refocus first input after quote renders
+    // Refocus first input after quote renders without browser scroll jump
     setTimeout(() => {
-      inputRefs.current[targetIdx]?.focus();
+      inputRefs.current[targetIdx]?.focus({ preventScroll: true });
     }, 50);
   }, [onQuoteChange]);
 
@@ -63,15 +64,30 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     loadQuote(initialQuoteId);
   }, [loadQuote, initialQuoteId]);
 
-  // Keep focused character tile centered in horizontal scroll view
+  // Keep focused character tile centered in horizontal scroll view and visible vertically
+  // without triggering whole-page jump/glitch or conflicting smooth-scroll animations
   useEffect(() => {
+    const panel = scrollPanelRef.current;
     const el = inputRefs.current[activeIdx];
-    if (el) {
-      el.scrollIntoView({
-        behavior: 'smooth',
-        block: 'nearest',
-        inline: 'center',
-      });
+    if (!panel || !el) return;
+
+    const panelRect = panel.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+
+    // Horizontal auto-centering: keep the active tile centered in the viewport
+    const elCenterX = elRect.left + elRect.width / 2;
+    const panelCenterX = panelRect.left + panelRect.width / 2;
+    const diffX = elCenterX - panelCenterX;
+    if (Math.abs(diffX) > 15) {
+      panel.scrollLeft += diffX;
+    }
+
+    // Vertical visibility: only scroll vertically if the tile is actually outside the view
+    const margin = 10;
+    if (elRect.top < panelRect.top + margin) {
+      panel.scrollTop -= (panelRect.top + margin - elRect.top);
+    } else if (elRect.bottom > panelRect.bottom - margin) {
+      panel.scrollTop += (elRect.bottom - (panelRect.bottom - margin));
     }
   }, [activeIdx]);
 
@@ -118,7 +134,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
       setUserInputs(updated);
       const nextIdx = getNextAlphaIndex(index);
       setActiveIdx(nextIdx);
-      inputRefs.current[nextIdx]?.focus();
+      inputRefs.current[nextIdx]?.focus({ preventScroll: true });
     } else if (val === '') {
       updated[index] = '';
       setUserInputs(updated);
@@ -135,18 +151,18 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
         const updated = [...userInputs];
         updated[prevIdx] = '';
         setUserInputs(updated);
-        inputRefs.current[prevIdx]?.focus();
+        inputRefs.current[prevIdx]?.focus({ preventScroll: true });
       }
     } else if (e.key === 'ArrowLeft') {
       e.preventDefault();
       const prevIdx = getPrevAlphaIndex(index);
       setActiveIdx(prevIdx);
-      inputRefs.current[prevIdx]?.focus();
+      inputRefs.current[prevIdx]?.focus({ preventScroll: true });
     } else if (e.key === 'ArrowRight') {
       e.preventDefault();
       const nextIdx = getNextAlphaIndex(index);
       setActiveIdx(nextIdx);
-      inputRefs.current[nextIdx]?.focus();
+      inputRefs.current[nextIdx]?.focus({ preventScroll: true });
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (!isSubmitted) {
@@ -210,7 +226,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
                 <div
                   key={index}
                   className={`char-tile ${isActive ? 'active-tile' : ''} ${isCorrect ? 'correct-tile' : ''} ${isWrong ? 'wrong-tile' : ''}`}
-                  onClick={() => isAlpha && inputRefs.current[index]?.focus()}
+                  onClick={() => isAlpha && inputRefs.current[index]?.focus({ preventScroll: true })}
                 >
                   <div className="tile-cipher">{renderCipherChar(char)}</div>
                   {isAlpha ? (
@@ -297,7 +313,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
       )}
 
       {/* 3. Horizontal Scroll Viewport for Cipher Lines */}
-      <div className="cipher-scroll-panel">
+      <div className="cipher-scroll-panel" ref={scrollPanelRef}>
         <div className="quote-content-canvas">
           {renderWords()}
 
