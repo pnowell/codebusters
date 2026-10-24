@@ -16,14 +16,6 @@
   font-display: block;
 }
 
-@font-face {
-  font-family: 'PigpenCipher';
-  src: url('./assets/fonts/PigpenCipher.woff2') format('woff2');
-  font-weight: normal;
-  font-style: normal;
-  font-display: block;
-}
-
 :root {
   --bg-primary: #0f172a;
   --bg-secondary: #1e293b;
@@ -182,23 +174,6 @@ body {
   border-color: rgba(255, 255, 255, 0.3);
 }
 
-.btn-secondary {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--border-color);
-  color: var(--text-main);
-  padding: 0.5rem 1rem;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 0.9rem;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.3);
-}
-
 .btn-primary {
   background: linear-gradient(135deg, #0284c7, #2563eb);
   color: white;
@@ -215,12 +190,6 @@ body {
 .btn-primary:hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(2, 132, 199, 0.45);
-}
-
-.btn-active {
-  background: var(--accent-purple);
-  color: white;
-  border-color: var(--accent-purple);
 }
 
 /* Simplified Main Menu */
@@ -325,8 +294,7 @@ body {
 }
 
 /* Card & Workspaces */
-.card-panel,
-.simple-card {
+.card-panel {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: 12px;
@@ -343,24 +311,6 @@ body {
   max-height: 100%;
   overflow: hidden;
   gap: 0.4rem;
-}
-
-.drill-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-}
-
-.drill-title-simple h2 {
-  font-size: 1.25rem;
-  font-weight: 700;
-}
-
-.header-actions {
-  display: flex;
-  gap: 0.5rem;
 }
 
 /* Compact Drill Headers */
@@ -526,68 +476,6 @@ body {
   border-radius: 4px;
   display: block;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-/* Atbash Fixed-Width Square Grid */
-.atbash-aligned-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  background: #27272a;
-  padding: 6px;
-  border-radius: 6px;
-  font-family: var(--font-mono);
-  max-width: 100%;
-  overflow-x: auto;
-}
-
-.grid-row-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.row-tag {
-  width: 50px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: #a1a1aa;
-  text-align: right;
-  flex-shrink: 0;
-}
-
-.grid-cells-row {
-  display: flex;
-  gap: 2px;
-}
-
-.cell {
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.8rem;
-  font-weight: 700;
-  border-radius: 3px;
-}
-
-.cell-plain {
-  background: #3f3f46;
-  color: #fafafa;
-}
-
-.cell-cipher {
-  background: #18181b;
-  color: #38bdf8;
-  border: 1px solid #52525b;
-}
-
-/* Quote Display & Tiles */
-.quote-workspace {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
 }
 
 /* Horizontal and Vertical Scroll Viewport for Cipher Lines */
@@ -806,50 +694,6 @@ body {
   color: #fb7185;
 }
 
-/* Virtual Keyboard */
-.virtual-keyboard {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  padding: 0.65rem;
-  background: rgba(15, 23, 42, 0.95);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-}
-
-.keyboard-row {
-  display: flex;
-  justify-content: center;
-  gap: 0.3rem;
-}
-
-.key-btn {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  color: var(--text-main);
-  flex: 1;
-  max-width: 44px;
-  height: 46px;
-  font-size: 1.05rem;
-  font-weight: 700;
-  font-family: var(--font-mono);
-  border-radius: 6px;
-  cursor: pointer;
-  user-select: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.key-btn:active {
-  background: rgba(56, 189, 248, 0.25);
-}
-
-.backspace-btn,
-.special-btn {
-  max-width: 60px;
-  font-size: 0.85rem;
-}
 
 /* Letter Offsets Specific */
 /* Sparse Anchors Reference Table */
@@ -1024,11 +868,6 @@ body {
   max-width: 440px;
 }
 
-.offset-card.feedback-correct {
-  border-color: var(--accent-emerald);
-  background: rgba(16, 185, 129, 0.1);
-}
-
 .offset-card.feedback-wrong {
   border-color: var(--accent-rose);
   background: rgba(244, 63, 94, 0.1);
@@ -1173,15 +1012,6 @@ body {
   background: rgba(255, 255, 255, 0.03);
   border-radius: 6px;
   cursor: pointer;
-}
-
-.session-tag {
-  margin-left: auto;
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.05);
-  padding: 0.1rem 0.35rem;
-  border-radius: 4px;
 }
 
 .teacher-share-box {
