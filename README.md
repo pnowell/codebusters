@@ -1,32 +1,51 @@
-# React + TypeScript + Vite
+# DaVinci Decoders
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Interactive training web application for Science Olympiad Division A (Elementary) **DaVinci Decoders** event under SoCal rules.
 
-Currently, two official plugins are available:
+Designed for fast, kid-friendly practice on Chromebooks, tablets, laptops, and mobile phones with native keyboards and official resource sheet tables.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+---
 
-## React Compiler
+## Development & Scripts
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Inside the `app/` directory:
 
-## Expanding the Oxlint configuration
+- `npm run dev` — Start local Vite development server (HMR enabled).
+- `npm run build` — TypeScript type-check (`tsc -b`) and bundle for production.
+- `npm run lint` — Fast linting via `oxlint`.
+- `npm run preview` — Locally preview the production build in `./dist`.
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+---
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+## Deployment
+
+Deployments to **GitHub Pages** are fully automated:
+- Any push to the `main` branch triggers `.github/workflows/deploy.yml`.
+- Build artifacts from `./dist` are served with relative paths (`base: './'`).
+- Note: Pair programming commits should remain local until ready for deployment.
+
+---
+
+## URL Parameters & Deep Linking
+
+- `?drill=<id>` — Directly opens a drill (`offsets`, `atbash`, `pigpen`, `galactic`).
+- `?drill=<id>&q=<quoteId>` — Directly opens a specific quote puzzle (e.g. `?drill=pigpen&q=25`).
+- `?unlocked=<id1,id2,...>` — One-click classroom sync link generated from ⚙️ Options to configure which ciphers appear in General Practice on student devices.
+
+---
+
+## Folder Map
+
 ```
-
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+app/
+  public/
+    references/        # Official SoCal reference sheet image assets (PNGs)
+    favicon.svg        # App icon
+  src/
+    components/        # UI components (drills, options modal, glyphs)
+    data/              # Quote database and drill configurations
+    utils/             # Pure cipher math, letter grouping, and routing helpers
+    services/          # Local storage and state persistence
+    types/             # Core TypeScript interfaces and types
+    index.css          # Main styling and mobile viewport layout
+```
