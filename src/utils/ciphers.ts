@@ -1,7 +1,5 @@
 import type { EvaluationResult, ScoreTier } from '../types';
 
-export const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-
 export function letterToOffset(letter: string): number {
   const upper = letter.toUpperCase();
   const code = upper.charCodeAt(0);
@@ -26,12 +24,9 @@ export function atbashChar(char: string): string {
   return offsetToLetter(25 - off);
 }
 
-export function atbashText(text: string): string {
-  return text.split('').map(atbashChar).join('');
-}
-
 /**
- * Caesar mapping: shift by n (-3 to +3 for Div A)
+ * Caesar mapping: shift by n (-3 to +3 for Div A).
+ * Used by upcoming Caesar drill (Meeting 2).
  */
 export function caesarChar(char: string, shift: number): string {
   const off = letterToOffset(char);

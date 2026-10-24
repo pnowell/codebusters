@@ -25,16 +25,6 @@ export interface Quote {
 export interface UserSettings {
   studentName: string;
   unlockedCiphers: CipherType[];
-  isTeacher: boolean;
-  soundEnabled: boolean;
-}
-
-export interface DrillStats {
-  completed: number;
-  accuracy: number;
-  bestStreak: number;
-  currentStreak: number;
-  lastPlayedDate: string;
 }
 
 export type ScoreTier = 'full' | 'half' | 'none';

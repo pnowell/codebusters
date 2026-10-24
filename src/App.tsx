@@ -42,8 +42,6 @@ export const App: React.FC = () => {
     return {
       studentName: 'Decoder',
       unlockedCiphers: DEFAULT_UNLOCKED,
-      isTeacher: false,
-      soundEnabled: true,
     };
   });
 
