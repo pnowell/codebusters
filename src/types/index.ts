@@ -1,6 +1,16 @@
 import type { CipherType, LookupCipherType } from '../data/drills';
 export type { CipherType, LookupCipherType };
 
+export type QuoteCategory =
+  | 'kid_joke'
+  | 'kid_science'
+  | 'kid_book'
+  | 'kid_movie'
+  | 'kid_lyric'
+  | 'general';
+
+export type CryptanalysisTier = 'easy' | 'medium' | 'hard' | 'short_drill';
+
 export interface Quote {
   id: number;
   quote: string;
@@ -10,8 +20,14 @@ export interface Quote {
   unique: number;
   chi: number;
   hasApostrophe: boolean;
+  hasStandardApostrophe?: boolean;
+  hasTrickyApostrophe?: boolean;
   hasOneLetter: boolean;
-  tier: 'easy' | 'medium' | 'hard';
+  isArchaic?: boolean;
+  isMisspelled?: boolean;
+  category?: QuoteCategory;
+  tags?: string[];
+  tier: CryptanalysisTier;
 }
 
 export interface UserSettings {
