@@ -107,14 +107,15 @@ function makeQuestionForOffset(offset: number, mode: DrillMode): Question {
 }
 
 function getHeatTier(cpm: number): {
-  tier: 'cruise' | 'fast' | 'overdrive' | 'onfire';
+  tier: 'idle' | 'cruise' | 'fast' | 'overdrive' | 'onfire';
   label: string;
   icon: string;
 } {
   if (cpm >= 36) return { tier: 'onfire', label: 'ON FIRE!', icon: '🔥🔥🔥' };
   if (cpm >= 26) return { tier: 'overdrive', label: 'OVERDRIVE', icon: '🔥' };
   if (cpm >= 16) return { tier: 'fast', label: 'FAST', icon: '⚡⚡' };
-  return { tier: 'cruise', label: 'CRUISE', icon: '⚡' };
+  if (cpm > 0) return { tier: 'cruise', label: 'CRUISE', icon: '⚡' };
+  return { tier: 'idle', label: 'IDLE', icon: '⏱️' };
 }
 
 export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) => {
@@ -469,9 +470,6 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
           <div className="speedometer-left">
             <span className="speedometer-tier-badge">
               {heat.icon} {heat.label}
-            </span>
-            <span className="speedometer-cpm-text">
-              {cadence} <small style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>cpm</small>
             </span>
           </div>
 

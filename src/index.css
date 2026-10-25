@@ -746,12 +746,6 @@ body {
   font-size: 0.75rem;
 }
 
-.speedometer-training-tag {
-  color: #fbbf24;
-  font-size: 0.7rem;
-  font-style: italic;
-}
-
 .speedometer-bar-wrapper {
   position: relative;
   width: 100%;
@@ -768,6 +762,17 @@ body {
 }
 
 /* Heat Tiers */
+/* Tier 0: Idle */
+.tier-idle .speedometer-tier-badge {
+  background: rgba(100, 116, 139, 0.15);
+  color: #94a3b8;
+  border: 1px solid rgba(100, 116, 139, 0.25);
+}
+.tier-idle .speedometer-bar-fill {
+  background: rgba(100, 116, 139, 0.3);
+  box-shadow: none;
+}
+
 /* Tier 1: Cruise */
 .tier-cruise .speedometer-tier-badge {
   background: rgba(56, 189, 248, 0.15);
