@@ -124,7 +124,7 @@ export const AlphabetMasteryModal: React.FC<AlphabetMasteryModalProps> = ({
 
         <div className="modal-danger-zone">
           <div className="modal-danger-warning">
-            ⚠️ <strong>Reset Notice:</strong> Resetting clears individual letter streaks and locks 60s high-score recording until all 26 letters are re-introduced into practice.
+            ⚠️ <strong>Reset Notice:</strong> Resetting clears individual letter streaks and returns all 26 letters to unseen in the deck.
           </div>
           <button
             type="button"
