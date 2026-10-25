@@ -107,3 +107,70 @@ export function resetOffsetsProgress(): void {
   }
 }
 
+export type OffsetsMode = 'letterToNum' | 'numToLetter';
+
+export interface OffsetsModeScores {
+  best60s: number;
+  bestStreak: number;
+}
+
+export type OffsetsScoresByMode = Record<OffsetsMode, OffsetsModeScores>;
+
+const DEFAULT_OFFSETS_SCORES: OffsetsScoresByMode = {
+  letterToNum: { best60s: 0, bestStreak: 0 },
+  numToLetter: { best60s: 0, bestStreak: 0 },
+};
+
+const SCORES_KEY = 'davinci_offsets_mode_scores';
+
+export function loadOffsetsModeScores(mode: OffsetsMode): OffsetsModeScores {
+  try {
+    const raw = localStorage.getItem(SCORES_KEY);
+    if (!raw) {
+      // Migrate legacy single best streak to letterToNum if present
+      const legacyStreak = loadBestStreak();
+      return {
+        best60s: 0,
+        bestStreak: mode === 'letterToNum' ? legacyStreak : 0,
+      };
+    }
+    const parsed = JSON.parse(raw) as Partial<OffsetsScoresByMode>;
+    return {
+      ...DEFAULT_OFFSETS_SCORES[mode],
+      ...(parsed[mode] || {}),
+    };
+  } catch {
+    return DEFAULT_OFFSETS_SCORES[mode];
+  }
+}
+
+export function saveOffsetsModeScore(
+  mode: OffsetsMode,
+  update: Partial<OffsetsModeScores>
+): OffsetsModeScores {
+  try {
+    const raw = localStorage.getItem(SCORES_KEY);
+    const existing: OffsetsScoresByMode = raw
+      ? { ...DEFAULT_OFFSETS_SCORES, ...JSON.parse(raw) }
+      : {
+          letterToNum: { best60s: 0, bestStreak: loadBestStreak() },
+          numToLetter: { best60s: 0, bestStreak: 0 },
+        };
+
+    const current = existing[mode] || { best60s: 0, bestStreak: 0 };
+    const merged: OffsetsModeScores = {
+      best60s: Math.max(current.best60s, update.best60s ?? 0),
+      bestStreak: Math.max(current.bestStreak, update.bestStreak ?? 0),
+    };
+
+    existing[mode] = merged;
+    localStorage.setItem(SCORES_KEY, JSON.stringify(existing));
+    return merged;
+  } catch {
+    return {
+      best60s: update.best60s ?? 0,
+      bestStreak: update.bestStreak ?? 0,
+    };
+  }
+}
+
