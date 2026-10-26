@@ -1,14 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import type { CipherType, UserSettings } from './types';
-import { LetterOffsetDrill } from './components/drills/LetterOffsetDrill';
+import { LetterOffsetDrill, type WorkoutStepContext } from './components/drills/LetterOffsetDrill';
 import { LookupCipherDrill } from './components/drills/LookupCipherDrill';
 import { OptionsModal } from './components/options/OptionsModal';
+import {
+  WorkoutSummaryModal,
+  type WorkoutSummaryData,
+  type WorkoutStepResult,
+} from './components/workout/WorkoutSummaryModal';
 import {
   IMPLEMENTED_DRILLS,
   COMING_SOON_DRILLS,
   isLookupCipher,
+  getDrill,
 } from './data/drills';
-import { loadSettings, saveSettings } from './services/storage';
+import { loadSettings, saveSettings, getNextWorkoutCiphers } from './services/storage';
 import { parseUrlRoute, buildRouteUrl, parseUnlockedParam } from './utils/routing';
 import { useVisualViewportHeight } from './hooks/useVisualViewportHeight';
 
@@ -23,12 +29,24 @@ function initSettings(): UserSettings {
   return loaded;
 }
 
+interface WorkoutSession {
+  round: number;
+  steps: CipherType[];
+  currentStepIndex: number;
+  results: WorkoutStepResult[];
+  startTime: number;
+}
+
 export const App: React.FC = () => {
   const [settings, setSettings] = useState<UserSettings>(initSettings);
 
   const [activeDrill, setActiveDrill] = useState<CipherType | null>(() => parseUrlRoute().drill);
   const [activeQuoteId, setActiveQuoteId] = useState<number | undefined>(() => parseUrlRoute().quoteId);
   const [isOptionsOpen, setIsOptionsOpen] = useState<boolean>(false);
+
+  // Workout Circuit Session & Summary States
+  const [workoutSession, setWorkoutSession] = useState<WorkoutSession | null>(null);
+  const [workoutSummary, setWorkoutSummary] = useState<WorkoutSummaryData | null>(null);
 
   // Pin outer window and track visual viewport height above mobile virtual keyboard
   useVisualViewportHeight();
@@ -42,6 +60,9 @@ export const App: React.FC = () => {
       const route = parseUrlRoute();
       setActiveDrill(route.drill);
       setActiveQuoteId(route.quoteId);
+      if (!route.drill) {
+        setWorkoutSession(null);
+      }
     };
 
     window.addEventListener('popstate', handlePopState);
@@ -59,14 +80,19 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  const navigateToDrill = (drill: CipherType, quoteId?: number) => {
+  const navigateToDrill = (drill: CipherType, quoteId?: number, replaceHistory = false) => {
     setActiveDrill(drill);
     setActiveQuoteId(quoteId);
     const newUrl = buildRouteUrl({ drill, quoteId });
-    window.history.pushState({ drill, quoteId }, '', newUrl);
+    if (replaceHistory) {
+      window.history.replaceState({ drill, quoteId }, '', newUrl);
+    } else {
+      window.history.pushState({ drill, quoteId }, '', newUrl);
+    }
   };
 
   const navigateToMenu = () => {
+    setWorkoutSession(null);
     if (window.history.state && window.history.state.drill) {
       window.history.back();
     } else {
@@ -103,15 +129,81 @@ export const App: React.FC = () => {
     saveSettings(newSettings);
   };
 
-  // Launch a random unlocked drill for General Practice
-  const handleRandomPractice = () => {
-    const activePool = settings.unlockedCiphers.filter(id =>
-      IMPLEMENTED_DRILLS.some(d => d.id === id)
-    );
-    if (activePool.length > 0) {
-      const chosen = activePool[Math.floor(Math.random() * activePool.length)];
-      navigateToDrill(chosen);
+  // Launch General Practice Workout Circuit
+  const startWorkout = (round: number, excludeCiphers: CipherType[] = []) => {
+    const nextCiphers = getNextWorkoutCiphers(settings.unlockedCiphers, excludeCiphers);
+    const steps: CipherType[] = ['offsets', ...nextCiphers];
+    setWorkoutSummary(null);
+    setWorkoutSession({
+      round,
+      steps,
+      currentStepIndex: 0,
+      results: [],
+      startTime: Date.now(),
+    });
+    navigateToDrill('offsets');
+  };
+
+  const handleAdvanceWorkout = (stepResult?: {
+    offsets60s?: number;
+    offsetsCadence?: number;
+    timeSeconds?: number;
+    accuracy?: number;
+    author?: string;
+  }) => {
+    if (!workoutSession) return;
+
+    const currentStepIndex = workoutSession.currentStepIndex;
+    const currentCipher = workoutSession.steps[currentStepIndex];
+    const currentTitle = currentCipher === 'offsets' ? 'Letter Offsets' : getDrill(currentCipher).name;
+
+    const recordedResult: WorkoutStepResult = {
+      cipherId: currentCipher,
+      title: currentTitle,
+      ...stepResult,
+    };
+
+    const updatedResults = [...workoutSession.results, recordedResult];
+    const nextStepIndex = currentStepIndex + 1;
+
+    if (nextStepIndex < workoutSession.steps.length) {
+      const nextCipher = workoutSession.steps[nextStepIndex];
+      setWorkoutSession({
+        ...workoutSession,
+        currentStepIndex: nextStepIndex,
+        results: updatedResults,
+      });
+      navigateToDrill(nextCipher, undefined, true);
+    } else {
+      // Complete round
+      const totalTimeSeconds = Math.round((Date.now() - workoutSession.startTime) / 1000);
+      setWorkoutSummary({
+        round: workoutSession.round,
+        totalTimeSeconds,
+        results: updatedResults,
+      });
+      setWorkoutSession(null);
+      navigateToMenu();
     }
+  };
+
+  const workoutContext: WorkoutStepContext | undefined = workoutSession
+    ? {
+        round: workoutSession.round,
+        stepIndex: workoutSession.currentStepIndex,
+        totalSteps: workoutSession.steps.length,
+        nextCipherTitle:
+          workoutSession.currentStepIndex + 1 < workoutSession.steps.length
+            ? getDrill(workoutSession.steps[workoutSession.currentStepIndex + 1]).name
+            : undefined,
+        isLastStep: workoutSession.currentStepIndex === workoutSession.steps.length - 1,
+        onAdvance: handleAdvanceWorkout,
+      }
+    : undefined;
+
+  const handleIndividualDrillClick = (drillId: CipherType) => {
+    setWorkoutSession(null);
+    navigateToDrill(drillId);
   };
 
   return (
@@ -139,7 +231,7 @@ export const App: React.FC = () => {
 
       {/* Active Drill View */}
       {activeDrill === 'offsets' && (
-        <LetterOffsetDrill onBack={navigateToMenu} />
+        <LetterOffsetDrill onBack={navigateToMenu} workoutContext={workoutContext} />
       )}
 
       {activeDrill && isLookupCipher(activeDrill) && (
@@ -149,6 +241,7 @@ export const App: React.FC = () => {
           initialQuoteId={activeQuoteId}
           onQuoteChange={handleQuoteChange}
           onBack={navigateToMenu}
+          workoutContext={workoutContext}
         />
       )}
 
@@ -157,7 +250,7 @@ export const App: React.FC = () => {
         <main className="menu-container">
           {/* General Practice Button at Top */}
           <div className="general-practice-section">
-            <button className="btn-main-action" onClick={handleRandomPractice}>
+            <button className="btn-main-action" onClick={() => startWorkout(1)}>
               ⚡ General Practice
             </button>
           </div>
@@ -172,7 +265,7 @@ export const App: React.FC = () => {
               <button
                 key={d.id}
                 className="menu-drill-btn"
-                onClick={() => navigateToDrill(d.id)}
+                onClick={() => handleIndividualDrillClick(d.id)}
               >
                 {d.name}
               </button>
@@ -201,6 +294,20 @@ export const App: React.FC = () => {
           onClose={closeOptions}
           settings={settings}
           onSaveSettings={handleSaveSettings}
+        />
+      )}
+
+      {/* Workout Summary Modal */}
+      {workoutSummary && (
+        <WorkoutSummaryModal
+          summary={workoutSummary}
+          onStartNextRound={() => {
+            const previouslyPracticed = workoutSummary.results
+              .filter(r => r.cipherId !== 'offsets')
+              .map(r => r.cipherId);
+            startWorkout(workoutSummary.round + 1, previouslyPracticed);
+          }}
+          onExitToMenu={() => setWorkoutSummary(null)}
         />
       )}
     </div>

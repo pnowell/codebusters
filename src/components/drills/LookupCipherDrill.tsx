@@ -10,14 +10,16 @@ import { atbashChar, evaluateSolution, isLetter, findLetterIndex, groupIntoWords
 import { pickLookupQuote } from '../../data/quotes';
 import { getDrill, type LookupCipherType } from '../../data/drills';
 import { useKeepInView } from '../../hooks/useKeepInView';
-import { saveCompletedQuoteId } from '../../services/storage';
+import { saveCompletedQuoteId, recordCipherPractice } from '../../services/storage';
 import type { Quote, EvaluationResult } from '../../types';
+import type { WorkoutStepContext } from './LetterOffsetDrill';
 
 interface LookupCipherDrillProps {
   cipher: LookupCipherType;
   onBack: () => void;
   initialQuoteId?: number;
   onQuoteChange?: (quoteId: number) => void;
+  workoutContext?: WorkoutStepContext;
 }
 
 function freshPuzzle(quote: Quote) {
@@ -44,11 +46,13 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
   onBack,
   initialQuoteId,
   onQuoteChange,
+  workoutContext,
 }) => {
   const [puzzle, setPuzzle] = useState(() => freshPuzzle(pickLookupQuote(initialQuoteId)));
   const { quote, userInputs, activeIdx } = puzzle;
   const [result, setResult] = useState<EvaluationResult | null>(null);
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
+  const startTimeRef = useRef<number>(Date.now());
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const scrollPanelRef = useRef<HTMLDivElement | null>(null);
@@ -85,6 +89,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     setPuzzle(freshPuzzle(pickLookupQuote()));
     setResult(null);
     setIsSubmitted(false);
+    startTimeRef.current = Date.now();
   };
 
   const handleSubmit = useCallback(() => {
@@ -92,7 +97,8 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     setResult(res);
     setIsSubmitted(true);
     saveCompletedQuoteId(quote.id);
-  }, [quote.id, quote.quote, userInputs]);
+    recordCipherPractice(cipher);
+  }, [cipher, quote.id, quote.quote, userInputs]);
 
   const handleTileChange = (index: number, val: string) => {
     if (isSubmitted) {
@@ -144,16 +150,24 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     <div className="drill-container">
       {/* 1. Header */}
       <DrillHeader
-        title={getDrill(cipher).shortTitle}
+        title={
+          workoutContext
+            ? `${getDrill(cipher).shortTitle} • Step ${workoutContext.stepIndex + 1}/${workoutContext.totalSteps}`
+            : getDrill(cipher).shortTitle
+        }
         onBack={onBack}
         right={
-          <button
-            className="btn-simple btn-reload"
-            onClick={loadNewQuote}
-            title="New Quote"
-          >
-            New ↻
-          </button>
+          workoutContext ? (
+            <span className="workout-step-tag">Round {workoutContext.round}</span>
+          ) : (
+            <button
+              className="btn-simple btn-reload"
+              onClick={loadNewQuote}
+              title="New Quote"
+            >
+              New ↻
+            </button>
+          )
         }
       />
 
@@ -237,6 +251,25 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
             disabled={filledLetters === 0}
           >
             Submit & Check Solution ✓
+          </button>
+        ) : workoutContext ? (
+          <button
+            className="btn-submit btn-next btn-workout-next"
+            onClick={() => {
+              const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
+              const accuracy = result
+                ? Math.round((result.correctChars / (result.totalChars || 1)) * 100)
+                : 100;
+              workoutContext.onAdvance({
+                timeSeconds: elapsed,
+                accuracy,
+                author: quote.author,
+              });
+            }}
+          >
+            {workoutContext.isLastStep
+              ? 'Finish Round 🏆 ➔'
+              : `Next: ${workoutContext.nextCipherTitle || 'Next'} ➔`}
           </button>
         ) : (
           <button className="btn-submit btn-next" onClick={loadNewQuote}>

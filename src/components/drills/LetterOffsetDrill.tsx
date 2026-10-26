@@ -14,8 +14,24 @@ import { DrillHeader } from '../drill/DrillHeader';
 import { DrillActionRow } from '../drill/DrillActionRow';
 import { AlphabetMasteryModal } from '../drill/AlphabetMasteryModal';
 
+export interface WorkoutStepContext {
+  round: number;
+  stepIndex: number;
+  totalSteps: number;
+  nextCipherTitle?: string;
+  isLastStep: boolean;
+  onAdvance: (stepResult?: {
+    offsets60s?: number;
+    offsetsCadence?: number;
+    timeSeconds?: number;
+    accuracy?: number;
+    author?: string;
+  }) => void;
+}
+
 interface LetterOffsetDrillProps {
   onBack: () => void;
+  workoutContext?: WorkoutStepContext;
 }
 
 type DrillMode = OffsetsMode;
@@ -118,7 +134,7 @@ function getHeatTier(cpm: number): {
   return { tier: 'idle', label: 'IDLE', icon: '⏱️' };
 }
 
-export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) => {
+export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, workoutContext }) => {
   const [mode, setMode] = useState<DrillMode>('letterToNum');
   const [scores, setScores] = useState<OffsetsModeScores>(() => loadOffsetsModeScores('letterToNum'));
   const [progress, setProgress] = useState<OffsetsProgress>(loadOffsetsProgress);
@@ -131,6 +147,16 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
   const [streak, setStreak] = useState<number>(0);
   const correctTimestampsRef = useRef<number[]>([]);
   const lastCorrectTimeRef = useRef<number | null>(null);
+
+  // Warm-up timer when in General Practice workout mode
+  const [elapsedWarmup, setElapsedWarmup] = useState(0);
+  useEffect(() => {
+    if (!workoutContext) return;
+    const interval = window.setInterval(() => {
+      setElapsedWarmup(s => s + 1);
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [workoutContext]);
 
   // Spaced Repetition deck initialization: always 26 letters in rotation
   const [initialData] = useState(() => {
@@ -432,9 +458,50 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack }) 
     </div>
   );
 
+  const formatWarmup = (sec: number) => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
+  const headerRight = workoutContext ? (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+      {streakBadge}
+      {elapsedWarmup >= 120 ? (
+        <button
+          type="button"
+          className="btn-workout-next"
+          onClick={() =>
+            workoutContext.onAdvance({
+              offsets60s: scores.best60s,
+              offsetsCadence: cadence,
+            })
+          }
+          title="Warm-up complete! Click to start next cipher"
+        >
+          Next: {workoutContext.nextCipherTitle || 'Next'} ➔
+        </button>
+      ) : (
+        <span
+          className="workout-warmup-timer"
+          onDoubleClick={() => setElapsedWarmup(120)}
+          title="Warm-up target: 2:00 (double-click to complete in testing)"
+        >
+          ⏱️ {formatWarmup(elapsedWarmup)} / 2:00
+        </span>
+      )}
+    </div>
+  ) : (
+    streakBadge
+  );
+
+  const headerTitle = workoutContext
+    ? `General Practice • Warm-up`
+    : 'Letter Offsets';
+
   return (
     <div className="drill-container">
-      <DrillHeader title="Letter Offsets" onBack={onBack} right={streakBadge} />
+      <DrillHeader title={headerTitle} onBack={onBack} right={headerRight} />
 
       {/* Sub-bar: 2 Modes on the left + Mastery trigger chip on the right */}
       <div className="offsets-subbar">

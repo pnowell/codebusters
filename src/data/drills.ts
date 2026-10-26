@@ -23,3 +23,13 @@ export const isCipherType = (s: string | null | undefined): s is CipherType =>
 export const isLookupCipher = (id: CipherType | null): id is LookupCipherType =>
   id === 'atbash' || id === 'pigpen' || id === 'galactic';
 export const getDrill = (id: CipherType) => DRILLS.find(d => d.id === id)!;
+
+export type CipherBucket = 'speed' | 'analysis';
+
+export function getCipherBucket(id: CipherType): CipherBucket | null {
+  if (id === 'offsets') return null;
+  if (id === 'caesar' || id === 'vigenere' || id === 'aristocrat') {
+    return 'analysis';
+  }
+  return 'speed';
+}

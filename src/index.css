@@ -1051,6 +1051,195 @@ body {
   border-color: rgba(244, 63, 94, 0.6);
 }
 
+/* Workout & General Practice Circuit Styles */
+@keyframes pulseNext {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+  }
+  50% {
+    transform: scale(1.04);
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.85);
+  }
+}
+
+.btn-workout-next {
+  background: var(--accent-emerald) !important;
+  color: #064e3b !important;
+  font-weight: 800 !important;
+  font-size: 0.82rem !important;
+  padding: 0.35rem 0.75rem !important;
+  border-radius: 8px !important;
+  border: none !important;
+  cursor: pointer;
+  animation: pulseNext 1.6s infinite ease-in-out;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-workout-next:hover {
+  filter: brightness(1.1);
+  transform: scale(1.06);
+}
+
+.workout-warmup-timer {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.28rem 0.55rem;
+  border-radius: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.workout-step-tag {
+  background: rgba(168, 85, 247, 0.15);
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  color: #c084fc;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Workout Summary Modal */
+.workout-summary-card {
+  max-width: 480px;
+  text-align: center;
+  gap: 1.25rem;
+}
+
+.summary-trophy-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.trophy-emoji {
+  font-size: 2.8rem;
+  line-height: 1;
+}
+
+.summary-title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #f8fafc;
+  margin: 0;
+}
+
+.summary-subtitle {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.summary-subtitle strong {
+  color: #38bdf8;
+}
+
+.summary-results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: 100%;
+  text-align: left;
+}
+
+.summary-result-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+}
+
+.summary-row-left {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.summary-row-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.2rem 0.45rem;
+  border-radius: 4px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.summary-row-name {
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: #f8fafc;
+}
+
+.summary-row-subtext {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.summary-row-stats {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--text-main);
+  white-space: nowrap;
+}
+
+.summary-acc-badge {
+  background: rgba(16, 185, 129, 0.18);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #34d399;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.summary-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+
+.summary-btn-next {
+  background: linear-gradient(135deg, #10b981, #059669) !important;
+  color: white !important;
+  font-size: 1rem !important;
+  font-weight: 800 !important;
+  padding: 0.75rem 1rem !important;
+  border-radius: 10px !important;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
+}
+
+.summary-btn-next:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.summary-btn-menu {
+  background: transparent !important;
+  border: 1px solid var(--border-color) !important;
+  padding: 0.5rem 1rem !important;
+  font-size: 0.88rem !important;
+}
+
 .offset-card-wrapper {
   flex: 1;
   min-height: 0;
