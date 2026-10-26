@@ -1,5 +1,6 @@
 import React from 'react';
 import type { CipherType } from '../../data/drills';
+import type { OffsetsMode } from '../../services/storage';
 
 export interface WorkoutStepResult {
   cipherId: CipherType;
@@ -9,6 +10,7 @@ export interface WorkoutStepResult {
   author?: string;
   offsets60s?: number;
   offsetsCadence?: number;
+  offsetsMode?: OffsetsMode;
 }
 
 export interface WorkoutSummaryData {
@@ -62,7 +64,12 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
                 <div key={idx} className="summary-result-row">
                   <div className="summary-row-left">
                     <span className="summary-row-badge">⏱️ Warm-up</span>
-                    <span className="summary-row-name">Letter Offsets</span>
+                    <span className="summary-row-name">
+                      Letter Offsets{' '}
+                      <small style={{ opacity: 0.75, fontWeight: 500 }}>
+                        ({res.offsetsMode === 'numToLetter' ? '# → Letter' : 'Letter → #'})
+                      </small>
+                    </span>
                   </div>
                   <div className="summary-row-stats">
                     <span>

@@ -13,6 +13,7 @@ const KEYS = {
   completedQuotes: 'davinci_completed_quotes',
   offsetsProgress: 'davinci_offsets_progress',
   practiceHistory: 'davinci_cipher_practice_history',
+  lastWarmupOffsetsMode: 'davinci_last_warmup_offsets_mode',
 } as const;
 
 export const DEFAULT_SETTINGS: UserSettings = {
@@ -266,5 +267,38 @@ export function getNextWorkoutCiphers(
   // If only one bucket has ciphers (e.g. current stage with only speed ciphers):
   const sorted = sortByLeastPracticed(pool);
   return sorted.slice(0, 2);
+}
+
+export function loadLastWarmupOffsetsMode(): OffsetsMode | null {
+  try {
+    const raw = localStorage.getItem(KEYS.lastWarmupOffsetsMode);
+    return raw === 'numToLetter' || raw === 'letterToNum' ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveLastWarmupOffsetsMode(mode: OffsetsMode): void {
+  try {
+    localStorage.setItem(KEYS.lastWarmupOffsetsMode, mode);
+  } catch {
+    // Ignore
+  }
+}
+
+/**
+ * Returns the prescribed offsets mode for a workout round:
+ * - Alternates each round within a workout session (Round 1 vs Round 2)
+ * - Alternates starting mode across daily sessions (flips last session's warm-up mode)
+ */
+export function getWorkoutOffsetsMode(round: number): OffsetsMode {
+  const lastMode = loadLastWarmupOffsetsMode();
+  // If first time ever, default round 1 to 'letterToNum'.
+  // Otherwise, alternate from the last practiced mode for round 1.
+  const round1Mode: OffsetsMode = lastMode === 'letterToNum' ? 'numToLetter' : 'letterToNum';
+
+  return round % 2 === 1
+    ? round1Mode
+    : (round1Mode === 'letterToNum' ? 'numToLetter' : 'letterToNum');
 }
 

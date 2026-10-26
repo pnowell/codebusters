@@ -18,11 +18,13 @@ export interface WorkoutStepContext {
   round: number;
   stepIndex: number;
   totalSteps: number;
+  offsetsMode?: OffsetsMode;
   nextCipherTitle?: string;
   isLastStep: boolean;
   onAdvance: (stepResult?: {
     offsets60s?: number;
     offsetsCadence?: number;
+    offsetsMode?: OffsetsMode;
     timeSeconds?: number;
     accuracy?: number;
     author?: string;
@@ -135,8 +137,9 @@ function getHeatTier(cpm: number): {
 }
 
 export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, workoutContext }) => {
-  const [mode, setMode] = useState<DrillMode>('letterToNum');
-  const [scores, setScores] = useState<OffsetsModeScores>(() => loadOffsetsModeScores('letterToNum'));
+  const initialMode: DrillMode = workoutContext?.offsetsMode || 'letterToNum';
+  const [mode, setMode] = useState<DrillMode>(initialMode);
+  const [scores, setScores] = useState<OffsetsModeScores>(() => loadOffsetsModeScores(initialMode));
   const [progress, setProgress] = useState<OffsetsProgress>(loadOffsetsProgress);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [newRecordAlert, setNewRecordAlert] = useState<boolean>(false);
@@ -161,7 +164,7 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, wo
   // Spaced Repetition deck initialization: always 26 letters in rotation
   const [initialData] = useState(() => {
     const initialDeck = initDeck(loadOffsetsProgress());
-    const initialQ = makeQuestionForOffset(initialDeck[0] ?? 0, 'letterToNum');
+    const initialQ = makeQuestionForOffset(initialDeck[0] ?? 0, initialMode);
     return { initialDeck, initialQ };
   });
 
@@ -475,6 +478,7 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, wo
             workoutContext.onAdvance({
               offsets60s: scores.best60s,
               offsetsCadence: cadence,
+              offsetsMode: mode,
             })
           }
           title="Warm-up complete! Click to start next cipher"
@@ -495,8 +499,9 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, wo
     streakBadge
   );
 
+  const modeLabel = mode === 'letterToNum' ? 'Letter → #' : '# → Letter';
   const headerTitle = workoutContext
-    ? `General Practice • Warm-up`
+    ? `Warm-up: ${modeLabel}`
     : 'Letter Offsets';
 
   return (

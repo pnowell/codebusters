@@ -14,7 +14,14 @@ import {
   isLookupCipher,
   getDrill,
 } from './data/drills';
-import { loadSettings, saveSettings, getNextWorkoutCiphers } from './services/storage';
+import {
+  loadSettings,
+  saveSettings,
+  getNextWorkoutCiphers,
+  getWorkoutOffsetsMode,
+  saveLastWarmupOffsetsMode,
+  type OffsetsMode,
+} from './services/storage';
 import { parseUrlRoute, buildRouteUrl, parseUnlockedParam } from './utils/routing';
 import { useVisualViewportHeight } from './hooks/useVisualViewportHeight';
 
@@ -35,6 +42,7 @@ interface WorkoutSession {
   currentStepIndex: number;
   results: WorkoutStepResult[];
   startTime: number;
+  offsetsMode: OffsetsMode;
 }
 
 export const App: React.FC = () => {
@@ -133,6 +141,7 @@ export const App: React.FC = () => {
   const startWorkout = (round: number, excludeCiphers: CipherType[] = []) => {
     const nextCiphers = getNextWorkoutCiphers(settings.unlockedCiphers, excludeCiphers);
     const steps: CipherType[] = ['offsets', ...nextCiphers];
+    const offsetsMode = getWorkoutOffsetsMode(round);
     setWorkoutSummary(null);
     setWorkoutSession({
       round,
@@ -140,22 +149,21 @@ export const App: React.FC = () => {
       currentStepIndex: 0,
       results: [],
       startTime: Date.now(),
+      offsetsMode,
     });
     navigateToDrill('offsets');
   };
 
-  const handleAdvanceWorkout = (stepResult?: {
-    offsets60s?: number;
-    offsetsCadence?: number;
-    timeSeconds?: number;
-    accuracy?: number;
-    author?: string;
-  }) => {
+  const handleAdvanceWorkout = (stepResult?: Partial<WorkoutStepResult>) => {
     if (!workoutSession) return;
 
     const currentStepIndex = workoutSession.currentStepIndex;
     const currentCipher = workoutSession.steps[currentStepIndex];
     const currentTitle = currentCipher === 'offsets' ? 'Letter Offsets' : getDrill(currentCipher).name;
+
+    if (currentStepIndex === 0 && stepResult?.offsetsMode) {
+      saveLastWarmupOffsetsMode(stepResult.offsetsMode);
+    }
 
     const recordedResult: WorkoutStepResult = {
       cipherId: currentCipher,
@@ -192,6 +200,7 @@ export const App: React.FC = () => {
         round: workoutSession.round,
         stepIndex: workoutSession.currentStepIndex,
         totalSteps: workoutSession.steps.length,
+        offsetsMode: workoutSession.offsetsMode,
         nextCipherTitle:
           workoutSession.currentStepIndex + 1 < workoutSession.steps.length
             ? getDrill(workoutSession.steps[workoutSession.currentStepIndex + 1]).name
