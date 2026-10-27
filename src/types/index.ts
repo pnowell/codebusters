@@ -44,3 +44,28 @@ export interface EvaluationResult {
   scoreTier: ScoreTier; // 0-2 = full, 3-4 = half, 5+ = none
   isComplete: boolean;
 }
+
+export interface AllowedUser {
+  email: string;
+  displayName: string;
+  role: 'student' | 'coach';
+  addedAt?: unknown;
+  active: boolean;
+}
+
+export interface UserProfile {
+  uid: string;
+  email: string;
+  displayName: string;
+  role: 'student' | 'coach';
+  unlockedCiphers: CipherType[];
+  settings?: {
+    soundEffects?: boolean;
+    highContrast?: boolean;
+  };
+  offsetsProgress?: Record<string, { streak: number; attempts: number; correct: number; avgLatencyMs?: number }>;
+  offsetsScores?: Record<string, { best60s: number; bestStreak: number }>;
+  completedQuotes?: number[];
+  practiceHistory?: Record<string, { count: number; lastPracticed: number }>;
+  lastActiveAt?: unknown;
+}

@@ -21,6 +21,17 @@ export const DEFAULT_SETTINGS: UserSettings = {
   unlockedCiphers: DEFAULT_UNLOCKED,
 };
 
+export type SyncDispatcher = (
+  type: 'settings' | 'completedQuotes' | 'offsetsProgress' | 'offsetsScores' | 'practiceHistory',
+  data: unknown
+) => void;
+
+let globalSyncDispatcher: SyncDispatcher | null = null;
+
+export function registerSyncDispatcher(dispatcher: SyncDispatcher): void {
+  globalSyncDispatcher = dispatcher;
+}
+
 export function loadSettings(): UserSettings {
   try {
     const raw = localStorage.getItem(KEYS.settings);
@@ -36,8 +47,10 @@ export function loadSettings(): UserSettings {
   }
 }
 
-export const saveSettings = (s: UserSettings) =>
+export const saveSettings = (s: UserSettings) => {
   localStorage.setItem(KEYS.settings, JSON.stringify(s));
+  globalSyncDispatcher?.('settings', s);
+};
 
 export const loadBestStreak = () =>
   parseInt(localStorage.getItem(KEYS.offsetsBestStreak) ?? '0', 10) || 0;
@@ -61,7 +74,9 @@ export function saveCompletedQuoteId(id: number): void {
     const current = new Set(loadCompletedQuoteIds());
     if (!current.has(id)) {
       current.add(id);
-      localStorage.setItem(KEYS.completedQuotes, JSON.stringify(Array.from(current)));
+      const arr = Array.from(current);
+      localStorage.setItem(KEYS.completedQuotes, JSON.stringify(arr));
+      globalSyncDispatcher?.('completedQuotes', arr);
     }
   } catch {
     // Ignore storage quota or disabled localStorage
@@ -102,6 +117,7 @@ export function loadOffsetsProgress(): OffsetsProgress {
 export function saveOffsetsProgress(p: OffsetsProgress): void {
   try {
     localStorage.setItem(KEYS.offsetsProgress, JSON.stringify(p));
+    globalSyncDispatcher?.('offsetsProgress', p);
   } catch {
     // Ignore
   }
@@ -110,6 +126,7 @@ export function saveOffsetsProgress(p: OffsetsProgress): void {
 export function resetOffsetsProgress(): void {
   try {
     localStorage.removeItem(KEYS.offsetsProgress);
+    globalSyncDispatcher?.('offsetsProgress', {});
   } catch {
     // Ignore
   }
@@ -173,6 +190,7 @@ export function saveOffsetsModeScore(
 
     existing[mode] = merged;
     localStorage.setItem(SCORES_KEY, JSON.stringify(existing));
+    globalSyncDispatcher?.('offsetsScores', existing);
     return merged;
   } catch {
     return {
@@ -209,6 +227,7 @@ export function recordCipherPractice(cipherId: string): void {
       lastPracticed: Date.now(),
     };
     localStorage.setItem(KEYS.practiceHistory, JSON.stringify(history));
+    globalSyncDispatcher?.('practiceHistory', history);
   } catch {
     // Ignore
   }

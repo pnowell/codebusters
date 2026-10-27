@@ -1535,3 +1535,214 @@ body {
   font-size: 1rem;
 }
 
+/* User Auth Badge & Header */
+.auth-badge-container {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.auth-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-card);
+  color: var(--text-main);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.auth-badge:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.auth-avatar-img {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.auth-avatar-fallback {
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  font-weight: 700;
+  color: #38bdf8;
+}
+
+.auth-name {
+  font-weight: 600;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auth-role-tag {
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  background: rgba(56, 189, 248, 0.2);
+  color: #38bdf8;
+  text-transform: uppercase;
+}
+
+.auth-sync-indicator {
+  font-size: 0.6rem;
+  color: #34d399;
+  filter: drop-shadow(0 0 4px #34d399);
+}
+
+.btn-signout {
+  font-size: 0.75rem;
+  padding: 0.35rem 0.6rem;
+  color: var(--text-muted);
+  border-radius: 6px;
+}
+
+.btn-signout:hover {
+  color: #ef4444;
+}
+
+.btn-google-signin {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.85rem;
+  background: #ffffff;
+  color: #1f2937;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.btn-google-signin:hover {
+  background: #f3f4f6;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.25);
+}
+
+/* Options Modal Account Section */
+.options-account-section {
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border-card);
+}
+
+.options-account-section .section-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.account-info-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-card);
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+}
+
+.account-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.account-email {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.account-role-badge {
+  font-size: 0.75rem;
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.account-login-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-card);
+  padding: 0.85rem 1rem;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.account-prompt-text {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.account-guest-note {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  padding: 0.25rem 0;
+}
+
+/* Not Allowed Modal */
+.not-allowed-dialog {
+  max-width: 440px;
+}
+
+.not-allowed-body {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.not-allowed-icon {
+  font-size: 2.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.highlight-email {
+  color: #38bdf8;
+  word-break: break-all;
+}
+
+.not-allowed-desc {
+  font-size: 0.95rem;
+  color: var(--text-main);
+  line-height: 1.5;
+  margin-bottom: 0.5rem;
+}
+
+.not-allowed-subdesc {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin-bottom: 1.5rem;
+}
+
+.not-allowed-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  width: 100%;
+}
+

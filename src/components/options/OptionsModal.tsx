@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { CipherType, UserSettings } from '../../types';
 import { DRILLS } from '../../data/drills';
+import { useAuth } from '../../context/useAuth';
 
 interface OptionsModalProps {
   isOpen: boolean;
@@ -15,6 +16,7 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
   settings,
   onSaveSettings,
 }) => {
+  const { user, allowedUser, isAllowed, isConfigured, signIn, signOut } = useAuth();
   const [studentName, setStudentName] = useState<string>(settings.studentName);
   const [unlocked, setUnlocked] = useState<CipherType[]>(settings.unlockedCiphers);
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
@@ -53,6 +55,45 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
         </div>
 
         <div className="modal-body">
+          {/* Account & Cloud Sync Status */}
+          <div className="options-account-section">
+            <label className="section-label">Account & Cloud Sync:</label>
+            {isAllowed && user ? (
+              <div className="account-info-card">
+                <div className="account-details">
+                  <span className="account-email">{user.email}</span>
+                  <span className="account-role-badge">
+                    {allowedUser?.role === 'coach' ? '🛡️ Coach' : '👤 Student'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="btn-simple btn-signout"
+                  onClick={signOut}
+                >
+                  Log Out
+                </button>
+              </div>
+            ) : isConfigured ? (
+              <div className="account-login-card">
+                <p className="account-prompt-text">
+                  Sign in with Google to sync your stats, unlocked ciphers, and completed quotes across devices.
+                </p>
+                <button
+                  type="button"
+                  className="btn-google-signin"
+                  onClick={signIn}
+                >
+                  Sign In with Google
+                </button>
+              </div>
+            ) : (
+              <div className="account-guest-note">
+                <span>💾 Guest Mode: All progress is saved locally in this browser.</span>
+              </div>
+            )}
+          </div>
+
           <div className="form-group">
             <label>Student Name / Nickname:</label>
             <input

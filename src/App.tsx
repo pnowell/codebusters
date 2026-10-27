@@ -22,6 +22,9 @@ import {
   saveLastWarmupOffsetsMode,
   type OffsetsMode,
 } from './services/storage';
+import { subscribeToSyncUpdates } from './services/sync';
+import { UserAuthBadge } from './components/auth/UserAuthBadge';
+import { NotAllowedModal } from './components/auth/NotAllowedModal';
 import { parseUrlRoute, buildRouteUrl, parseUnlockedParam } from './utils/routing';
 import { useVisualViewportHeight } from './hooks/useVisualViewportHeight';
 
@@ -58,6 +61,13 @@ export const App: React.FC = () => {
 
   // Pin outer window and track visual viewport height above mobile virtual keyboard
   useVisualViewportHeight();
+
+  // Keep local state in sync when cloud sync updates localStorage
+  useEffect(() => {
+    return subscribeToSyncUpdates(() => {
+      setSettings(loadSettings());
+    });
+  }, []);
 
   // Listen to browser Back / Forward buttons
   useEffect(() => {
@@ -226,7 +236,7 @@ export const App: React.FC = () => {
           </div>
 
           <div className="header-user-actions">
-            <span className="student-tag">👤 {settings.studentName}</span>
+            <UserAuthBadge onOpenOptions={openOptions} />
             <button
               className="btn-simple"
               onClick={openOptions}
@@ -319,6 +329,9 @@ export const App: React.FC = () => {
           onExitToMenu={() => setWorkoutSummary(null)}
         />
       )}
+
+      {/* Roster Access Modal */}
+      <NotAllowedModal />
     </div>
   );
 };
