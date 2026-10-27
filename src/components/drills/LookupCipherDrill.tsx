@@ -200,16 +200,13 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
 
         <div className="quote-not-found-card">
           <div className="quote-not-found-icon">🔍</div>
-          <h2 className="quote-not-found-title">Quote #{notFoundId} Not Found</h2>
+          <h2 className="quote-not-found-title">Quote Not Found</h2>
           <p className="quote-not-found-desc">
             This quote was not found or may have been removed from the database.
           </p>
           <div className="quote-not-found-actions">
             <button className="btn-main-action" onClick={loadNewQuote}>
-              🎲 Load Random Quote ↻
-            </button>
-            <button className="quote-not-found-back" onClick={onBack}>
-              ← Return to Menu
+              🎲 Load Random Quote
             </button>
           </div>
         </div>

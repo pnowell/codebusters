@@ -1535,20 +1535,3 @@ body {
   font-size: 1rem;
 }
 
-.quote-not-found-back {
-  width: 100%;
-  padding: 0.6rem 1rem;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border-card);
-  color: var(--text-muted);
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.quote-not-found-back:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text-main);
-}
-
