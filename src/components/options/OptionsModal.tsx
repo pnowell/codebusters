@@ -89,7 +89,7 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
               </div>
             ) : (
               <div className="account-guest-note">
-                <span>💾 Guest Mode: All progress is saved locally in this browser.</span>
+                <span>💾 Guest Mode: All progress is saved locally. (Add credentials to <code>.env.local</code> to enable Google Sign-In & cloud sync).</span>
               </div>
             )}
           </div>
