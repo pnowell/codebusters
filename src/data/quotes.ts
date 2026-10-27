@@ -16,21 +16,28 @@ export const LOOKUP_ELIGIBLE_QUOTES = CLEAN_QUOTES.filter(q => q.length <= MAX_L
 export const KID_LOOKUP_POOL = LOOKUP_ELIGIBLE_QUOTES.filter(q => q.category && q.category !== 'general');
 export const GENERAL_LOOKUP_POOL = LOOKUP_ELIGIBLE_QUOTES.filter(q => !q.category || q.category === 'general');
 
+/** Fast O(1) lookup table indexed by permanent, stable quote ID */
+export const QUOTES_BY_ID = new Map<number, Quote>(ALL_QUOTES.map(q => [q.id, q]));
+
+/** Retrieve a quote by its stable ID */
+export function getQuoteById(id: number): Quote | undefined {
+  return QUOTES_BY_ID.get(id);
+}
+
+/** Check if a quote exists by its stable ID */
+export function hasQuoteId(id: number): boolean {
+  return QUOTES_BY_ID.has(id);
+}
+
 /**
- * Picks a quote for symbol lookup drills (Pigpen, Galactic, Atbash):
- * - If `preferredId` is specified (e.g. via deep-link URL ?q=123), returns that specific quote.
- * - Filters out quotes already completed by the user (unless deep-linked).
+ * Picks a random quote for symbol lookup drills (Pigpen, Galactic, Atbash):
+ * - Filters out quotes already completed by the user.
  * - Prefers kid-friendly quotes (~80% chance) while still drawing from the clean general pool (~20% chance).
  * - Avoids archaic language and misspelled quotes completely.
  * - Caps length at MAX_LOOKUP_LENGTH (75 chars) so quotes are not excessively long.
  * - Gracefully falls back if the completed list exhausts the uncompleted pool.
  */
-export function pickLookupQuote(preferredId?: number): Quote {
-  if (preferredId !== undefined) {
-    const found = ALL_QUOTES.find(q => q.id === preferredId);
-    if (found) return found;
-  }
-
+export function pickRandomLookupQuote(): Quote {
   const completedSet = new Set(loadCompletedQuoteIds());
 
   // Filter out completed quotes from both pools
@@ -49,6 +56,20 @@ export function pickLookupQuote(preferredId?: number): Quote {
   const chosenPool = primary.length > 0 ? primary : (secondary.length > 0 ? secondary : ALL_QUOTES);
 
   return chosenPool[Math.floor(Math.random() * chosenPool.length)] ?? ALL_QUOTES[0];
+}
+
+/**
+ * Resolves a quote for symbol lookup drills:
+ * - If `preferredId` is specified (e.g. via deep-link URL ?q=123):
+ *   Returns the Quote if found, or null if the quote does not exist (removed or retired).
+ * - If `preferredId` is undefined:
+ *   Returns a random eligible lookup quote.
+ */
+export function pickLookupQuote(preferredId?: number): Quote | null {
+  if (preferredId !== undefined) {
+    return getQuoteById(preferredId) ?? null;
+  }
+  return pickRandomLookupQuote();
 }
 
 export function getQuotesByTier(tier: CryptanalysisTier): Quote[] {

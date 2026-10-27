@@ -41,6 +41,14 @@ const CipherGlyph: React.FC<{ cipher: LookupCipherType; char: string }> = ({ cip
   return <>{upper}</>;
 };
 
+type PuzzleState = {
+  quote: Quote;
+  userInputs: string[];
+  activeIdx: number;
+};
+
+const EMPTY_USER_INPUTS: string[] = [];
+
 export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
   cipher,
   onBack,
@@ -48,8 +56,23 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
   onQuoteChange,
   workoutContext,
 }) => {
-  const [puzzle, setPuzzle] = useState(() => freshPuzzle(pickLookupQuote(initialQuoteId)));
-  const { quote, userInputs, activeIdx } = puzzle;
+  const [initialResolved] = useState<{ quote: Quote | null; notFoundId?: number }>(() => {
+    if (initialQuoteId !== undefined) {
+      const q = pickLookupQuote(initialQuoteId);
+      if (q) return { quote: q };
+      return { quote: null, notFoundId: initialQuoteId };
+    }
+    return { quote: pickLookupQuote() };
+  });
+
+  const [notFoundId, setNotFoundId] = useState<number | undefined>(initialResolved.notFoundId);
+  const [puzzle, setPuzzle] = useState<PuzzleState | null>(() =>
+    initialResolved.quote ? freshPuzzle(initialResolved.quote) : null
+  );
+  const quote = puzzle?.quote;
+  const quoteId = quote?.id;
+  const userInputs = puzzle?.userInputs ?? EMPTY_USER_INPUTS;
+  const activeIdx = puzzle?.activeIdx ?? 0;
   const [result, setResult] = useState<EvaluationResult | null>(null);
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
   const startTimeRef = useRef<number>(Date.now());
@@ -61,46 +84,57 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
   const onQuoteChangeRef = useRef(onQuoteChange);
   onQuoteChangeRef.current = onQuoteChange;
   useEffect(() => {
-    onQuoteChangeRef.current?.(quote.id);
-  }, [quote.id]);
+    if (quoteId !== undefined) {
+      onQuoteChangeRef.current?.(quoteId);
+    }
+  }, [quoteId]);
 
   // Derived quote data
-  const chars = useMemo(() => quote.quote.toUpperCase().split(''), [quote.quote]);
+  const chars = useMemo(() => (quote ? quote.quote.toUpperCase().split('') : []), [quote]);
   const words = useMemo(() => groupIntoWords(chars), [chars]);
   const totalLetters = useMemo(() => chars.filter(isLetter).length, [chars]);
   const filledLetters = userInputs.filter((c, idx) => isLetter(chars[idx]) && c !== '').length;
 
   // Focus tile helper
   const focusTile = useCallback((index: number) => {
-    setPuzzle(prev => ({ ...prev, activeIdx: index }));
+    setPuzzle(prev => (prev ? { ...prev, activeIdx: index } : null));
     inputRefs.current[index]?.focus({ preventScroll: true });
   }, []);
 
   // Refocus first active tile whenever quote changes
   useEffect(() => {
-    inputRefs.current[puzzle.activeIdx]?.focus({ preventScroll: true });
+    if (puzzle) {
+      inputRefs.current[puzzle.activeIdx]?.focus({ preventScroll: true });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only refocus when quote changes
-  }, [quote.id]);
+  }, [quote?.id]);
 
   // Keep focused character tile visible horizontally and vertically
   useKeepInView(scrollPanelRef, () => inputRefs.current[activeIdx], activeIdx);
 
   const loadNewQuote = () => {
-    setPuzzle(freshPuzzle(pickLookupQuote()));
-    setResult(null);
-    setIsSubmitted(false);
-    startTimeRef.current = Date.now();
+    const nextQ = pickLookupQuote();
+    if (nextQ) {
+      setNotFoundId(undefined);
+      setPuzzle(freshPuzzle(nextQ));
+      setResult(null);
+      setIsSubmitted(false);
+      startTimeRef.current = Date.now();
+      onQuoteChange?.(nextQ.id);
+    }
   };
 
   const handleSubmit = useCallback(() => {
+    if (!quote) return;
     const res = evaluateSolution(quote.quote, userInputs.join(''));
     setResult(res);
     setIsSubmitted(true);
     saveCompletedQuoteId(quote.id);
     recordCipherPractice(cipher);
-  }, [cipher, quote.id, quote.quote, userInputs]);
+  }, [cipher, quote, userInputs]);
 
   const handleTileChange = (index: number, val: string) => {
+    if (!puzzle) return;
     if (isSubmitted) {
       setIsSubmitted(false);
       setResult(null);
@@ -111,23 +145,24 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
 
     if (isLetter(lastChar)) {
       updated[index] = lastChar;
-      setPuzzle(prev => ({ ...prev, userInputs: updated }));
+      setPuzzle(prev => (prev ? { ...prev, userInputs: updated } : null));
       const nextIdx = findLetterIndex(chars, index, 1);
       focusTile(nextIdx);
     } else if (val === '') {
       updated[index] = '';
-      setPuzzle(prev => ({ ...prev, userInputs: updated }));
+      setPuzzle(prev => (prev ? { ...prev, userInputs: updated } : null));
     }
   };
 
   const handleTileKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!puzzle) return;
     if (e.key === 'Backspace') {
       if (!userInputs[index]) {
         e.preventDefault();
         const prevIdx = findLetterIndex(chars, index, -1);
         const updated = [...userInputs];
         updated[prevIdx] = '';
-        setPuzzle(prev => ({ ...prev, userInputs: updated }));
+        setPuzzle(prev => (prev ? { ...prev, userInputs: updated } : null));
         focusTile(prevIdx);
       }
     } else if (e.key === 'ArrowLeft') {
@@ -145,6 +180,44 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
       }
     }
   };
+
+  if (notFoundId !== undefined && !puzzle) {
+    return (
+      <div className="drill-container">
+        <DrillHeader
+          title={getDrill(cipher).shortTitle}
+          onBack={onBack}
+          right={
+            <button
+              className="btn-simple btn-reload"
+              onClick={loadNewQuote}
+              title="Pick Random Quote"
+            >
+              New ↻
+            </button>
+          }
+        />
+
+        <div className="quote-not-found-card">
+          <div className="quote-not-found-icon">🔍</div>
+          <h2 className="quote-not-found-title">Quote #{notFoundId} Not Found</h2>
+          <p className="quote-not-found-desc">
+            This quote was not found or may have been removed from the database.
+          </p>
+          <div className="quote-not-found-actions">
+            <button className="btn-main-action" onClick={loadNewQuote}>
+              🎲 Load Random Quote ↻
+            </button>
+            <button className="quote-not-found-back" onClick={onBack}>
+              ← Return to Menu
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!puzzle || !quote) return null;
 
   return (
     <div className="drill-container">
@@ -217,7 +290,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
                           value={userVal}
                           onChange={e => handleTileChange(index, e.target.value)}
                           onKeyDown={e => handleTileKeyDown(index, e)}
-                          onFocus={() => setPuzzle(prev => ({ ...prev, activeIdx: index }))}
+                          onFocus={() => setPuzzle(prev => (prev ? { ...prev, activeIdx: index } : null))}
                           maxLength={2}
                         />
                       ) : (
