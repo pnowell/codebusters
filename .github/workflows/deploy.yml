@@ -33,6 +33,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Create .env.local
+        if: ${{ secrets.ENV_LOCAL != '' }}
+        run: echo "$ENV_LOCAL" > .env.local
+        env:
+          ENV_LOCAL: ${{ secrets.ENV_LOCAL }}
+
       - name: Build
         run: npm run build
 
