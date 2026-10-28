@@ -4,12 +4,15 @@ import {
   loadSettings,
   saveSettings,
   loadCompletedQuoteIds,
+  saveCompletedQuoteIds,
   loadOffsetsProgress,
   saveOffsetsProgress,
   loadOffsetsModeScores,
   saveOffsetsModeScore,
   loadCipherPracticeHistory,
+  saveCipherPracticeHistory,
   registerSyncDispatcher,
+  withoutSyncDispatch,
   type OffsetsProgress,
   type OffsetsScoresByMode,
 } from './storage';
@@ -19,7 +22,10 @@ let activeSyncUnsubscribe: Unsubscribe | null = null;
 let currentSyncedUid: string | null = null;
 const syncListeners: Set<() => void> = new Set();
 
-// Automatically wire local storage changes to Firestore cloud updates
+let pendingCloudUpdates: Partial<UserProfile> = {};
+let cloudDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Automatically wire local storage changes to debounced Firestore cloud updates
 registerSyncDispatcher((type, data) => {
   if (!currentSyncedUid) return;
   switch (type) {
@@ -134,15 +140,18 @@ export async function mergeAndInitializeCloudUser(uid: string, email: string, de
   // 6. Name: Cloud customized name or local name
   const finalName = cloudData.displayName || (localSettings.studentName !== 'Decoder' ? localSettings.studentName : (defaultName || 'Decoder'));
 
-  // Update local storage with merged state
+  // Update local storage with merged state (suppress sync broadcast to prevent loop)
   const updatedLocalSettings: UserSettings = {
     studentName: finalName,
     unlockedCiphers: mergedUnlocked,
   };
-  saveSettings(updatedLocalSettings);
-  saveOffsetsProgress(mergedProgress);
-  saveOffsetsModeScore('letterToNum', mergedOffsetsScores.letterToNum);
-  saveOffsetsModeScore('numToLetter', mergedOffsetsScores.numToLetter);
+
+  withoutSyncDispatch(() => {
+    saveSettings(updatedLocalSettings);
+    saveOffsetsProgress(mergedProgress);
+    saveOffsetsModeScore('letterToNum', mergedOffsetsScores.letterToNum);
+    saveOffsetsModeScore('numToLetter', mergedOffsetsScores.numToLetter);
+  });
 
   // Sync to Cloud
   await setDoc(
@@ -175,56 +184,127 @@ export function startCloudSync(uid: string): void {
 
   const userDocRef = doc(db, 'users', uid);
   activeSyncUnsubscribe = onSnapshot(userDocRef, (snap) => {
+    // 1. Ignore local writes echoing back to prevent infinite loop
+    if (snap.metadata.hasPendingWrites) return;
     if (!snap.exists()) return;
+
     const data = snap.data() as Partial<UserProfile>;
+    let hasChanged = false;
 
-    // Sync settings down to localStorage if changed
-    if (data.displayName || data.unlockedCiphers) {
-      const current = loadSettings();
-      const newSettings: UserSettings = {
-        studentName: data.displayName ?? current.studentName,
-        unlockedCiphers: data.unlockedCiphers ?? current.unlockedCiphers,
-      };
-      saveSettings(newSettings);
-    }
+    // 2. Suppress outbound sync while applying inbound remote updates
+    withoutSyncDispatch(() => {
+      // Sync settings down to localStorage if actually changed
+      if (data.displayName || data.unlockedCiphers) {
+        const current = loadSettings();
+        const targetName = data.displayName ?? current.studentName;
+        const targetCiphers = data.unlockedCiphers ?? current.unlockedCiphers;
 
-    if (data.offsetsProgress) {
-      saveOffsetsProgress(data.offsetsProgress as OffsetsProgress);
-    }
-
-    if (data.offsetsScores) {
-      if (data.offsetsScores.letterToNum) {
-        saveOffsetsModeScore('letterToNum', data.offsetsScores.letterToNum);
+        if (
+          current.studentName !== targetName ||
+          current.unlockedCiphers.join(',') !== targetCiphers.join(',')
+        ) {
+          saveSettings({
+            studentName: targetName,
+            unlockedCiphers: targetCiphers,
+          });
+          hasChanged = true;
+        }
       }
-      if (data.offsetsScores.numToLetter) {
-        saveOffsetsModeScore('numToLetter', data.offsetsScores.numToLetter);
-      }
-    }
 
-    notifySyncListeners();
+      if (data.offsetsProgress) {
+        const currentProgress = loadOffsetsProgress();
+        if (JSON.stringify(currentProgress) !== JSON.stringify(data.offsetsProgress)) {
+          saveOffsetsProgress(data.offsetsProgress as OffsetsProgress);
+          hasChanged = true;
+        }
+      }
+
+      if (data.offsetsScores) {
+        if (data.offsetsScores.letterToNum) {
+          const cur = loadOffsetsModeScores('letterToNum');
+          if (
+            cur.best60s !== data.offsetsScores.letterToNum.best60s ||
+            cur.bestStreak !== data.offsetsScores.letterToNum.bestStreak
+          ) {
+            saveOffsetsModeScore('letterToNum', data.offsetsScores.letterToNum);
+            hasChanged = true;
+          }
+        }
+        if (data.offsetsScores.numToLetter) {
+          const cur = loadOffsetsModeScores('numToLetter');
+          if (
+            cur.best60s !== data.offsetsScores.numToLetter.best60s ||
+            cur.bestStreak !== data.offsetsScores.numToLetter.bestStreak
+          ) {
+            saveOffsetsModeScore('numToLetter', data.offsetsScores.numToLetter);
+            hasChanged = true;
+          }
+        }
+      }
+
+      if (data.completedQuotes && Array.isArray(data.completedQuotes)) {
+        const current = loadCompletedQuoteIds();
+        const hasNew = data.completedQuotes.some(id => !current.includes(id));
+        if (hasNew) {
+          saveCompletedQuoteIds(data.completedQuotes);
+          hasChanged = true;
+        }
+      }
+
+      if (data.practiceHistory) {
+        const current = loadCipherPracticeHistory();
+        if (JSON.stringify(current) !== JSON.stringify(data.practiceHistory)) {
+          saveCipherPracticeHistory(data.practiceHistory as Record<string, { count: number; lastPracticed: number }>);
+          hasChanged = true;
+        }
+      }
+    });
+
+    if (hasChanged) {
+      notifySyncListeners();
+    }
   });
 }
 
 /**
- * Stops cloud synchronization
+ * Stops cloud synchronization and clears pending debounced writes
  */
 export function stopCloudSync(): void {
   if (activeSyncUnsubscribe) {
     activeSyncUnsubscribe();
     activeSyncUnsubscribe = null;
   }
+  if (cloudDebounceTimer) {
+    clearTimeout(cloudDebounceTimer);
+    cloudDebounceTimer = null;
+  }
+  pendingCloudUpdates = {};
   currentSyncedUid = null;
 }
 
 /**
- * Pushes updated user data to cloud if currently signed in
+ * Pushes updated user data to cloud with 400ms debounce to prevent high-frequency write loops
  */
-export async function pushCloudUpdate(partial: Partial<UserProfile>): Promise<void> {
+export function pushCloudUpdate(partial: Partial<UserProfile>): void {
   if (!db || !currentSyncedUid) return;
-  try {
-    const userDocRef = doc(db, 'users', currentSyncedUid);
-    await setDoc(userDocRef, { ...partial, lastActiveAt: serverTimestamp() }, { merge: true });
-  } catch (err) {
-    console.warn('[Sync] Failed to push update to cloud:', err);
+
+  pendingCloudUpdates = { ...pendingCloudUpdates, ...partial };
+
+  if (cloudDebounceTimer) {
+    clearTimeout(cloudDebounceTimer);
   }
+
+  cloudDebounceTimer = setTimeout(async () => {
+    if (!db || !currentSyncedUid) return;
+    const toWrite = { ...pendingCloudUpdates };
+    pendingCloudUpdates = {};
+    cloudDebounceTimer = null;
+
+    try {
+      const userDocRef = doc(db, 'users', currentSyncedUid);
+      await setDoc(userDocRef, { ...toWrite, lastActiveAt: serverTimestamp() }, { merge: true });
+    } catch (err) {
+      console.warn('[Sync] Failed to push update to cloud:', err);
+    }
+  }, 400);
 }
