@@ -13,6 +13,7 @@ import {
 import { DrillHeader } from '../drill/DrillHeader';
 import { DrillActionRow } from '../drill/DrillActionRow';
 import { AlphabetMasteryModal } from '../drill/AlphabetMasteryModal';
+import { LeaderboardModal } from '../leaderboard/LeaderboardModal';
 
 export interface WorkoutStepContext {
   round: number;
@@ -142,6 +143,7 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, wo
   const [scores, setScores] = useState<OffsetsModeScores>(() => loadOffsetsModeScores(initialMode));
   const [progress, setProgress] = useState<OffsetsProgress>(() => loadOffsetsProgress(initialMode));
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [isLeaderboardOpen, setIsLeaderboardOpen] = useState<boolean>(false);
   const [newRecordAlert, setNewRecordAlert] = useState<boolean>(false);
 
   // Velocity Metrics
@@ -531,14 +533,24 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, wo
           ))}
         </div>
 
-        <button
-          type="button"
-          className="mastery-chip-btn"
-          onClick={() => setIsModalOpen(true)}
-          title={`Click to view detailed Alphabet Mastery & letter streaks for ${modeLabel}`}
-        >
-          📊 {masteredCount}/26 Mastered
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <button
+            type="button"
+            className="leaderboard-chip-btn"
+            onClick={() => setIsLeaderboardOpen(true)}
+            title="View Team Leaderboard for this mode"
+          >
+            🏆 Leaderboard
+          </button>
+          <button
+            type="button"
+            className="mastery-chip-btn"
+            onClick={() => setIsModalOpen(true)}
+            title={`Click to view detailed Alphabet Mastery & letter streaks for ${modeLabel}`}
+          >
+            📊 {masteredCount}/26 Mastered
+          </button>
+        </div>
       </div>
 
       {/* Speedometer & 60s Blitz Bar */}
@@ -671,6 +683,13 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, wo
         onResetProgress={handleResetProgress}
         currentOffset={question.offset}
         mode={mode}
+      />
+
+      {/* Team Leaderboard Modal */}
+      <LeaderboardModal
+        isOpen={isLeaderboardOpen}
+        onClose={() => setIsLeaderboardOpen(false)}
+        initialMode={mode}
       />
     </div>
   );

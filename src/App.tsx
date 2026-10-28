@@ -3,6 +3,7 @@ import type { CipherType, UserSettings } from './types';
 import { LetterOffsetDrill, type WorkoutStepContext } from './components/drills/LetterOffsetDrill';
 import { LookupCipherDrill } from './components/drills/LookupCipherDrill';
 import { OptionsModal } from './components/options/OptionsModal';
+import { LeaderboardModal } from './components/leaderboard/LeaderboardModal';
 import {
   WorkoutSummaryModal,
   type WorkoutSummaryData,
@@ -54,6 +55,7 @@ export const App: React.FC = () => {
   const [activeDrill, setActiveDrill] = useState<CipherType | null>(() => parseUrlRoute().drill);
   const [activeQuoteId, setActiveQuoteId] = useState<number | undefined>(() => parseUrlRoute().quoteId);
   const [isOptionsOpen, setIsOptionsOpen] = useState<boolean>(false);
+  const [isLeaderboardOpen, setIsLeaderboardOpen] = useState<boolean>(false);
 
   // Workout Circuit Session & Summary States
   const [workoutSession, setWorkoutSession] = useState<WorkoutSession | null>(null);
@@ -72,8 +74,9 @@ export const App: React.FC = () => {
   // Listen to browser Back / Forward buttons
   useEffect(() => {
     const handlePopState = (e: PopStateEvent) => {
-      if (!e.state || e.state.modal !== 'options') {
+      if (!e.state || (e.state.modal !== 'options' && e.state.modal !== 'leaderboard')) {
         setIsOptionsOpen(false);
+        setIsLeaderboardOpen(false);
       }
       const route = parseUrlRoute();
       setActiveDrill(route.drill);
@@ -139,6 +142,19 @@ export const App: React.FC = () => {
       window.history.back();
     } else {
       setIsOptionsOpen(false);
+    }
+  };
+
+  const openLeaderboard = () => {
+    window.history.pushState({ modal: 'leaderboard' }, '', window.location.href);
+    setIsLeaderboardOpen(true);
+  };
+
+  const closeLeaderboard = () => {
+    if (window.history.state?.modal === 'leaderboard') {
+      window.history.back();
+    } else {
+      setIsLeaderboardOpen(false);
     }
   };
 
@@ -238,6 +254,14 @@ export const App: React.FC = () => {
           <div className="header-user-actions">
             <UserAuthBadge onOpenOptions={openOptions} />
             <button
+              type="button"
+              className="btn-simple"
+              onClick={openLeaderboard}
+              title="Team Leaderboard"
+            >
+              🏆 Leaderboard
+            </button>
+            <button
               className="btn-simple"
               onClick={openOptions}
               title="Classroom Settings"
@@ -315,6 +339,12 @@ export const App: React.FC = () => {
           onSaveSettings={handleSaveSettings}
         />
       )}
+
+      {/* Team Leaderboard Modal */}
+      <LeaderboardModal
+        isOpen={isLeaderboardOpen}
+        onClose={closeLeaderboard}
+      />
 
       {/* Workout Summary Modal */}
       {workoutSummary && (

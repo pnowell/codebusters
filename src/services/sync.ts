@@ -43,6 +43,8 @@ function normalizeOffsetsProgress(raw: unknown): OffsetsProgressByMode {
   };
 }
 
+import { updateLeaderboardScore } from './leaderboard';
+
 // Automatically wire local storage changes to debounced Firestore cloud updates
 registerSyncDispatcher((type, data) => {
   if (!currentSyncedUid) return;
@@ -50,6 +52,26 @@ registerSyncDispatcher((type, data) => {
     case 'settings': {
       const s = data as UserSettings;
       pushCloudUpdate({ displayName: s.studentName, unlockedCiphers: s.unlockedCiphers });
+      const scoresLetterToNum = loadOffsetsModeScores('letterToNum');
+      const scoresNumToLetter = loadOffsetsModeScores('numToLetter');
+      if (scoresLetterToNum.best60s > 0 || scoresLetterToNum.bestStreak > 0) {
+        updateLeaderboardScore(
+          currentSyncedUid,
+          s.studentName,
+          'letterToNum',
+          scoresLetterToNum.best60s,
+          scoresLetterToNum.bestStreak
+        );
+      }
+      if (scoresNumToLetter.best60s > 0 || scoresNumToLetter.bestStreak > 0) {
+        updateLeaderboardScore(
+          currentSyncedUid,
+          s.studentName,
+          'numToLetter',
+          scoresNumToLetter.best60s,
+          scoresNumToLetter.bestStreak
+        );
+      }
       break;
     }
     case 'completedQuotes':
@@ -59,7 +81,27 @@ registerSyncDispatcher((type, data) => {
       pushCloudUpdate({ offsetsProgress: data as OffsetsProgressByMode });
       break;
     case 'offsetsScores': {
-      pushCloudUpdate({ offsetsScores: data as OffsetsScoresByMode });
+      const scores = data as OffsetsScoresByMode;
+      pushCloudUpdate({ offsetsScores: scores });
+      const currentSettings = loadSettings();
+      if (scores.letterToNum && (scores.letterToNum.best60s > 0 || scores.letterToNum.bestStreak > 0)) {
+        updateLeaderboardScore(
+          currentSyncedUid,
+          currentSettings.studentName,
+          'letterToNum',
+          scores.letterToNum.best60s,
+          scores.letterToNum.bestStreak
+        );
+      }
+      if (scores.numToLetter && (scores.numToLetter.best60s > 0 || scores.numToLetter.bestStreak > 0)) {
+        updateLeaderboardScore(
+          currentSyncedUid,
+          currentSettings.studentName,
+          'numToLetter',
+          scores.numToLetter.best60s,
+          scores.numToLetter.bestStreak
+        );
+      }
       break;
     }
     case 'practiceHistory':
@@ -197,6 +239,26 @@ export async function mergeAndInitializeCloudUser(uid: string, email: string, de
     { merge: true }
   );
 
+  // Post best scores to team leaderboard
+  if (mergedOffsetsScores.letterToNum.best60s > 0 || mergedOffsetsScores.letterToNum.bestStreak > 0) {
+    updateLeaderboardScore(
+      uid,
+      finalName,
+      'letterToNum',
+      mergedOffsetsScores.letterToNum.best60s,
+      mergedOffsetsScores.letterToNum.bestStreak
+    );
+  }
+  if (mergedOffsetsScores.numToLetter.best60s > 0 || mergedOffsetsScores.numToLetter.bestStreak > 0) {
+    updateLeaderboardScore(
+      uid,
+      finalName,
+      'numToLetter',
+      mergedOffsetsScores.numToLetter.best60s,
+      mergedOffsetsScores.numToLetter.bestStreak
+    );
+  }
+
   notifySyncListeners();
 }
 
@@ -208,6 +270,17 @@ export function startCloudSync(uid: string): void {
 
   stopCloudSync();
   currentSyncedUid = uid;
+
+  // Immediately publish existing local high scores to leaderboard for the signed-in user
+  const localSettings = loadSettings();
+  const localL2N = loadOffsetsModeScores('letterToNum');
+  const localN2L = loadOffsetsModeScores('numToLetter');
+  if (localL2N.best60s > 0 || localL2N.bestStreak > 0) {
+    updateLeaderboardScore(uid, localSettings.studentName, 'letterToNum', localL2N.best60s, localL2N.bestStreak);
+  }
+  if (localN2L.best60s > 0 || localN2L.bestStreak > 0) {
+    updateLeaderboardScore(uid, localSettings.studentName, 'numToLetter', localN2L.best60s, localN2L.bestStreak);
+  }
 
   const userDocRef = doc(db, 'users', uid);
   activeSyncUnsubscribe = onSnapshot(userDocRef, (snap) => {
