@@ -34,8 +34,10 @@ jobs:
         run: npm ci
 
       - name: Create .env.local
-        if: ${{ secrets.ENV_LOCAL != '' }}
-        run: echo "$ENV_LOCAL" > .env.local
+        run: |
+          if [ -n "$ENV_LOCAL" ]; then
+            echo "$ENV_LOCAL" > .env.local
+          fi
         env:
           ENV_LOCAL: ${{ secrets.ENV_LOCAL }}
 
