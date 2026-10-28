@@ -18,12 +18,14 @@ export const UserAuthBadge: React.FC<UserAuthBadgeProps> = ({ onOpenOptions }) =
 
   if (isAllowed && user) {
     const displayName = allowedUser?.displayName || user.displayName || 'Decoder';
-    const isCoach = allowedUser?.role === 'coach';
+    const role = allowedUser?.role;
+    const isTeacherOrCoach = role === 'coach' || role === 'teacher';
+    const roleLabel = role === 'teacher' ? 'Teacher' : 'Coach';
 
     return (
       <div className="auth-badge-container">
         <button
-          className={`auth-badge logged-in-badge ${isCoach ? 'coach-badge' : ''}`}
+          className={`auth-badge logged-in-badge ${isTeacherOrCoach ? 'coach-badge' : ''}`}
           onClick={onOpenOptions}
           title={`${displayName} (${user.email}) - Click for Options`}
         >
@@ -35,7 +37,7 @@ export const UserAuthBadge: React.FC<UserAuthBadgeProps> = ({ onOpenOptions }) =
             </span>
           )}
           <span className="auth-name">{displayName}</span>
-          {isCoach && <span className="auth-role-tag">Coach</span>}
+          {isTeacherOrCoach && <span className="auth-role-tag">{roleLabel}</span>}
           <span className="auth-sync-indicator" title="Cloud Sync Active">●</span>
         </button>
 

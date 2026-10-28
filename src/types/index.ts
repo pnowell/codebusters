@@ -48,7 +48,7 @@ export interface EvaluationResult {
 export interface AllowedUser {
   email: string;
   displayName: string;
-  role: 'student' | 'coach';
+  role: 'student' | 'coach' | 'teacher';
   addedAt?: unknown;
   active: boolean;
 }
@@ -57,7 +57,7 @@ export interface UserProfile {
   uid: string;
   email: string;
   displayName: string;
-  role: 'student' | 'coach';
+  role: 'student' | 'coach' | 'teacher';
   unlockedCiphers: CipherType[];
   settings?: {
     soundEffects?: boolean;

@@ -63,7 +63,7 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
                 <div className="account-details">
                   <span className="account-email">{user.email}</span>
                   <span className="account-role-badge">
-                    {allowedUser?.role === 'coach' ? '🛡️ Coach' : '👤 Student'}
+                    {allowedUser?.role === 'coach' ? '🛡️ Coach' : allowedUser?.role === 'teacher' ? '🛡️ Teacher' : '👤 Student'}
                   </span>
                 </div>
                 <button
