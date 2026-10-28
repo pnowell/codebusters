@@ -5,8 +5,8 @@ import {
   saveSettings,
   loadCompletedQuoteIds,
   saveCompletedQuoteIds,
-  loadOffsetsProgress,
-  saveOffsetsProgress,
+  loadAllOffsetsProgress,
+  saveAllOffsetsProgress,
   loadOffsetsModeScores,
   saveOffsetsModeScore,
   loadCipherPracticeHistory,
@@ -14,6 +14,7 @@ import {
   registerSyncDispatcher,
   withoutSyncDispatch,
   type OffsetsProgress,
+  type OffsetsProgressByMode,
   type OffsetsScoresByMode,
 } from './storage';
 import type { UserProfile, UserSettings } from '../types';
@@ -24,6 +25,23 @@ const syncListeners: Set<() => void> = new Set();
 
 let pendingCloudUpdates: Partial<UserProfile> = {};
 let cloudDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+function normalizeOffsetsProgress(raw: unknown): OffsetsProgressByMode {
+  if (!raw || typeof raw !== 'object') {
+    return { letterToNum: {}, numToLetter: {} };
+  }
+  const obj = raw as Record<string, unknown>;
+  if ('letterToNum' in obj || 'numToLetter' in obj) {
+    return {
+      letterToNum: (obj.letterToNum as OffsetsProgress) || {},
+      numToLetter: (obj.numToLetter as OffsetsProgress) || {},
+    };
+  }
+  return {
+    letterToNum: obj as OffsetsProgress,
+    numToLetter: {},
+  };
+}
 
 // Automatically wire local storage changes to debounced Firestore cloud updates
 registerSyncDispatcher((type, data) => {
@@ -38,7 +56,7 @@ registerSyncDispatcher((type, data) => {
       pushCloudUpdate({ completedQuotes: data as number[] });
       break;
     case 'offsetsProgress':
-      pushCloudUpdate({ offsetsProgress: data as OffsetsProgress });
+      pushCloudUpdate({ offsetsProgress: data as OffsetsProgressByMode });
       break;
     case 'offsetsScores': {
       pushCloudUpdate({ offsetsScores: data as OffsetsScoresByMode });
@@ -77,7 +95,7 @@ export async function mergeAndInitializeCloudUser(uid: string, email: string, de
 
   const localSettings = loadSettings();
   const localCompleted = loadCompletedQuoteIds();
-  const localOffsetsProgress = loadOffsetsProgress();
+  const localOffsetsProgressByMode = loadAllOffsetsProgress();
   const localLetterToNum = loadOffsetsModeScores('letterToNum');
   const localNumToLetter = loadOffsetsModeScores('numToLetter');
   const localPracticeHistory = loadCipherPracticeHistory();
@@ -106,21 +124,30 @@ export async function mergeAndInitializeCloudUser(uid: string, email: string, de
     },
   };
 
-  // 4. Offsets Progress: Merge per-letter stats
-  const cloudProgress = (cloudData.offsetsProgress ?? {}) as OffsetsProgress;
-  const mergedProgress: OffsetsProgress = { ...cloudProgress };
-  for (const [char, localStat] of Object.entries(localOffsetsProgress)) {
-    const cloudStat = mergedProgress[char];
-    if (!cloudStat) {
-      mergedProgress[char] = localStat;
-    } else {
-      mergedProgress[char] = {
-        attempts: Math.max(localStat.attempts, cloudStat.attempts),
-        correct: Math.max(localStat.correct, cloudStat.correct),
-        streak: Math.max(localStat.streak, cloudStat.streak),
-      };
+  // 4. Offsets Progress: Merge per-letter stats per mode
+  const cloudOffsetsProgressByMode = normalizeOffsetsProgress(cloudData.offsetsProgress);
+
+  const mergeLetterStats = (localP: OffsetsProgress, cloudP: OffsetsProgress): OffsetsProgress => {
+    const merged: OffsetsProgress = { ...cloudP };
+    for (const [char, localStat] of Object.entries(localP)) {
+      const cloudStat = merged[char];
+      if (!cloudStat) {
+        merged[char] = localStat;
+      } else {
+        merged[char] = {
+          attempts: Math.max(localStat.attempts, cloudStat.attempts),
+          correct: Math.max(localStat.correct, cloudStat.correct),
+          streak: Math.max(localStat.streak, cloudStat.streak),
+        };
+      }
     }
-  }
+    return merged;
+  };
+
+  const mergedProgress: OffsetsProgressByMode = {
+    letterToNum: mergeLetterStats(localOffsetsProgressByMode.letterToNum, cloudOffsetsProgressByMode.letterToNum),
+    numToLetter: mergeLetterStats(localOffsetsProgressByMode.numToLetter, cloudOffsetsProgressByMode.numToLetter),
+  };
 
   // 5. Practice History: Combine counts
   const cloudHistory = cloudData.practiceHistory ?? {};
@@ -148,7 +175,7 @@ export async function mergeAndInitializeCloudUser(uid: string, email: string, de
 
   withoutSyncDispatch(() => {
     saveSettings(updatedLocalSettings);
-    saveOffsetsProgress(mergedProgress);
+    saveAllOffsetsProgress(mergedProgress);
     saveOffsetsModeScore('letterToNum', mergedOffsetsScores.letterToNum);
     saveOffsetsModeScore('numToLetter', mergedOffsetsScores.numToLetter);
   });
@@ -212,9 +239,10 @@ export function startCloudSync(uid: string): void {
       }
 
       if (data.offsetsProgress) {
-        const currentProgress = loadOffsetsProgress();
-        if (JSON.stringify(currentProgress) !== JSON.stringify(data.offsetsProgress)) {
-          saveOffsetsProgress(data.offsetsProgress as OffsetsProgress);
+        const remoteProgress = normalizeOffsetsProgress(data.offsetsProgress);
+        const currentProgress = loadAllOffsetsProgress();
+        if (JSON.stringify(currentProgress) !== JSON.stringify(remoteProgress)) {
+          saveAllOffsetsProgress(remoteProgress);
           hasChanged = true;
         }
       }

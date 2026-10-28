@@ -140,7 +140,7 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, wo
   const initialMode: DrillMode = workoutContext?.offsetsMode || 'letterToNum';
   const [mode, setMode] = useState<DrillMode>(initialMode);
   const [scores, setScores] = useState<OffsetsModeScores>(() => loadOffsetsModeScores(initialMode));
-  const [progress, setProgress] = useState<OffsetsProgress>(loadOffsetsProgress);
+  const [progress, setProgress] = useState<OffsetsProgress>(() => loadOffsetsProgress(initialMode));
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [newRecordAlert, setNewRecordAlert] = useState<boolean>(false);
 
@@ -163,7 +163,7 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, wo
 
   // Spaced Repetition deck initialization: always 26 letters in rotation
   const [initialData] = useState(() => {
-    const initialDeck = initDeck(loadOffsetsProgress());
+    const initialDeck = initDeck(loadOffsetsProgress(initialMode));
     const initialQ = makeQuestionForOffset(initialDeck[0] ?? 0, initialMode);
     return { initialDeck, initialQ };
   });
@@ -231,13 +231,17 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, wo
     if (newMode === mode) return;
     setMode(newMode);
     setScores(loadOffsetsModeScores(newMode));
+    const newProgress = loadOffsetsProgress(newMode);
+    setProgress(newProgress);
+    const newDeck = initDeck(newProgress);
+    deckQueueRef.current = newDeck;
     setStreak(0);
     setCurrent60s(0);
     setCadence(0);
     correctTimestampsRef.current = [];
     lastCorrectTimeRef.current = null;
 
-    setQuestion(prev => makeQuestionForOffset(prev.offset, newMode));
+    setQuestion(makeQuestionForOffset(newDeck[0] ?? 0, newMode));
     setInputVal('');
     setWrongFeedback(null);
     setTimeout(() => {
@@ -246,11 +250,12 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, wo
   };
 
   const handleResetProgress = () => {
+    const modeLabel = mode === 'letterToNum' ? 'Letter → #' : '# → Letter';
     const confirmed = window.confirm(
-      '⚠️ Resetting alphabet mastery will clear all letter streaks and return all 26 letters to unseen in the deck.\n\nAre you sure you want to proceed?'
+      `⚠️ Resetting ${modeLabel} alphabet mastery will clear all letter streaks for this mode and return all 26 letters to unseen in the deck.\n\nAre you sure you want to proceed?`
     );
     if (confirmed) {
-      resetOffsetsProgress();
+      resetOffsetsProgress(mode);
       const freshProgress: OffsetsProgress = {};
       setProgress(freshProgress);
       const freshDeck = initDeck(freshProgress);
@@ -363,7 +368,7 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, wo
         [letter]: updatedLetterProgress,
       };
       setProgress(newProgress);
-      saveOffsetsProgress(newProgress);
+      saveOffsetsProgress(mode, newProgress);
 
       if (deck) {
         deck.splice(insertIdx, 0, currentOffset);
@@ -394,7 +399,7 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, wo
         [letter]: updatedLetterProgress,
       };
       setProgress(newProgress);
-      saveOffsetsProgress(newProgress);
+      saveOffsetsProgress(mode, newProgress);
 
       // Miss: re-insert shallowly (index 3 => 2-3 intervening questions)
       if (deck) {
@@ -530,7 +535,7 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, wo
           type="button"
           className="mastery-chip-btn"
           onClick={() => setIsModalOpen(true)}
-          title="Click to view detailed Alphabet Mastery & letter streaks"
+          title={`Click to view detailed Alphabet Mastery & letter streaks for ${modeLabel}`}
         >
           📊 {masteredCount}/26 Mastered
         </button>
@@ -665,6 +670,7 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, wo
         progress={progress}
         onResetProgress={handleResetProgress}
         currentOffset={question.offset}
+        mode={mode}
       />
     </div>
   );

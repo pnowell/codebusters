@@ -134,6 +134,8 @@ export function clearCompletedQuotes(): void {
   }
 }
 
+export type OffsetsMode = 'letterToNum' | 'numToLetter';
+
 export interface LetterProgress {
   streak: number; // consecutive correct answers
   attempts: number;
@@ -141,37 +143,79 @@ export interface LetterProgress {
 }
 
 export type OffsetsProgress = Record<string, LetterProgress>;
+export type OffsetsProgressByMode = Record<OffsetsMode, OffsetsProgress>;
 
-export function loadOffsetsProgress(): OffsetsProgress {
+export function loadAllOffsetsProgress(): OffsetsProgressByMode {
   try {
     const raw = localStorage.getItem(KEYS.offsetsProgress);
-    if (!raw) return {};
+    if (!raw) {
+      return { letterToNum: {}, numToLetter: {} };
+    }
     const parsed = JSON.parse(raw);
-    return typeof parsed === 'object' && parsed !== null ? parsed : {};
+    if (!parsed || typeof parsed !== 'object') {
+      return { letterToNum: {}, numToLetter: {} };
+    }
+
+    // Check if it's already keyed by mode
+    if ('letterToNum' in parsed || 'numToLetter' in parsed) {
+      return {
+        letterToNum: (parsed.letterToNum as OffsetsProgress) || {},
+        numToLetter: (parsed.numToLetter as OffsetsProgress) || {},
+      };
+    }
+
+    // Legacy migration: single flat record belonged to letterToNum
+    return {
+      letterToNum: parsed as OffsetsProgress,
+      numToLetter: {},
+    };
   } catch {
-    return {};
+    return { letterToNum: {}, numToLetter: {} };
   }
 }
 
-export function saveOffsetsProgress(p: OffsetsProgress): void {
+export function loadOffsetsProgress(mode: OffsetsMode = 'letterToNum'): OffsetsProgress {
+  return loadAllOffsetsProgress()[mode];
+}
+
+export function saveOffsetsProgress(
+  mode: OffsetsMode,
+  p: OffsetsProgress
+): void {
   try {
-    localStorage.setItem(KEYS.offsetsProgress, JSON.stringify(p));
-    dispatchSync('offsetsProgress', p);
+    const all = loadAllOffsetsProgress();
+    all[mode] = p;
+    localStorage.setItem(KEYS.offsetsProgress, JSON.stringify(all));
+    dispatchSync('offsetsProgress', all);
   } catch {
     // Ignore
   }
 }
 
-export function resetOffsetsProgress(): void {
+export function saveAllOffsetsProgress(all: OffsetsProgressByMode): void {
   try {
-    localStorage.removeItem(KEYS.offsetsProgress);
-    dispatchSync('offsetsProgress', {});
+    localStorage.setItem(KEYS.offsetsProgress, JSON.stringify(all));
+    dispatchSync('offsetsProgress', all);
   } catch {
     // Ignore
   }
 }
 
-export type OffsetsMode = 'letterToNum' | 'numToLetter';
+export function resetOffsetsProgress(mode?: OffsetsMode): void {
+  try {
+    if (!mode) {
+      localStorage.removeItem(KEYS.offsetsProgress);
+      dispatchSync('offsetsProgress', { letterToNum: {}, numToLetter: {} });
+    } else {
+      const all = loadAllOffsetsProgress();
+      all[mode] = {};
+      localStorage.setItem(KEYS.offsetsProgress, JSON.stringify(all));
+      dispatchSync('offsetsProgress', all);
+    }
+  } catch {
+    // Ignore
+  }
+}
 
 export interface OffsetsModeScores {
   best60s: number;

@@ -63,7 +63,7 @@ export interface UserProfile {
     soundEffects?: boolean;
     highContrast?: boolean;
   };
-  offsetsProgress?: Record<string, { streak: number; attempts: number; correct: number; avgLatencyMs?: number }>;
+  offsetsProgress?: Record<string, unknown>;
   offsetsScores?: Record<string, { best60s: number; bestStreak: number }>;
   completedQuotes?: number[];
   practiceHistory?: Record<string, { count: number; lastPracticed: number }>;

@@ -1,6 +1,6 @@
 import React from 'react';
 import { offsetToLetter } from '../../utils/ciphers';
-import type { OffsetsProgress } from '../../services/storage';
+import type { OffsetsProgress, OffsetsMode } from '../../services/storage';
 
 interface AlphabetMasteryModalProps {
   isOpen: boolean;
@@ -8,6 +8,7 @@ interface AlphabetMasteryModalProps {
   progress: OffsetsProgress;
   onResetProgress: () => void;
   currentOffset: number;
+  mode?: OffsetsMode;
 }
 
 const ALL_OFFSETS = Array.from({ length: 26 }, (_, i) => i);
@@ -21,6 +22,7 @@ export const AlphabetMasteryModal: React.FC<AlphabetMasteryModalProps> = ({
   progress,
   onResetProgress,
   currentOffset,
+  mode,
 }) => {
   if (!isOpen) return null;
 
@@ -78,7 +80,7 @@ export const AlphabetMasteryModal: React.FC<AlphabetMasteryModalProps> = ({
         <div className="modal-header">
           <div>
             <h3 id="mastery-modal-title" className="modal-title">
-              Alphabet Mastery
+              Alphabet Mastery {mode ? `(${mode === 'numToLetter' ? '# → Letter' : 'Letter → #'})` : ''}
             </h3>
             <div className="modal-subtitle" style={{ fontSize: '0.8rem', color: '#34d399', fontWeight: 700, marginTop: '2px' }}>
               {masteredCount} / 26 Mastered (Streak 3+)
