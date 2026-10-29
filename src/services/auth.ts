@@ -8,6 +8,7 @@ import {
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db, googleProvider, isFirebaseConfigured } from './firebase';
 import type { AllowedUser } from '../types';
+import { upsertPublicProfile } from './profileService';
 
 export interface AuthResult {
   allowed: boolean;
@@ -82,17 +83,23 @@ export async function signInWithGoogle(): Promise<AuthResult> {
     // Touch user profile / lastActive in Firestore
     if (db) {
       const userRef = doc(db, 'users', user.uid);
+      const displayName = allowed.displayName || user.displayName || 'Decoder';
       await setDoc(
         userRef,
         {
           uid: user.uid,
           email: normalizeEmail(user.email),
-          displayName: allowed.displayName || user.displayName || 'Decoder',
+          displayName,
           role: allowed.role,
           lastActiveAt: serverTimestamp(),
         },
         { merge: true }
       );
+
+      await upsertPublicProfile(user.uid, {
+        displayName,
+        role: allowed.role,
+      });
     }
 
     return {

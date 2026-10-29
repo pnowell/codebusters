@@ -3129,6 +3129,22 @@ body {
   color: var(--text-main);
 }
 
+.results-student-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  font-size: 0.82rem;
+  color: var(--accent-blue);
+}
+
+.results-student-pill strong {
+  color: #ffffff;
+}
+
 .results-main-stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));

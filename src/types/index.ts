@@ -123,11 +123,21 @@ export interface TestEvaluationResult {
   questions: QuestionResult[];
 }
 
+export interface PublicProfile {
+  uid: string;
+  displayName: string;
+  role: 'student' | 'coach' | 'teacher';
+  offsetsScores?: Record<string, { best60s: number; bestStreak: number }>;
+  updatedAt?: unknown;
+}
+
 export interface TestAttempt {
   attemptId: string;
   testId: string;
-  studentUid: string;
-  studentName: string;
+  studentUids: string[];
+  teamName?: string;
+  studentUid?: string;   // Legacy backwards-compatibility
+  studentName?: string;  // Legacy backwards-compatibility
   startedAt: number;
   submittedAt?: number;
   status: 'in_progress' | 'submitted' | 'expired';

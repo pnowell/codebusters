@@ -40,6 +40,7 @@ import { NotAllowedModal } from './components/auth/NotAllowedModal';
 import { parseUrlRoute, buildRouteUrl, parseUnlockedParam } from './utils/routing';
 import { useVisualViewportHeight } from './hooks/useVisualViewportHeight';
 import { useAuth } from './context/useAuth';
+import { subscribeTeamProfiles } from './services/profileService';
 
 function initSettings(): UserSettings {
   const loaded = loadSettings();
@@ -82,6 +83,7 @@ export const App: React.FC = () => {
   const [selectedCompletedTest, setSelectedCompletedTest] = useState<{
     testPacket: TestPacket;
     results: TestEvaluationResult;
+    attempt?: TestAttempt;
   } | null>(null);
 
   // Workout Circuit Session & Summary States
@@ -111,6 +113,14 @@ export const App: React.FC = () => {
     return subscribeAvailableTests((tests) => {
       setAvailableTests(tests);
       setIsTestsLoading(false);
+    });
+  }, [isAllowed]);
+
+  // Subscribe to Team Public Profiles (in-memory name lookup and high score sync)
+  useEffect(() => {
+    if (!isAllowed) return;
+    return subscribeTeamProfiles(() => {
+      // Profiles cached in profileService
     });
   }, [isAllowed]);
 
@@ -160,14 +170,14 @@ export const App: React.FC = () => {
     const attempt = studentAttempts[route.resultsTestId] || getLocalTestAttempt(route.resultsTestId);
     if (test && attempt?.results) {
       queueMicrotask(() => {
-        setSelectedCompletedTest({ testPacket: test, results: attempt.results! });
+        setSelectedCompletedTest({ testPacket: test, results: attempt.results!, attempt });
       });
     } else if (route.resultsTestId) {
       fetchTestById(route.resultsTestId).then((fetched) => {
         if (fetched) {
           const localAtt = getLocalTestAttempt(fetched.testId);
           if (localAtt?.results) {
-            setSelectedCompletedTest({ testPacket: fetched, results: localAtt.results });
+            setSelectedCompletedTest({ testPacket: fetched, results: localAtt.results, attempt: localAtt });
           }
         }
       });
@@ -191,7 +201,7 @@ export const App: React.FC = () => {
         const test = availableTests.find((t) => t.testId === route.resultsTestId);
         const attempt = studentAttempts[route.resultsTestId] || getLocalTestAttempt(route.resultsTestId);
         if (test && attempt?.results) {
-          setSelectedCompletedTest({ testPacket: test, results: attempt.results });
+          setSelectedCompletedTest({ testPacket: test, results: attempt.results, attempt });
         }
       }
       if (!route.drill) {
@@ -266,7 +276,7 @@ export const App: React.FC = () => {
 
   const handleSelectTest = (test: TestPacket, attempt: TestAttempt | null) => {
     if (attempt && (attempt.status === 'submitted' || attempt.status === 'expired') && attempt.results) {
-      setSelectedCompletedTest({ testPacket: test, results: attempt.results });
+      setSelectedCompletedTest({ testPacket: test, results: attempt.results, attempt });
       const newUrl = buildRouteUrl({ drill: null, testsList: true, resultsTestId: test.testId });
       window.history.pushState({ testsList: true, resultsTestId: test.testId }, '', newUrl);
     } else {
@@ -482,7 +492,6 @@ export const App: React.FC = () => {
         <TestRunner
           testPacket={activeTestSession}
           studentUid={user?.uid || 'student'}
-          studentName={user?.displayName || settings.studentName || 'Decoder'}
           initialAttempt={existingAttempt}
           onExitToMenu={handleExitTest}
         />
@@ -509,6 +518,8 @@ export const App: React.FC = () => {
         <TestResultsView
           testPacket={selectedCompletedTest.testPacket}
           results={selectedCompletedTest.results}
+          studentUids={selectedCompletedTest.attempt?.studentUids}
+          teamName={selectedCompletedTest.attempt?.teamName}
           onBack={handleBackFromTestResults}
         />
       )}

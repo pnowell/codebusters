@@ -17,7 +17,8 @@ import {
   type OffsetsProgressByMode,
   type OffsetsScoresByMode,
 } from './storage';
-import type { UserProfile, UserSettings } from '../types';
+import type { UserProfile, UserSettings, PublicProfile } from '../types';
+import { upsertPublicProfile } from './profileService';
 
 let activeSyncUnsubscribe: Unsubscribe | null = null;
 let currentSyncedUid: string | null = null;
@@ -60,7 +61,7 @@ function mergeLetterStats(localP: OffsetsProgress, cloudP: OffsetsProgress): Off
   return merged;
 }
 
-import { updateLeaderboardScore, type LeaderboardEntry } from './leaderboard';
+import { updateLeaderboardScore } from './leaderboard';
 
 // Automatically wire local storage changes to debounced Firestore cloud updates
 registerSyncDispatcher((type, data) => {
@@ -69,26 +70,7 @@ registerSyncDispatcher((type, data) => {
     case 'settings': {
       const s = data as UserSettings;
       pushCloudUpdate({ displayName: s.studentName, unlockedCiphers: s.unlockedCiphers });
-      const scoresLetterToNum = loadOffsetsModeScores('letterToNum');
-      const scoresNumToLetter = loadOffsetsModeScores('numToLetter');
-      if (scoresLetterToNum.best60s > 0 || scoresLetterToNum.bestStreak > 0) {
-        updateLeaderboardScore(
-          currentSyncedUid,
-          s.studentName,
-          'letterToNum',
-          scoresLetterToNum.best60s,
-          scoresLetterToNum.bestStreak
-        );
-      }
-      if (scoresNumToLetter.best60s > 0 || scoresNumToLetter.bestStreak > 0) {
-        updateLeaderboardScore(
-          currentSyncedUid,
-          s.studentName,
-          'numToLetter',
-          scoresNumToLetter.best60s,
-          scoresNumToLetter.bestStreak
-        );
-      }
+      upsertPublicProfile(currentSyncedUid, { displayName: s.studentName });
       break;
     }
     case 'completedQuotes':
@@ -149,18 +131,15 @@ export async function mergeAndInitializeCloudUser(uid: string, email: string, de
   if (!db) return;
 
   const userDocRef = doc(db, 'users', uid);
-  const l2nBoardRef = doc(db, 'leaderboards', 'offsets_letterToNum', 'entries', uid);
-  const n2lBoardRef = doc(db, 'leaderboards', 'offsets_numToLetter', 'entries', uid);
+  const profileDocRef = doc(db, 'profiles', uid);
 
-  const [snap, l2nBoardSnap, n2lBoardSnap] = await Promise.all([
+  const [snap, profileSnap] = await Promise.all([
     getDoc(userDocRef),
-    getDoc(l2nBoardRef),
-    getDoc(n2lBoardRef),
+    getDoc(profileDocRef),
   ]);
 
   const cloudData = (snap.exists() ? snap.data() : {}) as Partial<UserProfile>;
-  const l2nBoard = l2nBoardSnap.exists() ? (l2nBoardSnap.data() as Partial<LeaderboardEntry>) : null;
-  const n2lBoard = n2lBoardSnap.exists() ? (n2lBoardSnap.data() as Partial<LeaderboardEntry>) : null;
+  const profileData = (profileSnap.exists() ? profileSnap.data() : {}) as Partial<PublicProfile>;
 
   const localSettings = loadSettings();
   const localCompleted = loadCompletedQuoteIds();
@@ -178,18 +157,20 @@ export async function mergeAndInitializeCloudUser(uid: string, email: string, de
   const cloudCompleted = cloudData.completedQuotes ?? [];
   const mergedCompleted = Array.from(new Set([...localCompleted, ...cloudCompleted]));
 
-  // 3. Offsets Scores: Max scores across Local, Cloud Profile, and Cloud Leaderboards
+  // 3. Offsets Scores: Max scores across Local, Cloud Profile, and User Profile
   const cloudLetterToNum = cloudData.offsetsScores?.letterToNum ?? { best60s: 0, bestStreak: 0 };
   const cloudNumToLetter = cloudData.offsetsScores?.numToLetter ?? { best60s: 0, bestStreak: 0 };
+  const profileL2N = profileData.offsetsScores?.letterToNum ?? { best60s: 0, bestStreak: 0 };
+  const profileN2L = profileData.offsetsScores?.numToLetter ?? { best60s: 0, bestStreak: 0 };
 
   const mergedOffsetsScores: OffsetsScoresByMode = {
     letterToNum: {
-      best60s: Math.max(localLetterToNum.best60s, cloudLetterToNum.best60s, l2nBoard?.score ?? 0),
-      bestStreak: Math.max(localLetterToNum.bestStreak, cloudLetterToNum.bestStreak, l2nBoard?.bestStreak ?? 0),
+      best60s: Math.max(localLetterToNum.best60s, cloudLetterToNum.best60s, profileL2N.best60s),
+      bestStreak: Math.max(localLetterToNum.bestStreak, cloudLetterToNum.bestStreak, profileL2N.bestStreak),
     },
     numToLetter: {
-      best60s: Math.max(localNumToLetter.best60s, cloudNumToLetter.best60s, n2lBoard?.score ?? 0),
-      bestStreak: Math.max(localNumToLetter.bestStreak, cloudNumToLetter.bestStreak, n2lBoard?.bestStreak ?? 0),
+      best60s: Math.max(localNumToLetter.best60s, cloudNumToLetter.best60s, profileN2L.best60s),
+      bestStreak: Math.max(localNumToLetter.bestStreak, cloudNumToLetter.bestStreak, profileN2L.bestStreak),
     },
   };
 
@@ -216,8 +197,11 @@ export async function mergeAndInitializeCloudUser(uid: string, email: string, de
     }
   }
 
-  // 6. Name: Cloud customized name or local name
-  const finalName = cloudData.displayName || (localSettings.studentName !== 'Decoder' ? localSettings.studentName : (defaultName || 'Decoder'));
+  // 6. Name: Profile customized name or local name
+  const finalName =
+    profileData.displayName ||
+    cloudData.displayName ||
+    (localSettings.studentName !== 'Decoder' ? localSettings.studentName : (defaultName || 'Decoder'));
 
   // Update local storage with merged state (suppress sync broadcast to prevent loop)
   const updatedLocalSettings: UserSettings = {
@@ -232,7 +216,7 @@ export async function mergeAndInitializeCloudUser(uid: string, email: string, de
     saveOffsetsModeScore('numToLetter', mergedOffsetsScores.numToLetter);
   });
 
-  // Sync to Cloud
+  // Sync to Cloud User (private)
   await setDoc(
     userDocRef,
     {
@@ -249,25 +233,11 @@ export async function mergeAndInitializeCloudUser(uid: string, email: string, de
     { merge: true }
   );
 
-  // Post best scores to team leaderboard
-  if (mergedOffsetsScores.letterToNum.best60s > 0 || mergedOffsetsScores.letterToNum.bestStreak > 0) {
-    updateLeaderboardScore(
-      uid,
-      finalName,
-      'letterToNum',
-      mergedOffsetsScores.letterToNum.best60s,
-      mergedOffsetsScores.letterToNum.bestStreak
-    );
-  }
-  if (mergedOffsetsScores.numToLetter.best60s > 0 || mergedOffsetsScores.numToLetter.bestStreak > 0) {
-    updateLeaderboardScore(
-      uid,
-      finalName,
-      'numToLetter',
-      mergedOffsetsScores.numToLetter.best60s,
-      mergedOffsetsScores.numToLetter.bestStreak
-    );
-  }
+  // Sync to Public Profile (public roster & leaderboards)
+  await upsertPublicProfile(uid, {
+    displayName: finalName,
+    offsetsScores: mergedOffsetsScores,
+  });
 
   notifySyncListeners();
 }

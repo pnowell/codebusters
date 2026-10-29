@@ -3,10 +3,13 @@ import type { TestPacket, TestEvaluationResult, QuestionResult } from '../../typ
 import { getDrill } from '../../data/drills';
 import { getQuoteById } from '../../data/quotes';
 import { groupIntoWords, isLetter } from '../../utils/ciphers';
+import { getDisplayNamesForUids } from '../../services/profileService';
 
 interface TestResultsViewProps {
   testPacket: TestPacket;
   results: TestEvaluationResult;
+  studentUids?: string[];
+  teamName?: string;
   onBack: () => void;
 }
 
@@ -158,8 +161,12 @@ const QuestionDetailCard: React.FC<QuestionDetailCardProps> = ({
 export const TestResultsView: React.FC<TestResultsViewProps> = ({
   testPacket,
   results,
+  studentUids,
+  teamName,
   onBack,
 }) => {
+  const teamOrStudentNames = teamName || (studentUids && studentUids.length > 0 ? getDisplayNamesForUids(studentUids) : null);
+
   // Accordion state: by default, all problems start collapsed as requested
   const [expandedIndices, setExpandedIndices] = useState<Record<number, boolean>>({});
 
@@ -218,6 +225,11 @@ export const TestResultsView: React.FC<TestResultsViewProps> = ({
       <div className="results-summary-card">
         <div className="results-trophy-icon">🏆</div>
         <h3 className="results-summary-test-title">{testPacket.title}</h3>
+        {teamOrStudentNames && (
+          <div className="results-student-pill">
+            <span>👤 Decoder: <strong>{teamOrStudentNames}</strong></span>
+          </div>
+        )}
 
         <div className="results-main-stats-grid">
           <div className="results-stat-box score-stat-box">

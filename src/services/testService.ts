@@ -70,7 +70,11 @@ export function getLocalTestAttempt(testId: string): TestAttempt | null {
   try {
     const raw = localStorage.getItem(`${LOCAL_ATTEMPT_PREFIX}${testId}`);
     if (!raw) return null;
-    return JSON.parse(raw) as TestAttempt;
+    const parsed = JSON.parse(raw) as TestAttempt;
+    if (!parsed.studentUids && parsed.studentUid) {
+      parsed.studentUids = [parsed.studentUid];
+    }
+    return parsed;
   } catch (err) {
     console.warn('[TestService] Failed to load local attempt:', err);
     return null;
@@ -149,8 +153,29 @@ export function subscribeAvailableTests(
   );
 }
 
+function mergeAttemptIntoMap(map: Record<string, TestAttempt>, data: TestAttempt) {
+  const testId = data.testId;
+  if (!testId) return;
+
+  const existing = map[testId];
+  if (!existing) {
+    map[testId] = data;
+  } else {
+    const isCurrentSubmitted = data.status === 'submitted' || data.status === 'expired';
+    const isExistingSubmitted = existing.status === 'submitted' || existing.status === 'expired';
+    if (isCurrentSubmitted && !isExistingSubmitted) {
+      map[testId] = data;
+    } else if (
+      (data.submittedAt || data.startedAt || 0) >
+      (existing.submittedAt || existing.startedAt || 0)
+    ) {
+      map[testId] = data;
+    }
+  }
+}
+
 /**
- * Subscribes to all test attempts made by a specific student
+ * Subscribes to all test attempts made by a specific student (or teams containing the student)
  */
 export function subscribeStudentAttempts(
   studentUid: string,
@@ -163,40 +188,60 @@ export function subscribeStudentAttempts(
   }
 
   const attemptsCol = collection(db, 'test_attempts');
-  const q = query(attemptsCol, where('studentUid', '==', studentUid));
+  const qArray = query(attemptsCol, where('studentUids', 'array-contains', studentUid));
+  const qLegacy = query(attemptsCol, where('studentUid', '==', studentUid));
 
-  return onSnapshot(
-    q,
+  const arrayMap: Record<string, TestAttempt> = {};
+  const legacyMap: Record<string, TestAttempt> = {};
+
+  const emitMerged = () => {
+    const merged = { ...legacyMap, ...arrayMap };
+    onUpdate(merged);
+  };
+
+  const unsubArray = onSnapshot(
+    qArray,
     (snap) => {
-      const attemptsMap: Record<string, TestAttempt> = {};
+      Object.keys(arrayMap).forEach((k) => delete arrayMap[k]);
       snap.forEach((docSnap) => {
         const data = docSnap.data() as TestAttempt;
-        const testId = data.testId;
-        if (!testId) return;
-
-        const existing = attemptsMap[testId];
-        if (!existing) {
-          attemptsMap[testId] = data;
-        } else {
-          const isCurrentSubmitted = data.status === 'submitted' || data.status === 'expired';
-          const isExistingSubmitted = existing.status === 'submitted' || existing.status === 'expired';
-          if (isCurrentSubmitted && !isExistingSubmitted) {
-            attemptsMap[testId] = data;
-          } else if (
-            (data.submittedAt || data.startedAt || 0) >
-            (existing.submittedAt || existing.startedAt || 0)
-          ) {
-            attemptsMap[testId] = data;
-          }
-        }
+        const normalized: TestAttempt = {
+          ...data,
+          studentUids: data.studentUids || (data.studentUid ? [data.studentUid] : [studentUid]),
+        };
+        mergeAttemptIntoMap(arrayMap, normalized);
       });
-      onUpdate(attemptsMap);
+      emitMerged();
     },
     (err) => {
-      console.warn(`[TestService] Error querying attempts for ${studentUid}:`, err);
+      console.warn(`[TestService] Error querying array attempts for ${studentUid}:`, err);
       onError?.(err);
     }
   );
+
+  const unsubLegacy = onSnapshot(
+    qLegacy,
+    (snap) => {
+      Object.keys(legacyMap).forEach((k) => delete legacyMap[k]);
+      snap.forEach((docSnap) => {
+        const data = docSnap.data() as TestAttempt;
+        const normalized: TestAttempt = {
+          ...data,
+          studentUids: data.studentUids || (data.studentUid ? [data.studentUid] : [studentUid]),
+        };
+        mergeAttemptIntoMap(legacyMap, normalized);
+      });
+      emitMerged();
+    },
+    () => {
+      // Legacy query failure can be safely ignored
+    }
+  );
+
+  return () => {
+    unsubArray();
+    unsubLegacy();
+  };
 }
 
 /**
@@ -286,14 +331,23 @@ export async function saveTestAttemptToFirestore(attempt: TestAttempt): Promise<
   if (!db) return false;
   try {
     const docRef = doc(db, 'test_attempts', attempt.attemptId);
-    await setDoc(
-      docRef,
-      {
-        ...attempt,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
+    const uids =
+      attempt.studentUids && attempt.studentUids.length > 0
+        ? attempt.studentUids
+        : attempt.studentUid
+        ? [attempt.studentUid]
+        : [];
+
+    const dataToSave: Record<string, unknown> = {
+      ...attempt,
+      studentUids: uids,
+      updatedAt: serverTimestamp(),
+    };
+    // Strip redundant display name and singular studentUid from Firestore
+    delete dataToSave.studentName;
+    delete dataToSave.studentUid;
+
+    await setDoc(docRef, dataToSave, { merge: true });
     return true;
   } catch (err) {
     console.warn(`[TestService] Failed to sync attempt ${attempt.attemptId} to Firestore:`, err);

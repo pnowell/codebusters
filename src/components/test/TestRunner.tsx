@@ -19,8 +19,9 @@ import { TestResultsView } from './TestResultsView';
 
 interface TestRunnerProps {
   testPacket: TestPacket;
-  studentUid: string;
-  studentName: string;
+  studentUid?: string;
+  studentUids?: string[];
+  studentName?: string;
   initialAttempt?: TestAttempt | null;
   onExitToMenu: () => void;
 }
@@ -28,10 +29,19 @@ interface TestRunnerProps {
 export const TestRunner: React.FC<TestRunnerProps> = ({
   testPacket,
   studentUid,
-  studentName,
+  studentUids,
+  studentName: _studentName,
   initialAttempt,
   onExitToMenu,
 }) => {
+  // Resolve array of student UIDs
+  const resolvedStudentUids = useMemo(() => {
+    if (studentUids && studentUids.length > 0) return studentUids;
+    if (initialAttempt?.studentUids && initialAttempt.studentUids.length > 0) return initialAttempt.studentUids;
+    if (studentUid) return [studentUid];
+    return ['student'];
+  }, [studentUids, initialAttempt?.studentUids, studentUid]);
+
   // Total questions count (review screen is index === questions.length)
   const totalQuestions = testPacket.questions.length;
   const reviewIndex = totalQuestions;
@@ -39,7 +49,8 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
   // Initialize or restore attempt
   const [attemptId] = useState<string>(() => {
     if (initialAttempt?.attemptId) return initialAttempt.attemptId;
-    return `${testPacket.testId}_${studentUid}_${Date.now()}`;
+    const primaryUid = resolvedStudentUids[0] || 'student';
+    return `${testPacket.testId}_${primaryUid}_${Date.now()}`;
   });
 
   const [startedAt] = useState<number>(() => {
@@ -89,8 +100,7 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
   const attemptRef = useRef<TestAttempt>({
     attemptId,
     testId: testPacket.testId,
-    studentUid,
-    studentName,
+    studentUids: resolvedStudentUids,
     startedAt,
     status: isFinished ? (initialAttempt?.status ?? 'submitted') : 'in_progress',
     workspaces,
@@ -101,14 +111,13 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
     attemptRef.current = {
       attemptId,
       testId: testPacket.testId,
-      studentUid,
-      studentName,
+      studentUids: resolvedStudentUids,
       startedAt,
       status: isFinished ? (attemptRef.current.status || 'submitted') : 'in_progress',
       workspaces,
       results: results ?? undefined,
     };
-  }, [attemptId, testPacket.testId, studentUid, studentName, startedAt, isFinished, workspaces, results]);
+  }, [attemptId, testPacket.testId, resolvedStudentUids, startedAt, isFinished, workspaces, results]);
 
   // Evaluate all solutions and finalize attempt
   const submitTest = useCallback((isTimerExpired = false) => {
@@ -160,8 +169,7 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
     const finalAttempt: TestAttempt = {
       attemptId,
       testId: testPacket.testId,
-      studentUid,
-      studentName,
+      studentUids: resolvedStudentUids,
       startedAt,
       submittedAt: Date.now(),
       status: isTimerExpired ? 'expired' : 'submitted',
@@ -175,7 +183,7 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
     // Save final state
     saveLocalTestAttempt(finalAttempt);
     saveTestAttemptToFirestore(finalAttempt);
-  }, [attemptId, isFinished, startedAt, studentName, studentUid, testPacket]);
+  }, [attemptId, isFinished, resolvedStudentUids, startedAt, testPacket]);
 
   // Wall-clock Countdown Timer
   useEffect(() => {
@@ -227,8 +235,7 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
     const currentAttempt: TestAttempt = {
       attemptId,
       testId: testPacket.testId,
-      studentUid,
-      studentName,
+      studentUids: resolvedStudentUids,
       startedAt,
       status: 'in_progress',
       workspaces: updated,
