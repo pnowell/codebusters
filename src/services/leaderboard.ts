@@ -1,6 +1,7 @@
 import {
   collection,
   doc,
+  getDoc,
   onSnapshot,
   setDoc,
   query,
@@ -75,7 +76,8 @@ export function subscribeLeaderboard(
 }
 
 /**
- * Pushes or updates the user's personal best score on the team leaderboard
+ * Pushes or updates the user's personal best score on the team leaderboard.
+ * Enforces a strict high-water-mark (Math.max) so scores or streaks can NEVER be downgraded.
  */
 export async function updateLeaderboardScore(
   uid: string,
@@ -83,27 +85,56 @@ export async function updateLeaderboardScore(
   mode: OffsetsMode,
   score: number,
   bestStreak: number
-): Promise<void> {
-  if (!db || !uid) return;
+): Promise<LeaderboardEntry | null> {
+  if (!db || !uid) return null;
   // Don't post empty scores
-  if (score <= 0 && bestStreak <= 0) return;
+  if (score <= 0 && bestStreak <= 0) return null;
 
   const boardId = getLeaderboardBoardId(mode);
   const entryRef = doc(db, 'leaderboards', boardId, 'entries', uid);
 
   try {
+    const snap = await getDoc(entryRef);
+    const existing = snap.exists() ? (snap.data() as Partial<LeaderboardEntry>) : null;
+
+    const targetScore = Math.max(existing?.score ?? 0, score);
+    const targetStreak = Math.max(existing?.bestStreak ?? 0, bestStreak);
+    const targetName = displayName || existing?.displayName || 'Decoder';
+
+    // If existing score and streak are already >= target and name unchanged, do not rewrite
+    if (
+      existing &&
+      existing.score === targetScore &&
+      existing.bestStreak === targetStreak &&
+      existing.displayName === targetName
+    ) {
+      return {
+        uid,
+        displayName: targetName,
+        score: targetScore,
+        bestStreak: targetStreak,
+      };
+    }
+
+    const updatedEntry: LeaderboardEntry = {
+      uid,
+      displayName: targetName,
+      score: targetScore,
+      bestStreak: targetStreak,
+    };
+
     await setDoc(
       entryRef,
       {
-        uid,
-        displayName: displayName || 'Decoder',
-        score,
-        bestStreak,
+        ...updatedEntry,
         updatedAt: serverTimestamp(),
       },
       { merge: true }
     );
+
+    return updatedEntry;
   } catch (err) {
     console.warn(`[Leaderboard] Failed to update score for ${uid} on ${boardId}:`, err);
+    return null;
   }
 }

@@ -43,7 +43,24 @@ function normalizeOffsetsProgress(raw: unknown): OffsetsProgressByMode {
   };
 }
 
-import { updateLeaderboardScore } from './leaderboard';
+function mergeLetterStats(localP: OffsetsProgress, cloudP: OffsetsProgress): OffsetsProgress {
+  const merged: OffsetsProgress = { ...cloudP };
+  for (const [char, localStat] of Object.entries(localP)) {
+    const cloudStat = merged[char];
+    if (!cloudStat) {
+      merged[char] = localStat;
+    } else {
+      merged[char] = {
+        attempts: Math.max(localStat.attempts, cloudStat.attempts),
+        correct: Math.max(localStat.correct, cloudStat.correct),
+        streak: Math.max(localStat.streak, cloudStat.streak),
+      };
+    }
+  }
+  return merged;
+}
+
+import { updateLeaderboardScore, type LeaderboardEntry } from './leaderboard';
 
 // Automatically wire local storage changes to debounced Firestore cloud updates
 registerSyncDispatcher((type, data) => {
@@ -132,8 +149,18 @@ export async function mergeAndInitializeCloudUser(uid: string, email: string, de
   if (!db) return;
 
   const userDocRef = doc(db, 'users', uid);
-  const snap = await getDoc(userDocRef);
+  const l2nBoardRef = doc(db, 'leaderboards', 'offsets_letterToNum', 'entries', uid);
+  const n2lBoardRef = doc(db, 'leaderboards', 'offsets_numToLetter', 'entries', uid);
+
+  const [snap, l2nBoardSnap, n2lBoardSnap] = await Promise.all([
+    getDoc(userDocRef),
+    getDoc(l2nBoardRef),
+    getDoc(n2lBoardRef),
+  ]);
+
   const cloudData = (snap.exists() ? snap.data() : {}) as Partial<UserProfile>;
+  const l2nBoard = l2nBoardSnap.exists() ? (l2nBoardSnap.data() as Partial<LeaderboardEntry>) : null;
+  const n2lBoard = n2lBoardSnap.exists() ? (n2lBoardSnap.data() as Partial<LeaderboardEntry>) : null;
 
   const localSettings = loadSettings();
   const localCompleted = loadCompletedQuoteIds();
@@ -151,40 +178,23 @@ export async function mergeAndInitializeCloudUser(uid: string, email: string, de
   const cloudCompleted = cloudData.completedQuotes ?? [];
   const mergedCompleted = Array.from(new Set([...localCompleted, ...cloudCompleted]));
 
-  // 3. Offsets Scores: Max scores
+  // 3. Offsets Scores: Max scores across Local, Cloud Profile, and Cloud Leaderboards
   const cloudLetterToNum = cloudData.offsetsScores?.letterToNum ?? { best60s: 0, bestStreak: 0 };
   const cloudNumToLetter = cloudData.offsetsScores?.numToLetter ?? { best60s: 0, bestStreak: 0 };
 
   const mergedOffsetsScores: OffsetsScoresByMode = {
     letterToNum: {
-      best60s: Math.max(localLetterToNum.best60s, cloudLetterToNum.best60s),
-      bestStreak: Math.max(localLetterToNum.bestStreak, cloudLetterToNum.bestStreak),
+      best60s: Math.max(localLetterToNum.best60s, cloudLetterToNum.best60s, l2nBoard?.score ?? 0),
+      bestStreak: Math.max(localLetterToNum.bestStreak, cloudLetterToNum.bestStreak, l2nBoard?.bestStreak ?? 0),
     },
     numToLetter: {
-      best60s: Math.max(localNumToLetter.best60s, cloudNumToLetter.best60s),
-      bestStreak: Math.max(localNumToLetter.bestStreak, cloudNumToLetter.bestStreak),
+      best60s: Math.max(localNumToLetter.best60s, cloudNumToLetter.best60s, n2lBoard?.score ?? 0),
+      bestStreak: Math.max(localNumToLetter.bestStreak, cloudNumToLetter.bestStreak, n2lBoard?.bestStreak ?? 0),
     },
   };
 
   // 4. Offsets Progress: Merge per-letter stats per mode
   const cloudOffsetsProgressByMode = normalizeOffsetsProgress(cloudData.offsetsProgress);
-
-  const mergeLetterStats = (localP: OffsetsProgress, cloudP: OffsetsProgress): OffsetsProgress => {
-    const merged: OffsetsProgress = { ...cloudP };
-    for (const [char, localStat] of Object.entries(localP)) {
-      const cloudStat = merged[char];
-      if (!cloudStat) {
-        merged[char] = localStat;
-      } else {
-        merged[char] = {
-          attempts: Math.max(localStat.attempts, cloudStat.attempts),
-          correct: Math.max(localStat.correct, cloudStat.correct),
-          streak: Math.max(localStat.streak, cloudStat.streak),
-        };
-      }
-    }
-    return merged;
-  };
 
   const mergedProgress: OffsetsProgressByMode = {
     letterToNum: mergeLetterStats(localOffsetsProgressByMode.letterToNum, cloudOffsetsProgressByMode.letterToNum),
@@ -271,15 +281,30 @@ export function startCloudSync(uid: string): void {
   stopCloudSync();
   currentSyncedUid = uid;
 
-  // Immediately publish existing local high scores to leaderboard for the signed-in user
+  // Immediately publish local scores to leaderboard (updateLeaderboardScore enforces Math.max)
+  // and sync down any higher scores that may already exist on the leaderboard
   const localSettings = loadSettings();
   const localL2N = loadOffsetsModeScores('letterToNum');
   const localN2L = loadOffsetsModeScores('numToLetter');
   if (localL2N.best60s > 0 || localL2N.bestStreak > 0) {
-    updateLeaderboardScore(uid, localSettings.studentName, 'letterToNum', localL2N.best60s, localL2N.bestStreak);
+    updateLeaderboardScore(uid, localSettings.studentName, 'letterToNum', localL2N.best60s, localL2N.bestStreak).then(res => {
+      if (res && (res.score > localL2N.best60s || res.bestStreak > localL2N.bestStreak)) {
+        withoutSyncDispatch(() => {
+          saveOffsetsModeScore('letterToNum', { best60s: res.score, bestStreak: res.bestStreak });
+        });
+        notifySyncListeners();
+      }
+    });
   }
   if (localN2L.best60s > 0 || localN2L.bestStreak > 0) {
-    updateLeaderboardScore(uid, localSettings.studentName, 'numToLetter', localN2L.best60s, localN2L.bestStreak);
+    updateLeaderboardScore(uid, localSettings.studentName, 'numToLetter', localN2L.best60s, localN2L.bestStreak).then(res => {
+      if (res && (res.score > localN2L.best60s || res.bestStreak > localN2L.bestStreak)) {
+        withoutSyncDispatch(() => {
+          saveOffsetsModeScore('numToLetter', { best60s: res.score, bestStreak: res.bestStreak });
+        });
+        notifySyncListeners();
+      }
+    });
   }
 
   const userDocRef = doc(db, 'users', uid);
@@ -297,15 +322,16 @@ export function startCloudSync(uid: string): void {
       if (data.displayName || data.unlockedCiphers) {
         const current = loadSettings();
         const targetName = data.displayName ?? current.studentName;
-        const targetCiphers = data.unlockedCiphers ?? current.unlockedCiphers;
+        const cloudCiphers = data.unlockedCiphers ?? [];
+        const mergedCiphers = Array.from(new Set([...current.unlockedCiphers, ...cloudCiphers]));
 
         if (
           current.studentName !== targetName ||
-          current.unlockedCiphers.join(',') !== targetCiphers.join(',')
+          current.unlockedCiphers.length !== mergedCiphers.length
         ) {
           saveSettings({
             studentName: targetName,
-            unlockedCiphers: targetCiphers,
+            unlockedCiphers: mergedCiphers,
           });
           hasChanged = true;
         }
@@ -314,8 +340,12 @@ export function startCloudSync(uid: string): void {
       if (data.offsetsProgress) {
         const remoteProgress = normalizeOffsetsProgress(data.offsetsProgress);
         const currentProgress = loadAllOffsetsProgress();
-        if (JSON.stringify(currentProgress) !== JSON.stringify(remoteProgress)) {
-          saveAllOffsetsProgress(remoteProgress);
+        const mergedProgress: OffsetsProgressByMode = {
+          letterToNum: mergeLetterStats(currentProgress.letterToNum, remoteProgress.letterToNum),
+          numToLetter: mergeLetterStats(currentProgress.numToLetter, remoteProgress.numToLetter),
+        };
+        if (JSON.stringify(currentProgress) !== JSON.stringify(mergedProgress)) {
+          saveAllOffsetsProgress(mergedProgress);
           hasChanged = true;
         }
       }
@@ -323,21 +353,19 @@ export function startCloudSync(uid: string): void {
       if (data.offsetsScores) {
         if (data.offsetsScores.letterToNum) {
           const cur = loadOffsetsModeScores('letterToNum');
-          if (
-            cur.best60s !== data.offsetsScores.letterToNum.best60s ||
-            cur.bestStreak !== data.offsetsScores.letterToNum.bestStreak
-          ) {
-            saveOffsetsModeScore('letterToNum', data.offsetsScores.letterToNum);
+          const maxBest60s = Math.max(cur.best60s, data.offsetsScores.letterToNum.best60s);
+          const maxBestStreak = Math.max(cur.bestStreak, data.offsetsScores.letterToNum.bestStreak);
+          if (cur.best60s !== maxBest60s || cur.bestStreak !== maxBestStreak) {
+            saveOffsetsModeScore('letterToNum', { best60s: maxBest60s, bestStreak: maxBestStreak });
             hasChanged = true;
           }
         }
         if (data.offsetsScores.numToLetter) {
           const cur = loadOffsetsModeScores('numToLetter');
-          if (
-            cur.best60s !== data.offsetsScores.numToLetter.best60s ||
-            cur.bestStreak !== data.offsetsScores.numToLetter.bestStreak
-          ) {
-            saveOffsetsModeScore('numToLetter', data.offsetsScores.numToLetter);
+          const maxBest60s = Math.max(cur.best60s, data.offsetsScores.numToLetter.best60s);
+          const maxBestStreak = Math.max(cur.bestStreak, data.offsetsScores.numToLetter.bestStreak);
+          if (cur.best60s !== maxBest60s || cur.bestStreak !== maxBestStreak) {
+            saveOffsetsModeScore('numToLetter', { best60s: maxBest60s, bestStreak: maxBestStreak });
             hasChanged = true;
           }
         }
@@ -354,8 +382,24 @@ export function startCloudSync(uid: string): void {
 
       if (data.practiceHistory) {
         const current = loadCipherPracticeHistory();
-        if (JSON.stringify(current) !== JSON.stringify(data.practiceHistory)) {
-          saveCipherPracticeHistory(data.practiceHistory as Record<string, { count: number; lastPracticed: number }>);
+        let historyChanged = false;
+        const mergedHistory: Record<string, { count: number; lastPracticed: number }> = { ...current };
+        for (const [cipher, stat] of Object.entries(data.practiceHistory)) {
+          const existing = mergedHistory[cipher];
+          if (!existing) {
+            mergedHistory[cipher] = stat;
+            historyChanged = true;
+          } else {
+            const count = Math.max(existing.count, stat.count);
+            const lastPracticed = Math.max(existing.lastPracticed, stat.lastPracticed);
+            if (count !== existing.count || lastPracticed !== existing.lastPracticed) {
+              mergedHistory[cipher] = { count, lastPracticed };
+              historyChanged = true;
+            }
+          }
+        }
+        if (historyChanged) {
+          saveCipherPracticeHistory(mergedHistory);
           hasChanged = true;
         }
       }
