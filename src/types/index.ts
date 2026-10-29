@@ -69,3 +69,68 @@ export interface UserProfile {
   practiceHistory?: Record<string, { count: number; lastPracticed: number }>;
   lastActiveAt?: unknown;
 }
+
+export interface TestCipherParams {
+  caesarShift?: number;
+  vigenereKey?: string;
+  alphabetMapping?: Record<string, string>;
+  hint?: string;
+}
+
+export interface TestQuestion {
+  questionNumber: number; // 1-indexed (1, 2, 3...)
+  cipher: CipherType;
+  quoteId: number;
+  points: number;
+  isTiebreaker?: boolean;
+  description?: string;
+  params?: TestCipherParams;
+}
+
+export interface TestPacket {
+  testId: string;
+  title: string;
+  description: string;
+  timeLimitSeconds: number;
+  active: boolean;
+  createdAt?: unknown;
+  questions: TestQuestion[];
+}
+
+export interface QuestionWorkspace {
+  userInputs: string[];
+  completed: boolean;
+  lastEditedAt: number;
+}
+
+export interface QuestionResult {
+  questionNumber: number;
+  cipher: CipherType;
+  quoteId: number;
+  pointsEarned: number;
+  maxPoints: number;
+  errorCount: number;
+  scoreTier: ScoreTier;
+  isTiebreaker: boolean;
+  targetPlaintext: string;
+  studentInput: string;
+}
+
+export interface TestEvaluationResult {
+  totalScore: number;
+  maxPossibleScore: number;
+  timeSpentSeconds: number;
+  questions: QuestionResult[];
+}
+
+export interface TestAttempt {
+  attemptId: string;
+  testId: string;
+  studentUid: string;
+  studentName: string;
+  startedAt: number;
+  submittedAt?: number;
+  status: 'in_progress' | 'submitted' | 'expired';
+  workspaces: Record<number, QuestionWorkspace>;
+  results?: TestEvaluationResult;
+}

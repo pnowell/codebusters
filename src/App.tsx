@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import type { CipherType, UserSettings } from './types';
+import type { CipherType, UserSettings, TestPacket, TestAttempt } from './types';
 import { LetterOffsetDrill, type WorkoutStepContext } from './components/drills/LetterOffsetDrill';
 import { LookupCipherDrill } from './components/drills/LookupCipherDrill';
 import { OptionsModal } from './components/options/OptionsModal';
 import { LeaderboardModal } from './components/leaderboard/LeaderboardModal';
+import { TestRunner } from './components/test/TestRunner';
+import { TestBriefingModal } from './components/test/TestBriefingModal';
 import {
   WorkoutSummaryModal,
   type WorkoutSummaryData,
@@ -23,6 +25,12 @@ import {
   saveLastWarmupOffsetsMode,
   type OffsetsMode,
 } from './services/storage';
+import {
+  subscribeActiveTest,
+  fetchTestById,
+  getLocalTestAttempt,
+  clearLocalTestAttempt,
+} from './services/testService';
 import { subscribeToSyncUpdates } from './services/sync';
 import { UserAuthBadge } from './components/auth/UserAuthBadge';
 import { NotAllowedModal } from './components/auth/NotAllowedModal';
@@ -51,13 +59,19 @@ interface WorkoutSession {
 }
 
 export const App: React.FC = () => {
-  const { isAllowed } = useAuth();
+  const { user, isAllowed } = useAuth();
   const [settings, setSettings] = useState<UserSettings>(initSettings);
 
   const [activeDrill, setActiveDrill] = useState<CipherType | null>(() => parseUrlRoute().drill);
   const [activeQuoteId, setActiveQuoteId] = useState<number | undefined>(() => parseUrlRoute().quoteId);
   const [isOptionsOpen, setIsOptionsOpen] = useState<boolean>(false);
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState<boolean>(false);
+
+  // Practice Test states
+  const [activeTest, setActiveTest] = useState<TestPacket | null>(null);
+  const [activeTestSession, setActiveTestSession] = useState<TestPacket | null>(null);
+  const [isTestBriefingOpen, setIsTestBriefingOpen] = useState<boolean>(false);
+  const [existingAttempt, setExistingAttempt] = useState<TestAttempt | null>(null);
 
   // Workout Circuit Session & Summary States
   const [workoutSession, setWorkoutSession] = useState<WorkoutSession | null>(null);
@@ -73,6 +87,38 @@ export const App: React.FC = () => {
     });
   }, []);
 
+  // Subscribe to active practice test in Firestore when user is allowed
+  useEffect(() => {
+    if (!isAllowed) return;
+
+    return subscribeActiveTest((test) => {
+      setActiveTest(test);
+      if (test) {
+        setExistingAttempt(getLocalTestAttempt(test.testId));
+      } else {
+        setExistingAttempt(null);
+      }
+    });
+  }, [isAllowed]);
+
+  // Deep-link direct test launch if ?test=testId is provided
+  useEffect(() => {
+    const route = parseUrlRoute();
+    if (!route.testId || !isAllowed) return;
+
+    if (activeTest && activeTest.testId === route.testId) {
+      queueMicrotask(() => setActiveTestSession(activeTest));
+    } else {
+      fetchTestById(route.testId).then((fetched) => {
+        if (fetched) {
+          setActiveTest(fetched);
+          setActiveTestSession(fetched);
+          setExistingAttempt(getLocalTestAttempt(fetched.testId));
+        }
+      });
+    }
+  }, [isAllowed, activeTest]);
+
   // Listen to browser Back / Forward buttons
   useEffect(() => {
     const handlePopState = (e: PopStateEvent) => {
@@ -85,6 +131,9 @@ export const App: React.FC = () => {
       setActiveQuoteId(route.quoteId);
       if (!route.drill) {
         setWorkoutSession(null);
+      }
+      if (!route.testId) {
+        setActiveTestSession(null);
       }
     };
 
@@ -104,6 +153,7 @@ export const App: React.FC = () => {
   }, []);
 
   const navigateToDrill = (drill: CipherType, quoteId?: number, replaceHistory = false) => {
+    setActiveTestSession(null);
     setActiveDrill(drill);
     setActiveQuoteId(quoteId);
     const newUrl = buildRouteUrl({ drill, quoteId });
@@ -116,11 +166,47 @@ export const App: React.FC = () => {
 
   const navigateToMenu = () => {
     setWorkoutSession(null);
-    if (window.history.state && window.history.state.drill) {
+    setActiveTestSession(null);
+    if (window.history.state && (window.history.state.drill || window.history.state.testId)) {
       window.history.back();
     } else {
       setActiveDrill(null);
       setActiveQuoteId(undefined);
+      const newUrl = buildRouteUrl({ drill: null });
+      window.history.pushState({ drill: null }, '', newUrl);
+    }
+  };
+
+  const handleBeginTest = () => {
+    if (!activeTest) return;
+    setIsTestBriefingOpen(false);
+    clearLocalTestAttempt(activeTest.testId);
+    setExistingAttempt(null);
+    setActiveTestSession(activeTest);
+    setActiveDrill(null);
+    setWorkoutSession(null);
+    const newUrl = buildRouteUrl({ drill: null, testId: activeTest.testId });
+    window.history.pushState({ testId: activeTest.testId }, '', newUrl);
+  };
+
+  const handleResumeTest = () => {
+    if (!activeTest) return;
+    setIsTestBriefingOpen(false);
+    setActiveTestSession(activeTest);
+    setActiveDrill(null);
+    setWorkoutSession(null);
+    const newUrl = buildRouteUrl({ drill: null, testId: activeTest.testId });
+    window.history.pushState({ testId: activeTest.testId }, '', newUrl);
+  };
+
+  const handleExitTest = () => {
+    setActiveTestSession(null);
+    if (activeTest) {
+      setExistingAttempt(getLocalTestAttempt(activeTest.testId));
+    }
+    if (window.history.state && window.history.state.testId) {
+      window.history.back();
+    } else {
       const newUrl = buildRouteUrl({ drill: null });
       window.history.pushState({ drill: null }, '', newUrl);
     }
@@ -246,7 +332,7 @@ export const App: React.FC = () => {
   return (
     <div className="app-container">
       {/* Main Header only visible on the main menu */}
-      {!activeDrill && (
+      {!activeDrill && !activeTestSession && (
         <header className="main-header">
           <div className="brand-text">
             <h1>DaVinci Decoders</h1>
@@ -279,12 +365,23 @@ export const App: React.FC = () => {
         </header>
       )}
 
+      {/* Active Practice Test Runner */}
+      {activeTestSession && (
+        <TestRunner
+          testPacket={activeTestSession}
+          studentUid={user?.uid || 'student'}
+          studentName={user?.displayName || settings.studentName || 'Decoder'}
+          initialAttempt={existingAttempt}
+          onExitToMenu={handleExitTest}
+        />
+      )}
+
       {/* Active Drill View */}
-      {activeDrill === 'offsets' && (
+      {activeDrill === 'offsets' && !activeTestSession && (
         <LetterOffsetDrill onBack={navigateToMenu} workoutContext={workoutContext} />
       )}
 
-      {activeDrill && isLookupCipher(activeDrill) && (
+      {activeDrill && isLookupCipher(activeDrill) && !activeTestSession && (
         <LookupCipherDrill
           key={`${activeDrill}:${activeQuoteId ?? 'random'}`}
           cipher={activeDrill}
@@ -296,8 +393,41 @@ export const App: React.FC = () => {
       )}
 
       {/* Simplified Main Menu Dashboard */}
-      {!activeDrill && (
+      {!activeDrill && !activeTestSession && (
         <main className="menu-container">
+          {/* Assigned Practice Test Card (Visible to Authenticated Allowed Students) */}
+          {isAllowed && activeTest && (
+            <div className="practice-test-card">
+              <div className="test-card-top-row">
+                <span className="test-card-badge">ASSIGNED PRACTICE TEST</span>
+                {existingAttempt && existingAttempt.status === 'in_progress' && (
+                  <span className="test-card-resume-pill">In Progress</span>
+                )}
+              </div>
+              <h3 className="test-card-title">{activeTest.title}</h3>
+              <div className="test-card-meta">
+                <span>⏱️ {Math.round(activeTest.timeLimitSeconds / 60)} Mins</span>
+                <span className="dot-sep">•</span>
+                <span>🧩 {activeTest.questions.length} Questions</span>
+                <span className="dot-sep">•</span>
+                <span>⭐ {activeTest.questions.reduce((sum, q) => sum + q.points, 0)} Pts</span>
+              </div>
+              <button
+                className="btn-main-action btn-test-action"
+                onClick={() => {
+                  if (activeTest) {
+                    setExistingAttempt(getLocalTestAttempt(activeTest.testId));
+                  }
+                  setIsTestBriefingOpen(true);
+                }}
+              >
+                {existingAttempt && existingAttempt.status === 'in_progress'
+                  ? 'Resume Practice Test ➔'
+                  : 'Take Practice Test ➔'}
+              </button>
+            </div>
+          )}
+
           {/* General Practice Button at Top */}
           <div className="general-practice-section">
             <button className="btn-main-action" onClick={() => startWorkout(1)}>
@@ -366,6 +496,17 @@ export const App: React.FC = () => {
             startWorkout(workoutSummary.round + 1, previouslyPracticed);
           }}
           onExitToMenu={() => setWorkoutSummary(null)}
+        />
+      )}
+
+      {/* Practice Test Briefing Modal */}
+      {isTestBriefingOpen && activeTest && (
+        <TestBriefingModal
+          testPacket={activeTest}
+          existingAttempt={existingAttempt}
+          onBegin={handleBeginTest}
+          onResume={handleResumeTest}
+          onClose={() => setIsTestBriefingOpen(false)}
         />
       )}
 
