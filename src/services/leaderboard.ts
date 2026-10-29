@@ -1,5 +1,6 @@
 import type { Unsubscribe } from 'firebase/firestore';
 import type { OffsetsMode } from './storage';
+import type { DrillId } from '../types';
 import {
   subscribeTeamProfiles,
   upsertPublicProfileScore,
@@ -14,19 +15,22 @@ export interface LeaderboardEntry {
 }
 
 /**
- * Subscribes to real-time high scores for the specified offsets mode,
+ * Subscribes to real-time high scores for the specified drill,
  * derived directly from the team's public profiles.
  */
 export function subscribeLeaderboard(
-  mode: OffsetsMode,
+  drill: DrillId | OffsetsMode,
   onUpdate: (entries: LeaderboardEntry[]) => void,
   onError?: (err: Error) => void
 ): Unsubscribe {
+  const drillId: DrillId =
+    drill === 'letterToNum' ? 'offsetsLetterToNum' : drill === 'numToLetter' ? 'offsetsNumToLetter' : drill;
+
   return subscribeTeamProfiles(
     (profiles) => {
       const entries: LeaderboardEntry[] = profiles
         .map((p) => {
-          const modeScore = p.offsetsScores?.[mode];
+          const modeScore = p.drillScores?.[drillId];
           return {
             uid: p.uid,
             displayName: p.displayName || 'Decoder',
@@ -57,11 +61,13 @@ export function subscribeLeaderboard(
 export async function updateLeaderboardScore(
   uid: string,
   displayName: string,
-  mode: OffsetsMode,
+  drill: DrillId | OffsetsMode,
   score: number,
   bestStreak: number
 ): Promise<LeaderboardEntry | null> {
-  const result = await upsertPublicProfileScore(uid, mode, score, bestStreak, displayName);
+  const drillId: DrillId =
+    drill === 'letterToNum' ? 'offsetsLetterToNum' : drill === 'numToLetter' ? 'offsetsNumToLetter' : drill;
+  const result = await upsertPublicProfileScore(uid, drillId, score, bestStreak, displayName);
   if (!result) return null;
   return {
     uid,

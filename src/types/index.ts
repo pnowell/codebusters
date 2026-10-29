@@ -53,6 +53,30 @@ export interface AllowedUser {
   active: boolean;
 }
 
+export type DrillId =
+  | 'offsetsLetterToNum'
+  | 'offsetsNumToLetter'
+  | 'atbash'
+  | 'pigpen'
+  | 'galactic'
+  | 'knightsTemplar'
+  | 'tapCode'
+  | 'letterAddition'
+  | 'letterSubtraction';
+
+export interface DrillScore {
+  best60s: number;
+  bestStreak: number;
+}
+
+export interface LetterProgress {
+  streak: number;
+  attempts: number;
+  correct: number;
+}
+
+export type DrillProgress = Record<string, LetterProgress>;
+
 export interface UserProfile {
   uid: string;
   email: string;
@@ -61,6 +85,7 @@ export interface UserProfile {
     soundEffects?: boolean;
     highContrast?: boolean;
   };
+  drillProgress?: Partial<Record<DrillId, DrillProgress>>;
   offsetsProgress?: Record<string, unknown>;
   completedQuotes?: number[];
   practiceHistory?: Record<string, { count: number; lastPracticed: number }>;
@@ -124,6 +149,7 @@ export interface PublicProfile {
   uid: string;
   displayName: string;
   role: 'student' | 'teacher';
+  drillScores?: Partial<Record<DrillId, DrillScore>>;
   offsetsScores?: Record<string, { best60s: number; bestStreak: number }>;
   updatedAt?: unknown;
 }

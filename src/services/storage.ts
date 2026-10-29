@@ -1,4 +1,4 @@
-import type { UserSettings } from '../types';
+import type { UserSettings, DrillId, DrillScore, LetterProgress, DrillProgress } from '../types';
 import {
   DEFAULT_UNLOCKED,
   isCipherType,
@@ -11,7 +11,10 @@ const KEYS = {
   settings: 'davinci_settings',
   offsetsBestStreak: 'davinci_offsets_best_streak',
   completedQuotes: 'davinci_completed_quotes',
+  drillProgress: 'davinci_drill_progress',
+  drillScores: 'davinci_drill_scores',
   offsetsProgress: 'davinci_offsets_progress',
+  offsetsScores: 'davinci_offsets_mode_scores',
   practiceHistory: 'davinci_cipher_practice_history',
   lastWarmupOffsetsMode: 'davinci_last_warmup_offsets_mode',
 } as const;
@@ -22,7 +25,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
 };
 
 export type SyncDispatcher = (
-  type: 'settings' | 'completedQuotes' | 'offsetsProgress' | 'offsetsScores' | 'practiceHistory',
+  type: 'settings' | 'completedQuotes' | 'drillProgress' | 'drillScores' | 'practiceHistory' | 'offsetsProgress' | 'offsetsScores',
   data: unknown
 ) => void;
 
@@ -44,7 +47,7 @@ export function withoutSyncDispatch<T>(fn: () => T): T {
 }
 
 function dispatchSync(
-  type: 'settings' | 'completedQuotes' | 'offsetsProgress' | 'offsetsScores' | 'practiceHistory',
+  type: 'settings' | 'completedQuotes' | 'offsetsProgress' | 'offsetsScores' | 'practiceHistory' | 'drillProgress' | 'drillScores',
   data: unknown
 ) {
   if (isSyncSuppressed) return;
@@ -136,18 +139,25 @@ export function clearCompletedQuotes(): void {
 
 export type OffsetsMode = 'letterToNum' | 'numToLetter';
 
-export interface LetterProgress {
-  streak: number; // consecutive correct answers
-  attempts: number;
-  correct: number;
+export function offsetsModeToDrillId(mode: OffsetsMode): DrillId {
+  return mode === 'letterToNum' ? 'offsetsLetterToNum' : 'offsetsNumToLetter';
+}
+
+export function drillIdToOffsetsMode(id: DrillId): OffsetsMode | null {
+  if (id === 'offsetsLetterToNum') return 'letterToNum';
+  if (id === 'offsetsNumToLetter') return 'numToLetter';
+  return null;
 }
 
 export type OffsetsProgress = Record<string, LetterProgress>;
 export type OffsetsProgressByMode = Record<OffsetsMode, OffsetsProgress>;
 
-function sanitizeProgressDict(raw: unknown): OffsetsProgress {
+export type DrillProgressRecord = Partial<Record<DrillId, DrillProgress>>;
+export type DrillScoresRecord = Partial<Record<DrillId, DrillScore>>;
+
+export function sanitizeProgressDict(raw: unknown): DrillProgress {
   if (!raw || typeof raw !== 'object') return {};
-  const clean: OffsetsProgress = {};
+  const clean: DrillProgress = {};
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
     if (v && typeof v === 'object') {
       const item = v as Partial<LetterProgress>;
@@ -161,141 +171,210 @@ function sanitizeProgressDict(raw: unknown): OffsetsProgress {
   return clean;
 }
 
-export function loadAllOffsetsProgress(): OffsetsProgressByMode {
-  try {
-    const raw = localStorage.getItem(KEYS.offsetsProgress);
-    if (!raw) {
-      return { letterToNum: {}, numToLetter: {} };
-    }
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object') {
-      return { letterToNum: {}, numToLetter: {} };
-    }
+// ---------------------------------------------------------------------------
+// Generalized Drill Scores
+// ---------------------------------------------------------------------------
 
-    // Check if it's already keyed by mode
-    if ('letterToNum' in parsed || 'numToLetter' in parsed) {
-      return {
-        letterToNum: sanitizeProgressDict(parsed.letterToNum),
-        numToLetter: sanitizeProgressDict(parsed.numToLetter),
+export function loadAllDrillScores(): DrillScoresRecord {
+  try {
+    const raw = localStorage.getItem(KEYS.drillScores);
+    if (raw) {
+      return JSON.parse(raw) as DrillScoresRecord;
+    }
+    // Check legacy scores
+    const legacyRaw = localStorage.getItem(KEYS.offsetsScores);
+    const result: DrillScoresRecord = {};
+    if (legacyRaw) {
+      const parsed = JSON.parse(legacyRaw) as Record<string, DrillScore>;
+      if (parsed.letterToNum) result.offsetsLetterToNum = parsed.letterToNum;
+      if (parsed.numToLetter) result.offsetsNumToLetter = parsed.numToLetter;
+    }
+    const legacyStreak = loadBestStreak();
+    if (legacyStreak > 0 && (!result.offsetsLetterToNum || result.offsetsLetterToNum.bestStreak < legacyStreak)) {
+      result.offsetsLetterToNum = {
+        best60s: result.offsetsLetterToNum?.best60s ?? 0,
+        bestStreak: legacyStreak,
       };
     }
-
-    // Legacy migration: single flat record belonged to letterToNum
-    return {
-      letterToNum: sanitizeProgressDict(parsed),
-      numToLetter: {},
-    };
-  } catch {
-    return { letterToNum: {}, numToLetter: {} };
-  }
-}
-
-export function loadOffsetsProgress(mode: OffsetsMode = 'letterToNum'): OffsetsProgress {
-  return loadAllOffsetsProgress()[mode];
-}
-
-export function saveOffsetsProgress(
-  mode: OffsetsMode,
-  p: OffsetsProgress
-): void {
-  try {
-    const all = loadAllOffsetsProgress();
-    all[mode] = p;
-    localStorage.setItem(KEYS.offsetsProgress, JSON.stringify(all));
-    dispatchSync('offsetsProgress', all);
-  } catch {
-    // Ignore
-  }
-}
-
-export function saveAllOffsetsProgress(all: OffsetsProgressByMode): void {
-  try {
-    localStorage.setItem(KEYS.offsetsProgress, JSON.stringify(all));
-    dispatchSync('offsetsProgress', all);
-  } catch {
-    // Ignore
-  }
-}
-
-export function resetOffsetsProgress(mode?: OffsetsMode): void {
-  try {
-    if (!mode) {
-      localStorage.removeItem(KEYS.offsetsProgress);
-      dispatchSync('offsetsProgress', { letterToNum: {}, numToLetter: {} });
-    } else {
-      const all = loadAllOffsetsProgress();
-      all[mode] = {};
-      localStorage.setItem(KEYS.offsetsProgress, JSON.stringify(all));
-      dispatchSync('offsetsProgress', all);
+    if (Object.keys(result).length > 0) {
+      localStorage.setItem(KEYS.drillScores, JSON.stringify(result));
     }
+    return result;
   } catch {
-    // Ignore
+    return {};
   }
 }
 
-export interface OffsetsModeScores {
-  best60s: number;
-  bestStreak: number;
+export function loadDrillScore(drillId: DrillId): DrillScore {
+  const all = loadAllDrillScores();
+  return all[drillId] || { best60s: 0, bestStreak: 0 };
 }
 
-export type OffsetsScoresByMode = Record<OffsetsMode, OffsetsModeScores>;
-
-const DEFAULT_OFFSETS_SCORES: OffsetsScoresByMode = {
-  letterToNum: { best60s: 0, bestStreak: 0 },
-  numToLetter: { best60s: 0, bestStreak: 0 },
-};
-
-const SCORES_KEY = 'davinci_offsets_mode_scores';
-
-export function loadOffsetsModeScores(mode: OffsetsMode): OffsetsModeScores {
+export function saveDrillScore(
+  drillId: DrillId,
+  update: Partial<DrillScore>
+): DrillScore {
   try {
-    const raw = localStorage.getItem(SCORES_KEY);
-    if (!raw) {
-      // Migrate legacy single best streak to letterToNum if present
-      const legacyStreak = loadBestStreak();
-      return {
-        best60s: 0,
-        bestStreak: mode === 'letterToNum' ? legacyStreak : 0,
-      };
-    }
-    const parsed = JSON.parse(raw) as Partial<OffsetsScoresByMode>;
-    return {
-      ...DEFAULT_OFFSETS_SCORES[mode],
-      ...(parsed[mode] || {}),
-    };
-  } catch {
-    return DEFAULT_OFFSETS_SCORES[mode];
-  }
-}
-
-export function saveOffsetsModeScore(
-  mode: OffsetsMode,
-  update: Partial<OffsetsModeScores>
-): OffsetsModeScores {
-  try {
-    const raw = localStorage.getItem(SCORES_KEY);
-    const existing: OffsetsScoresByMode = raw
-      ? { ...DEFAULT_OFFSETS_SCORES, ...JSON.parse(raw) }
-      : {
-          letterToNum: { best60s: 0, bestStreak: loadBestStreak() },
-          numToLetter: { best60s: 0, bestStreak: 0 },
-        };
-
-    const current = existing[mode] || { best60s: 0, bestStreak: 0 };
-    const merged: OffsetsModeScores = {
+    const all = loadAllDrillScores();
+    const current = all[drillId] || { best60s: 0, bestStreak: 0 };
+    const merged: DrillScore = {
       best60s: Math.max(current.best60s, update.best60s ?? 0),
       bestStreak: Math.max(current.bestStreak, update.bestStreak ?? 0),
     };
+    all[drillId] = merged;
+    localStorage.setItem(KEYS.drillScores, JSON.stringify(all));
 
-    existing[mode] = merged;
-    localStorage.setItem(SCORES_KEY, JSON.stringify(existing));
-    dispatchSync('offsetsScores', existing);
+    // Mirror to legacy offsets scores if applicable
+    const offsetsMode = drillIdToOffsetsMode(drillId);
+    if (offsetsMode) {
+      const legacyScores = {
+        letterToNum: all.offsetsLetterToNum || { best60s: 0, bestStreak: 0 },
+        numToLetter: all.offsetsNumToLetter || { best60s: 0, bestStreak: 0 },
+      };
+      localStorage.setItem(KEYS.offsetsScores, JSON.stringify(legacyScores));
+    }
+
+    dispatchSync('drillScores', { drillId, score: merged, allScores: all });
     return merged;
   } catch {
     return {
       best60s: update.best60s ?? 0,
       bestStreak: update.bestStreak ?? 0,
     };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Generalized Drill Progress
+// ---------------------------------------------------------------------------
+
+export function loadAllDrillProgress(): DrillProgressRecord {
+  try {
+    const raw = localStorage.getItem(KEYS.drillProgress);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        const clean: DrillProgressRecord = {};
+        for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+          clean[k as DrillId] = sanitizeProgressDict(v);
+        }
+        return clean;
+      }
+    }
+
+    // Check legacy offsetsProgress
+    const legacyRaw = localStorage.getItem(KEYS.offsetsProgress);
+    const result: DrillProgressRecord = {};
+    if (legacyRaw) {
+      const parsed = JSON.parse(legacyRaw);
+      if (parsed && typeof parsed === 'object') {
+        if ('letterToNum' in parsed || 'numToLetter' in parsed) {
+          result.offsetsLetterToNum = sanitizeProgressDict((parsed as Record<string, unknown>).letterToNum);
+          result.offsetsNumToLetter = sanitizeProgressDict((parsed as Record<string, unknown>).numToLetter);
+        } else {
+          result.offsetsLetterToNum = sanitizeProgressDict(parsed);
+        }
+      }
+    }
+    if (Object.keys(result).length > 0) {
+      localStorage.setItem(KEYS.drillProgress, JSON.stringify(result));
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
+
+export function loadDrillProgress(drillId: DrillId): DrillProgress {
+  const all = loadAllDrillProgress();
+  return all[drillId] || {};
+}
+
+export function saveDrillProgress(drillId: DrillId, p: DrillProgress): void {
+  try {
+    const all = loadAllDrillProgress();
+    all[drillId] = sanitizeProgressDict(p);
+    localStorage.setItem(KEYS.drillProgress, JSON.stringify(all));
+
+    // Mirror to legacy offsets progress if applicable
+    const offsetsMode = drillIdToOffsetsMode(drillId);
+    if (offsetsMode) {
+      const legacy = {
+        letterToNum: all.offsetsLetterToNum || {},
+        numToLetter: all.offsetsNumToLetter || {},
+      };
+      localStorage.setItem(KEYS.offsetsProgress, JSON.stringify(legacy));
+    }
+
+    dispatchSync('drillProgress', all);
+  } catch {
+    // Ignore
+  }
+}
+
+export function saveAllDrillProgress(all: DrillProgressRecord): void {
+  try {
+    localStorage.setItem(KEYS.drillProgress, JSON.stringify(all));
+    dispatchSync('drillProgress', all);
+  } catch {
+    // Ignore
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Backward-compatible Offsets Drill Wrappers
+// ---------------------------------------------------------------------------
+
+export type OffsetsModeScores = DrillScore;
+export type OffsetsScoresByMode = Record<OffsetsMode, OffsetsModeScores>;
+
+export function loadOffsetsModeScores(mode: OffsetsMode): OffsetsModeScores {
+  return loadDrillScore(offsetsModeToDrillId(mode));
+}
+
+export function saveOffsetsModeScore(
+  mode: OffsetsMode,
+  update: Partial<OffsetsModeScores>
+): OffsetsModeScores {
+  return saveDrillScore(offsetsModeToDrillId(mode), update);
+}
+
+export function loadAllOffsetsProgress(): OffsetsProgressByMode {
+  const all = loadAllDrillProgress();
+  return {
+    letterToNum: all.offsetsLetterToNum || {},
+    numToLetter: all.offsetsNumToLetter || {},
+  };
+}
+
+export function loadOffsetsProgress(mode: OffsetsMode = 'letterToNum'): OffsetsProgress {
+  return loadDrillProgress(offsetsModeToDrillId(mode));
+}
+
+export function saveOffsetsProgress(mode: OffsetsMode, p: OffsetsProgress): void {
+  saveDrillProgress(offsetsModeToDrillId(mode), p);
+}
+
+export function saveAllOffsetsProgress(all: OffsetsProgressByMode): void {
+  const drillProgress = loadAllDrillProgress();
+  drillProgress.offsetsLetterToNum = sanitizeProgressDict(all.letterToNum);
+  drillProgress.offsetsNumToLetter = sanitizeProgressDict(all.numToLetter);
+  saveAllDrillProgress(drillProgress);
+}
+
+export function resetOffsetsProgress(mode?: OffsetsMode): void {
+  try {
+    if (!mode) {
+      const drillProgress = loadAllDrillProgress();
+      delete drillProgress.offsetsLetterToNum;
+      delete drillProgress.offsetsNumToLetter;
+      saveAllDrillProgress(drillProgress);
+      localStorage.removeItem(KEYS.offsetsProgress);
+    } else {
+      saveDrillProgress(offsetsModeToDrillId(mode), {});
+    }
+  } catch {
+    // Ignore
   }
 }
 

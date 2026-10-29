@@ -5,20 +5,23 @@ import {
   saveSettings,
   loadCompletedQuoteIds,
   saveCompletedQuoteIds,
-  loadAllOffsetsProgress,
-  saveAllOffsetsProgress,
-  loadOffsetsModeScores,
-  saveOffsetsModeScore,
+  loadAllDrillProgress,
+  saveAllDrillProgress,
+  loadAllDrillScores,
+  saveDrillScore,
   loadCipherPracticeHistory,
   saveCipherPracticeHistory,
   registerSyncDispatcher,
   withoutSyncDispatch,
-  type OffsetsProgress,
+  sanitizeProgressDict,
+  type DrillProgressRecord,
+  type DrillScoresRecord,
   type OffsetsProgressByMode,
   type OffsetsScoresByMode,
 } from './storage';
-import type { UserProfile, UserSettings, PublicProfile } from '../types';
+import type { UserProfile, UserSettings, PublicProfile, DrillId, DrillScore, DrillProgress } from '../types';
 import { upsertPublicProfile, normalizePublicProfile } from './profileService';
+import { updateLeaderboardScore } from './leaderboard';
 
 let activeSyncUnsubscribe: Unsubscribe | null = null;
 let currentSyncedUid: string | null = null;
@@ -27,43 +30,10 @@ const syncListeners: Set<() => void> = new Set();
 let pendingCloudUpdates: Partial<UserProfile> = {};
 let cloudDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-function sanitizeProgress(raw: unknown): OffsetsProgress {
-  if (!raw || typeof raw !== 'object') return {};
-  const clean: OffsetsProgress = {};
-  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (v && typeof v === 'object') {
-      const item = v as { streak?: number; attempts?: number; correct?: number };
-      clean[k] = {
-        streak: typeof item.streak === 'number' ? item.streak : 0,
-        attempts: typeof item.attempts === 'number' ? item.attempts : 0,
-        correct: typeof item.correct === 'number' ? item.correct : 0,
-      };
-    }
-  }
-  return clean;
-}
-
-function normalizeOffsetsProgress(raw: unknown): OffsetsProgressByMode {
-  if (!raw || typeof raw !== 'object') {
-    return { letterToNum: {}, numToLetter: {} };
-  }
-  const obj = raw as Record<string, unknown>;
-  if ('letterToNum' in obj || 'numToLetter' in obj) {
-    return {
-      letterToNum: sanitizeProgress(obj.letterToNum),
-      numToLetter: sanitizeProgress(obj.numToLetter),
-    };
-  }
-  return {
-    letterToNum: sanitizeProgress(obj),
-    numToLetter: {},
-  };
-}
-
-function mergeLetterStats(localP: OffsetsProgress, cloudP: OffsetsProgress): OffsetsProgress {
-  const cleanLocal = sanitizeProgress(localP);
-  const cleanCloud = sanitizeProgress(cloudP);
-  const merged: OffsetsProgress = { ...cleanCloud };
+function mergeLetterStats(localP: DrillProgress, cloudP: DrillProgress): DrillProgress {
+  const cleanLocal = sanitizeProgressDict(localP);
+  const cleanCloud = sanitizeProgressDict(cloudP);
+  const merged: DrillProgress = { ...cleanCloud };
 
   for (const [char, localStat] of Object.entries(cleanLocal)) {
     const cloudStat = merged[char];
@@ -80,7 +50,43 @@ function mergeLetterStats(localP: OffsetsProgress, cloudP: OffsetsProgress): Off
   return merged;
 }
 
-import { updateLeaderboardScore } from './leaderboard';
+function mergeAllDrillProgress(
+  localAll: DrillProgressRecord,
+  cloudAll: DrillProgressRecord
+): DrillProgressRecord {
+  const allKeys = new Set([...Object.keys(localAll), ...Object.keys(cloudAll)]) as Set<DrillId>;
+  const merged: DrillProgressRecord = {};
+  for (const key of allKeys) {
+    merged[key] = mergeLetterStats(localAll[key] || {}, cloudAll[key] || {});
+  }
+  return merged;
+}
+
+function normalizeCloudDrillProgress(data: Partial<UserProfile>): DrillProgressRecord {
+  const result: DrillProgressRecord = {};
+  if (data.drillProgress && typeof data.drillProgress === 'object') {
+    for (const [k, v] of Object.entries(data.drillProgress as Record<string, unknown>)) {
+      result[k as DrillId] = sanitizeProgressDict(v);
+    }
+  }
+  // Fall back / merge legacy offsetsProgress if present
+  if (data.offsetsProgress && typeof data.offsetsProgress === 'object') {
+    const legacy = data.offsetsProgress as Record<string, unknown>;
+    if ('letterToNum' in legacy || 'numToLetter' in legacy) {
+      if (legacy.letterToNum && !result.offsetsLetterToNum) {
+        result.offsetsLetterToNum = sanitizeProgressDict(legacy.letterToNum);
+      }
+      if (legacy.numToLetter && !result.offsetsNumToLetter) {
+        result.offsetsNumToLetter = sanitizeProgressDict(legacy.numToLetter);
+      }
+    } else {
+      if (!result.offsetsLetterToNum) {
+        result.offsetsLetterToNum = sanitizeProgressDict(legacy);
+      }
+    }
+  }
+  return result;
+}
 
 // Automatically wire local storage changes to debounced Firestore cloud updates
 registerSyncDispatcher((type, data) => {
@@ -95,17 +101,42 @@ registerSyncDispatcher((type, data) => {
     case 'completedQuotes':
       pushCloudUpdate({ completedQuotes: data as number[] });
       break;
-    case 'offsetsProgress':
-      pushCloudUpdate({ offsetsProgress: data as OffsetsProgressByMode });
+    case 'drillProgress':
+      pushCloudUpdate({ drillProgress: data as DrillProgressRecord });
       break;
+    case 'drillScores': {
+      const payload = data as { drillId: DrillId; score: DrillScore; allScores: DrillScoresRecord };
+      const currentSettings = loadSettings();
+      if (payload.score && (payload.score.best60s > 0 || payload.score.bestStreak > 0)) {
+        updateLeaderboardScore(
+          currentSyncedUid,
+          currentSettings.studentName,
+          payload.drillId,
+          payload.score.best60s,
+          payload.score.bestStreak
+        );
+      }
+      break;
+    }
+    case 'offsetsProgress': {
+      // Legacy dispatcher support
+      const legacy = data as OffsetsProgressByMode;
+      const progress: DrillProgressRecord = {
+        offsetsLetterToNum: sanitizeProgressDict(legacy.letterToNum),
+        offsetsNumToLetter: sanitizeProgressDict(legacy.numToLetter),
+      };
+      pushCloudUpdate({ drillProgress: progress });
+      break;
+    }
     case 'offsetsScores': {
+      // Legacy dispatcher support
       const scores = data as OffsetsScoresByMode;
       const currentSettings = loadSettings();
       if (scores.letterToNum && (scores.letterToNum.best60s > 0 || scores.letterToNum.bestStreak > 0)) {
         updateLeaderboardScore(
           currentSyncedUid,
           currentSettings.studentName,
-          'letterToNum',
+          'offsetsLetterToNum',
           scores.letterToNum.best60s,
           scores.letterToNum.bestStreak
         );
@@ -114,7 +145,7 @@ registerSyncDispatcher((type, data) => {
         updateLeaderboardScore(
           currentSyncedUid,
           currentSettings.studentName,
-          'numToLetter',
+          'offsetsNumToLetter',
           scores.numToLetter.best60s,
           scores.numToLetter.bestStreak
         );
@@ -169,9 +200,8 @@ export async function mergeAndInitializeCloudUser(uid: string, email: string, de
 
   const localSettings = loadSettings();
   const localCompleted = loadCompletedQuoteIds();
-  const localOffsetsProgressByMode = loadAllOffsetsProgress();
-  const localLetterToNum = loadOffsetsModeScores('letterToNum');
-  const localNumToLetter = loadOffsetsModeScores('numToLetter');
+  const localDrillProgress = loadAllDrillProgress();
+  const localDrillScores = loadAllDrillScores();
   const localPracticeHistory = loadCipherPracticeHistory();
 
   // Smart Merge:
@@ -183,28 +213,27 @@ export async function mergeAndInitializeCloudUser(uid: string, email: string, de
   const cloudCompleted = cloudData.completedQuotes ?? [];
   const mergedCompleted = Array.from(new Set([...localCompleted, ...cloudCompleted]));
 
-  // 3. Offsets Scores: Max scores across Local and Cloud Profile
-  const profileL2N = profileData.offsetsScores?.letterToNum ?? { best60s: 0, bestStreak: 0 };
-  const profileN2L = profileData.offsetsScores?.numToLetter ?? { best60s: 0, bestStreak: 0 };
+  // 3. Drill Scores: Max scores across Local and Cloud Profile
+  const profileScores = profileData.drillScores ?? {};
+  const allScoreDrillIds = new Set([
+    ...Object.keys(localDrillScores),
+    ...Object.keys(profileScores),
+  ]) as Set<DrillId>;
 
-  const mergedOffsetsScores: OffsetsScoresByMode = {
-    letterToNum: {
-      best60s: Math.max(localLetterToNum.best60s, profileL2N.best60s),
-      bestStreak: Math.max(localLetterToNum.bestStreak, profileL2N.bestStreak),
-    },
-    numToLetter: {
-      best60s: Math.max(localNumToLetter.best60s, profileN2L.best60s),
-      bestStreak: Math.max(localNumToLetter.bestStreak, profileN2L.bestStreak),
-    },
-  };
+  const mergedDrillScores: DrillScoresRecord = {};
+  for (const id of allScoreDrillIds) {
+    const localS = localDrillScores[id] || { best60s: 0, bestStreak: 0 };
+    const profS = profileScores[id] || { best60s: 0, bestStreak: 0 };
+    mergedDrillScores[id] = {
+      best60s: Math.max(localS.best60s, profS.best60s),
+      bestStreak: Math.max(localS.bestStreak, profS.bestStreak),
+    };
+  }
 
-  // 4. Offsets Progress: Merge per-letter stats per mode
-  const cloudOffsetsProgressByMode = normalizeOffsetsProgress(cloudData.offsetsProgress);
-
-  const mergedProgress: OffsetsProgressByMode = {
-    letterToNum: mergeLetterStats(localOffsetsProgressByMode.letterToNum, cloudOffsetsProgressByMode.letterToNum),
-    numToLetter: mergeLetterStats(localOffsetsProgressByMode.numToLetter, cloudOffsetsProgressByMode.numToLetter),
-  };
+  // 4. Drill Progress: Merge per-card stats per drill
+  // Note: Letter arithmetic drills (letterAddition / letterSubtraction) do not track card-by-card progress
+  const cloudDrillProgress = normalizeCloudDrillProgress(cloudData);
+  const mergedProgress = mergeAllDrillProgress(localDrillProgress, cloudDrillProgress);
 
   // 5. Practice History: Combine counts
   const cloudHistory = cloudData.practiceHistory ?? {};
@@ -234,9 +263,12 @@ export async function mergeAndInitializeCloudUser(uid: string, email: string, de
 
   withoutSyncDispatch(() => {
     saveSettings(updatedLocalSettings);
-    saveAllOffsetsProgress(mergedProgress);
-    saveOffsetsModeScore('letterToNum', mergedOffsetsScores.letterToNum);
-    saveOffsetsModeScore('numToLetter', mergedOffsetsScores.numToLetter);
+    saveAllDrillProgress(mergedProgress);
+    for (const [id, score] of Object.entries(mergedDrillScores)) {
+      if (score) {
+        saveDrillScore(id as DrillId, score);
+      }
+    }
   });
 
   // Sync to Cloud User (private)
@@ -247,12 +279,13 @@ export async function mergeAndInitializeCloudUser(uid: string, email: string, de
       email,
       unlockedCiphers: mergedUnlocked,
       completedQuotes: mergedCompleted,
-      offsetsProgress: mergedProgress,
+      drillProgress: mergedProgress,
       practiceHistory: mergedHistory,
       lastActiveAt: serverTimestamp(),
       displayName: deleteField(),
       role: deleteField(),
       offsetsScores: deleteField(),
+      offsetsProgress: deleteField(),
     },
     { merge: true }
   );
@@ -261,12 +294,12 @@ export async function mergeAndInitializeCloudUser(uid: string, email: string, de
   const profilePayload: Partial<PublicProfile> = {
     displayName: finalName,
   };
-  const hasScores =
-    (mergedOffsetsScores.letterToNum && (mergedOffsetsScores.letterToNum.best60s > 0 || mergedOffsetsScores.letterToNum.bestStreak > 0)) ||
-    (mergedOffsetsScores.numToLetter && (mergedOffsetsScores.numToLetter.best60s > 0 || mergedOffsetsScores.numToLetter.bestStreak > 0));
+  const hasScores = Object.values(mergedDrillScores).some(
+    (s) => s && (s.best60s > 0 || s.bestStreak > 0)
+  );
 
   if (hasScores) {
-    profilePayload.offsetsScores = mergedOffsetsScores;
+    profilePayload.drillScores = mergedDrillScores;
   }
 
   await upsertPublicProfile(uid, profilePayload);
@@ -286,27 +319,19 @@ export function startCloudSync(uid: string): void {
   // Immediately publish local scores to leaderboard (updateLeaderboardScore enforces Math.max)
   // and sync down any higher scores that may already exist on the leaderboard
   const localSettings = loadSettings();
-  const localL2N = loadOffsetsModeScores('letterToNum');
-  const localN2L = loadOffsetsModeScores('numToLetter');
-  if (localL2N.best60s > 0 || localL2N.bestStreak > 0) {
-    updateLeaderboardScore(uid, localSettings.studentName, 'letterToNum', localL2N.best60s, localL2N.bestStreak).then(res => {
-      if (res && (res.score > localL2N.best60s || res.bestStreak > localL2N.bestStreak)) {
-        withoutSyncDispatch(() => {
-          saveOffsetsModeScore('letterToNum', { best60s: res.score, bestStreak: res.bestStreak });
-        });
-        notifySyncListeners();
-      }
-    });
-  }
-  if (localN2L.best60s > 0 || localN2L.bestStreak > 0) {
-    updateLeaderboardScore(uid, localSettings.studentName, 'numToLetter', localN2L.best60s, localN2L.bestStreak).then(res => {
-      if (res && (res.score > localN2L.best60s || res.bestStreak > localN2L.bestStreak)) {
-        withoutSyncDispatch(() => {
-          saveOffsetsModeScore('numToLetter', { best60s: res.score, bestStreak: res.bestStreak });
-        });
-        notifySyncListeners();
-      }
-    });
+  const allScores = loadAllDrillScores();
+  for (const [drillIdKey, score] of Object.entries(allScores)) {
+    const drillId = drillIdKey as DrillId;
+    if (score && (score.best60s > 0 || score.bestStreak > 0)) {
+      updateLeaderboardScore(uid, localSettings.studentName, drillId, score.best60s, score.bestStreak).then(res => {
+        if (res && (res.score > score.best60s || res.bestStreak > score.bestStreak)) {
+          withoutSyncDispatch(() => {
+            saveDrillScore(drillId, { best60s: res.score, bestStreak: res.bestStreak });
+          });
+          notifySyncListeners();
+        }
+      });
+    }
   }
 
   const userDocRef = doc(db, 'users', uid);
@@ -335,15 +360,12 @@ export function startCloudSync(uid: string): void {
         }
       }
 
-      if (data.offsetsProgress) {
-        const remoteProgress = normalizeOffsetsProgress(data.offsetsProgress);
-        const currentProgress = loadAllOffsetsProgress();
-        const mergedProgress: OffsetsProgressByMode = {
-          letterToNum: mergeLetterStats(currentProgress.letterToNum, remoteProgress.letterToNum),
-          numToLetter: mergeLetterStats(currentProgress.numToLetter, remoteProgress.numToLetter),
-        };
+      if (data.drillProgress || data.offsetsProgress) {
+        const remoteProgress = normalizeCloudDrillProgress(data);
+        const currentProgress = loadAllDrillProgress();
+        const mergedProgress = mergeAllDrillProgress(currentProgress, remoteProgress);
         if (JSON.stringify(currentProgress) !== JSON.stringify(mergedProgress)) {
-          saveAllOffsetsProgress(mergedProgress);
+          saveAllDrillProgress(mergedProgress);
           hasChanged = true;
         }
       }

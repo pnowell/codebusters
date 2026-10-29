@@ -9,7 +9,7 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import type { PublicProfile } from '../types';
+import type { PublicProfile, DrillId, DrillScore } from '../types';
 import type { OffsetsMode } from './storage';
 
 // In-memory cache of public profiles for instant, synchronous UI name lookups
@@ -45,36 +45,54 @@ export function getDisplayNamesForUids(uids: string[] | undefined, fallback: str
 
 /**
  * Normalizes a public profile document from Firestore, recovering any scores
- * stored under nested maps or accidental dot-notated literal fields,
- * and ensuring clean data structures.
+ * stored under new drillScores or legacy offsetsScores maps, and ensuring clean data structures.
  */
 export function normalizePublicProfile(raw: Record<string, unknown>, uid: string): PublicProfile {
-  const nestedScores = (raw.offsetsScores as Record<string, { best60s?: number; bestStreak?: number }>) || {};
+  const cleanDrillScores: Partial<Record<DrillId, DrillScore>> = {};
+
+  // 1. Read existing drillScores map if present
+  if (raw.drillScores && typeof raw.drillScores === 'object') {
+    for (const [k, v] of Object.entries(raw.drillScores as Record<string, unknown>)) {
+      if (v && typeof v === 'object') {
+        const item = v as { best60s?: number; bestStreak?: number };
+        cleanDrillScores[k as DrillId] = {
+          best60s: typeof item.best60s === 'number' ? item.best60s : 0,
+          bestStreak: typeof item.bestStreak === 'number' ? item.bestStreak : 0,
+        };
+      }
+    }
+  }
+
+  // 2. Seamlessly migrate legacy offsetsScores (including literal dot notation if present)
+  const legacyScores = (raw.offsetsScores as Record<string, { best60s?: number; bestStreak?: number }>) || {};
   const dotL2N = raw['offsetsScores.letterToNum'] as { best60s?: number; bestStreak?: number } | undefined;
   const dotN2L = raw['offsetsScores.numToLetter'] as { best60s?: number; bestStreak?: number } | undefined;
 
-  const letterToNum = {
-    best60s: Math.max(nestedScores.letterToNum?.best60s ?? 0, dotL2N?.best60s ?? 0),
-    bestStreak: Math.max(nestedScores.letterToNum?.bestStreak ?? 0, dotL2N?.bestStreak ?? 0),
-  };
-  const numToLetter = {
-    best60s: Math.max(nestedScores.numToLetter?.best60s ?? 0, dotN2L?.best60s ?? 0),
-    bestStreak: Math.max(nestedScores.numToLetter?.bestStreak ?? 0, dotN2L?.bestStreak ?? 0),
-  };
-
-  const offsetsScores: Record<string, { best60s: number; bestStreak: number }> = {};
-  if (letterToNum.best60s > 0 || letterToNum.bestStreak > 0) {
-    offsetsScores.letterToNum = letterToNum;
+  const legacyL2NBest60s = Math.max(legacyScores.letterToNum?.best60s ?? 0, dotL2N?.best60s ?? 0);
+  const legacyL2NStreak = Math.max(legacyScores.letterToNum?.bestStreak ?? 0, dotL2N?.bestStreak ?? 0);
+  if (legacyL2NBest60s > 0 || legacyL2NStreak > 0) {
+    const cur = cleanDrillScores.offsetsLetterToNum || { best60s: 0, bestStreak: 0 };
+    cleanDrillScores.offsetsLetterToNum = {
+      best60s: Math.max(cur.best60s, legacyL2NBest60s),
+      bestStreak: Math.max(cur.bestStreak, legacyL2NStreak),
+    };
   }
-  if (numToLetter.best60s > 0 || numToLetter.bestStreak > 0) {
-    offsetsScores.numToLetter = numToLetter;
+
+  const legacyN2LBest60s = Math.max(legacyScores.numToLetter?.best60s ?? 0, dotN2L?.best60s ?? 0);
+  const legacyN2LStreak = Math.max(legacyScores.numToLetter?.bestStreak ?? 0, dotN2L?.bestStreak ?? 0);
+  if (legacyN2LBest60s > 0 || legacyN2LStreak > 0) {
+    const cur = cleanDrillScores.offsetsNumToLetter || { best60s: 0, bestStreak: 0 };
+    cleanDrillScores.offsetsNumToLetter = {
+      best60s: Math.max(cur.best60s, legacyN2LBest60s),
+      bestStreak: Math.max(cur.bestStreak, legacyN2LStreak),
+    };
   }
 
   return {
     uid,
     displayName: (raw.displayName as string) || 'Decoder',
     role: (raw.role as 'student' | 'teacher') || 'student',
-    offsetsScores: Object.keys(offsetsScores).length > 0 ? offsetsScores : undefined,
+    drillScores: Object.keys(cleanDrillScores).length > 0 ? cleanDrillScores : undefined,
     updatedAt: raw.updatedAt,
   };
 }
@@ -111,18 +129,23 @@ export function subscribeTeamProfiles(
         profilesCache.set(docSnap.id, profile);
         list.push(profile);
 
-        // Auto-heal any accidental literal dot fields in Firestore
-        if (raw['offsetsScores.letterToNum'] !== undefined || raw['offsetsScores.numToLetter'] !== undefined) {
+        // Auto-heal any legacy offsetsScores fields in Firestore
+        if (
+          raw.offsetsScores !== undefined ||
+          raw['offsetsScores.letterToNum'] !== undefined ||
+          raw['offsetsScores.numToLetter'] !== undefined
+        ) {
           const docRef = docSnap.ref;
           const healPayload: Record<string, unknown> = {
+            offsetsScores: deleteField(),
             'offsetsScores.letterToNum': deleteField(),
             'offsetsScores.numToLetter': deleteField(),
           };
-          if (profile.offsetsScores) {
-            healPayload.offsetsScores = profile.offsetsScores;
+          if (profile.drillScores) {
+            healPayload.drillScores = profile.drillScores;
           }
           setDoc(docRef, healPayload, { merge: true }).catch((err) => {
-            console.warn('[ProfileService] Auto-heal literal dot fields error:', err);
+            console.warn('[ProfileService] Auto-heal legacy drill scores error:', err);
           });
         }
       });
@@ -166,7 +189,7 @@ export async function upsertPublicProfile(
       uid,
       displayName: profile.displayName || existing?.displayName || 'Decoder',
       role: profile.role || existing?.role || 'student',
-      offsetsScores: profile.offsetsScores || existing?.offsetsScores,
+      drillScores: profile.drillScores || existing?.drillScores,
     };
 
     profilesCache.set(uid, merged);
@@ -177,7 +200,8 @@ export async function upsertPublicProfile(
       updatedAt: serverTimestamp(),
     };
 
-    if (profile.offsetsScores) {
+    if (profile.drillScores) {
+      payload.offsetsScores = deleteField();
       payload['offsetsScores.letterToNum'] = deleteField();
       payload['offsetsScores.numToLetter'] = deleteField();
     }
@@ -189,18 +213,21 @@ export async function upsertPublicProfile(
 }
 
 /**
- * Updates a student's personal best offset scores in `/profiles/{uid}`.
+ * Updates a student's personal best drill scores in `/profiles/{uid}`.
  * Enforces Math.max high-water mark so scores never downgrade.
  */
 export async function upsertPublicProfileScore(
   uid: string,
-  mode: OffsetsMode,
+  drill: DrillId | OffsetsMode,
   score: number,
   bestStreak: number,
   displayName?: string
 ): Promise<{ score: number; bestStreak: number } | null> {
   if (!db || !uid) return null;
   if (score <= 0 && bestStreak <= 0) return null;
+
+  const drillId: DrillId =
+    drill === 'letterToNum' ? 'offsetsLetterToNum' : drill === 'numToLetter' ? 'offsetsNumToLetter' : drill;
 
   try {
     const docRef = doc(db, 'profiles', uid);
@@ -214,24 +241,24 @@ export async function upsertPublicProfileScore(
       }
     }
 
-    const currentModeScore = existing?.offsetsScores?.[mode];
-    const targetScore = Math.max(currentModeScore?.best60s ?? 0, score);
-    const targetStreak = Math.max(currentModeScore?.bestStreak ?? 0, bestStreak);
+    const currentScore = existing?.drillScores?.[drillId];
+    const targetScore = Math.max(currentScore?.best60s ?? 0, score);
+    const targetStreak = Math.max(currentScore?.bestStreak ?? 0, bestStreak);
     const targetName = displayName || existing?.displayName || 'Decoder';
 
     // If already >= target and name is the same, no need to rewrite
     if (
-      currentModeScore &&
-      currentModeScore.best60s === targetScore &&
-      currentModeScore.bestStreak === targetStreak &&
+      currentScore &&
+      currentScore.best60s === targetScore &&
+      currentScore.bestStreak === targetStreak &&
       existing?.displayName === targetName
     ) {
       return { score: targetScore, bestStreak: targetStreak };
     }
 
-    const updatedOffsetsScores = {
-      ...(existing?.offsetsScores || {}),
-      [mode]: {
+    const updatedDrillScores = {
+      ...(existing?.drillScores || {}),
+      [drillId]: {
         best60s: targetScore,
         bestStreak: targetStreak,
       },
@@ -241,7 +268,7 @@ export async function upsertPublicProfileScore(
       uid,
       displayName: targetName,
       role: existing?.role || 'student',
-      offsetsScores: updatedOffsetsScores,
+      drillScores: updatedDrillScores,
     };
 
     profilesCache.set(uid, updatedProfile);
@@ -251,8 +278,9 @@ export async function upsertPublicProfileScore(
       {
         uid,
         displayName: targetName,
-        offsetsScores: updatedOffsetsScores,
+        drillScores: updatedDrillScores,
         updatedAt: serverTimestamp(),
+        offsetsScores: deleteField(),
         'offsetsScores.letterToNum': deleteField(),
         'offsetsScores.numToLetter': deleteField(),
       },
