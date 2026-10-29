@@ -1,4 +1,4 @@
-import { doc, getDoc, onSnapshot, setDoc, serverTimestamp, type Unsubscribe } from 'firebase/firestore';
+import { deleteField, doc, getDoc, onSnapshot, setDoc, serverTimestamp, type Unsubscribe } from 'firebase/firestore';
 import { db } from './firebase';
 import {
   loadSettings,
@@ -88,7 +88,7 @@ registerSyncDispatcher((type, data) => {
   switch (type) {
     case 'settings': {
       const s = data as UserSettings;
-      pushCloudUpdate({ displayName: s.studentName, unlockedCiphers: s.unlockedCiphers });
+      pushCloudUpdate({ unlockedCiphers: s.unlockedCiphers });
       upsertPublicProfile(currentSyncedUid, { displayName: s.studentName });
       break;
     }
@@ -224,7 +224,6 @@ export async function mergeAndInitializeCloudUser(uid: string, email: string, de
   // 6. Name: Profile customized name or local name
   const finalName =
     profileData.displayName ||
-    cloudData.displayName ||
     (localSettings.studentName !== 'Decoder' ? localSettings.studentName : (defaultName || 'Decoder'));
 
   // Update local storage with merged state (suppress sync broadcast to prevent loop)
@@ -246,12 +245,14 @@ export async function mergeAndInitializeCloudUser(uid: string, email: string, de
     {
       uid,
       email,
-      displayName: finalName,
       unlockedCiphers: mergedUnlocked,
       completedQuotes: mergedCompleted,
       offsetsProgress: mergedProgress,
       practiceHistory: mergedHistory,
       lastActiveAt: serverTimestamp(),
+      displayName: deleteField(),
+      role: deleteField(),
+      offsetsScores: deleteField(),
     },
     { merge: true }
   );
@@ -319,19 +320,15 @@ export function startCloudSync(uid: string): void {
 
     // 2. Suppress outbound sync while applying inbound remote updates
     withoutSyncDispatch(() => {
-      // Sync settings down to localStorage if actually changed
-      if (data.displayName || data.unlockedCiphers) {
+      // Sync unlocked ciphers down to localStorage if actually changed
+      if (data.unlockedCiphers) {
         const current = loadSettings();
-        const targetName = data.displayName ?? current.studentName;
         const cloudCiphers = data.unlockedCiphers ?? [];
         const mergedCiphers = Array.from(new Set([...current.unlockedCiphers, ...cloudCiphers]));
 
-        if (
-          current.studentName !== targetName ||
-          current.unlockedCiphers.length !== mergedCiphers.length
-        ) {
+        if (current.unlockedCiphers.length !== mergedCiphers.length) {
           saveSettings({
-            studentName: targetName,
+            ...current,
             unlockedCiphers: mergedCiphers,
           });
           hasChanged = true;

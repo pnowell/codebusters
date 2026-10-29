@@ -56,8 +56,6 @@ export interface AllowedUser {
 export interface UserProfile {
   uid: string;
   email: string;
-  displayName: string;
-  role: 'student' | 'teacher';
   unlockedCiphers: CipherType[];
   settings?: {
     soundEffects?: boolean;

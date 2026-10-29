@@ -22,6 +22,7 @@ import {
 import {
   loadSettings,
   saveSettings,
+  withoutSyncDispatch,
   getNextWorkoutCiphers,
   getWorkoutOffsetsMode,
   saveLastWarmupOffsetsMode,
@@ -119,10 +120,20 @@ export const App: React.FC = () => {
   // Subscribe to Team Public Profiles (in-memory name lookup and high score sync)
   useEffect(() => {
     if (!isAllowed) return;
-    return subscribeTeamProfiles(() => {
-      // Profiles cached in profileService
+    return subscribeTeamProfiles((profiles) => {
+      if (user?.uid) {
+        const myProfile = profiles.find((p) => p.uid === user.uid);
+        if (myProfile?.displayName) {
+          const cur = loadSettings();
+          if (cur.studentName !== myProfile.displayName) {
+            withoutSyncDispatch(() => {
+              saveSettings({ ...cur, studentName: myProfile.displayName });
+            });
+          }
+        }
+      }
     });
-  }, [isAllowed]);
+  }, [isAllowed, user?.uid]);
 
   // Subscribe to student's test attempts in Firestore
   useEffect(() => {
