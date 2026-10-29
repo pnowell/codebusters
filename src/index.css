@@ -209,6 +209,7 @@ body {
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
   padding: 0.25rem 0.85rem 2rem 0.85rem;
   display: flex;
   flex-direction: column;
@@ -2335,6 +2336,9 @@ body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
@@ -3073,6 +3077,7 @@ body {
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
   animation: fadeIn 0.2s ease-in-out;
 }
 
@@ -3096,8 +3101,7 @@ body {
 }
 
 .results-summary-card,
-.results-questions-section,
-.results-footer-nav {
+.results-questions-section {
   flex-shrink: 0;
 }
 
@@ -3486,16 +3490,6 @@ body {
 
 .legend-wrong-note {
   color: #fda4af;
-}
-
-.results-footer-nav {
-  display: flex;
-  justify-content: center;
-  padding-top: 0.75rem;
-}
-
-.btn-return-tests {
-  max-width: 320px;
 }
 
 /* ==========================================================================

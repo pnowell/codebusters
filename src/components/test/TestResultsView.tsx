@@ -267,13 +267,6 @@ export const TestResultsView: React.FC<TestResultsViewProps> = ({
           ))}
         </div>
       </section>
-
-      {/* 4. Bottom Navigation Button */}
-      <div className="results-footer-nav">
-        <button className="btn-menu-action btn-return-tests" onClick={onBack}>
-          ← Back to Practice Tests
-        </button>
-      </div>
     </div>
   );
 };
