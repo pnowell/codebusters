@@ -99,8 +99,108 @@ export function clearLocalTestAttempt(testId: string): void {
   }
 }
 
+function getMillis(timestamp: unknown): number {
+  if (!timestamp) return 0;
+  if (typeof timestamp === 'number') return timestamp;
+  if (typeof (timestamp as { toMillis?: () => number }).toMillis === 'function') {
+    return (timestamp as { toMillis: () => number }).toMillis();
+  }
+  if (typeof (timestamp as { seconds?: number }).seconds === 'number') {
+    return (timestamp as { seconds: number }).seconds * 1000;
+  }
+  return 0;
+}
+
 /**
- * Subscribes to the active test configured in Firestore.
+ * Subscribes to all active tests configured in Firestore, sorted with newest at the top.
+ */
+export function subscribeAvailableTests(
+  onUpdate: (tests: TestPacket[]) => void,
+  onError?: (err: Error) => void
+): Unsubscribe {
+  if (!db) {
+    onUpdate([]);
+    return () => {};
+  }
+
+  const testsCol = collection(db, 'tests');
+  const q = query(testsCol, where('active', '==', true));
+
+  return onSnapshot(
+    q,
+    (snap) => {
+      const tests: TestPacket[] = [];
+      snap.forEach((docSnap) => {
+        const data = docSnap.data() as TestPacket;
+        tests.push({
+          ...data,
+          testId: data.testId || docSnap.id,
+        });
+      });
+      // Sort descending by creation timestamp (newest on top)
+      tests.sort((a, b) => getMillis(b.createdAt) - getMillis(a.createdAt));
+      onUpdate(tests);
+    },
+    (err) => {
+      console.warn('[TestService] Error querying available tests:', err);
+      onError?.(err);
+      onUpdate([]);
+    }
+  );
+}
+
+/**
+ * Subscribes to all test attempts made by a specific student
+ */
+export function subscribeStudentAttempts(
+  studentUid: string,
+  onUpdate: (attempts: Record<string, TestAttempt>) => void,
+  onError?: (err: Error) => void
+): Unsubscribe {
+  if (!db || !studentUid) {
+    onUpdate({});
+    return () => {};
+  }
+
+  const attemptsCol = collection(db, 'test_attempts');
+  const q = query(attemptsCol, where('studentUid', '==', studentUid));
+
+  return onSnapshot(
+    q,
+    (snap) => {
+      const attemptsMap: Record<string, TestAttempt> = {};
+      snap.forEach((docSnap) => {
+        const data = docSnap.data() as TestAttempt;
+        const testId = data.testId;
+        if (!testId) return;
+
+        const existing = attemptsMap[testId];
+        if (!existing) {
+          attemptsMap[testId] = data;
+        } else {
+          const isCurrentSubmitted = data.status === 'submitted' || data.status === 'expired';
+          const isExistingSubmitted = existing.status === 'submitted' || existing.status === 'expired';
+          if (isCurrentSubmitted && !isExistingSubmitted) {
+            attemptsMap[testId] = data;
+          } else if (
+            (data.submittedAt || data.startedAt || 0) >
+            (existing.submittedAt || existing.startedAt || 0)
+          ) {
+            attemptsMap[testId] = data;
+          }
+        }
+      });
+      onUpdate(attemptsMap);
+    },
+    (err) => {
+      console.warn(`[TestService] Error querying attempts for ${studentUid}:`, err);
+      onError?.(err);
+    }
+  );
+}
+
+/**
+ * Subscribes to the single most active test configured in Firestore.
  * If no test is in Firestore, falls back to null.
  */
 export function subscribeActiveTest(

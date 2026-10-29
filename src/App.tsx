@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import type { CipherType, UserSettings, TestPacket, TestAttempt } from './types';
+import type { CipherType, UserSettings, TestPacket, TestAttempt, TestEvaluationResult } from './types';
 import { LetterOffsetDrill, type WorkoutStepContext } from './components/drills/LetterOffsetDrill';
 import { LookupCipherDrill } from './components/drills/LookupCipherDrill';
 import { OptionsModal } from './components/options/OptionsModal';
 import { LeaderboardModal } from './components/leaderboard/LeaderboardModal';
 import { TestRunner } from './components/test/TestRunner';
 import { TestBriefingModal } from './components/test/TestBriefingModal';
+import { PracticeTestsList } from './components/test/PracticeTestsList';
+import { TestResultsModal } from './components/test/TestResultsModal';
 import {
   WorkoutSummaryModal,
   type WorkoutSummaryData,
@@ -26,7 +28,8 @@ import {
   type OffsetsMode,
 } from './services/storage';
 import {
-  subscribeActiveTest,
+  subscribeAvailableTests,
+  subscribeStudentAttempts,
   fetchTestById,
   getLocalTestAttempt,
   clearLocalTestAttempt,
@@ -68,10 +71,18 @@ export const App: React.FC = () => {
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState<boolean>(false);
 
   // Practice Test states
-  const [activeTest, setActiveTest] = useState<TestPacket | null>(null);
+  const [availableTests, setAvailableTests] = useState<TestPacket[]>([]);
+  const [studentAttempts, setStudentAttempts] = useState<Record<string, TestAttempt>>({});
+  const [isTestsLoading, setIsTestsLoading] = useState<boolean>(true);
+  const [isTestsListOpen, setIsTestsListOpen] = useState<boolean>(() => parseUrlRoute().testsList ?? false);
+  const [selectedTest, setSelectedTest] = useState<TestPacket | null>(null);
   const [activeTestSession, setActiveTestSession] = useState<TestPacket | null>(null);
   const [isTestBriefingOpen, setIsTestBriefingOpen] = useState<boolean>(false);
   const [existingAttempt, setExistingAttempt] = useState<TestAttempt | null>(null);
+  const [selectedCompletedTest, setSelectedCompletedTest] = useState<{
+    testPacket: TestPacket;
+    results: TestEvaluationResult;
+  } | null>(null);
 
   // Workout Circuit Session & Summary States
   const [workoutSession, setWorkoutSession] = useState<WorkoutSession | null>(null);
@@ -87,37 +98,58 @@ export const App: React.FC = () => {
     });
   }, []);
 
-  // Subscribe to active practice test in Firestore when user is allowed
+  // Subscribe to all available practice tests in Firestore when user is allowed
   useEffect(() => {
-    if (!isAllowed) return;
+    if (!isAllowed) {
+      queueMicrotask(() => {
+        setAvailableTests([]);
+        setIsTestsLoading(false);
+      });
+      return;
+    }
 
-    return subscribeActiveTest((test) => {
-      setActiveTest(test);
-      if (test) {
-        setExistingAttempt(getLocalTestAttempt(test.testId));
-      } else {
-        setExistingAttempt(null);
-      }
+    return subscribeAvailableTests((tests) => {
+      setAvailableTests(tests);
+      setIsTestsLoading(false);
     });
   }, [isAllowed]);
+
+  // Subscribe to student's test attempts in Firestore
+  useEffect(() => {
+    if (!isAllowed || !user?.uid) {
+      queueMicrotask(() => {
+        setStudentAttempts({});
+      });
+      return;
+    }
+
+    return subscribeStudentAttempts(user.uid, (attempts) => {
+      setStudentAttempts(attempts);
+    });
+  }, [isAllowed, user?.uid]);
 
   // Deep-link direct test launch if ?test=testId is provided
   useEffect(() => {
     const route = parseUrlRoute();
     if (!route.testId || !isAllowed) return;
 
-    if (activeTest && activeTest.testId === route.testId) {
-      queueMicrotask(() => setActiveTestSession(activeTest));
+    const matched = availableTests.find((t) => t.testId === route.testId);
+    if (matched) {
+      queueMicrotask(() => {
+        setSelectedTest(matched);
+        setActiveTestSession(matched);
+        setExistingAttempt(getLocalTestAttempt(matched.testId));
+      });
     } else {
       fetchTestById(route.testId).then((fetched) => {
         if (fetched) {
-          setActiveTest(fetched);
+          setSelectedTest(fetched);
           setActiveTestSession(fetched);
           setExistingAttempt(getLocalTestAttempt(fetched.testId));
         }
       });
     }
-  }, [isAllowed, activeTest]);
+  }, [isAllowed, availableTests]);
 
   // Listen to browser Back / Forward buttons
   useEffect(() => {
@@ -129,6 +161,7 @@ export const App: React.FC = () => {
       const route = parseUrlRoute();
       setActiveDrill(route.drill);
       setActiveQuoteId(route.quoteId);
+      setIsTestsListOpen(Boolean(route.testsList));
       if (!route.drill) {
         setWorkoutSession(null);
       }
@@ -154,6 +187,7 @@ export const App: React.FC = () => {
 
   const navigateToDrill = (drill: CipherType, quoteId?: number, replaceHistory = false) => {
     setActiveTestSession(null);
+    setIsTestsListOpen(false);
     setActiveDrill(drill);
     setActiveQuoteId(quoteId);
     const newUrl = buildRouteUrl({ drill, quoteId });
@@ -167,7 +201,8 @@ export const App: React.FC = () => {
   const navigateToMenu = () => {
     setWorkoutSession(null);
     setActiveTestSession(null);
-    if (window.history.state && (window.history.state.drill || window.history.state.testId)) {
+    setIsTestsListOpen(false);
+    if (window.history.state && (window.history.state.drill || window.history.state.testId || window.history.state.testsList)) {
       window.history.back();
     } else {
       setActiveDrill(null);
@@ -177,35 +212,64 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleOpenTestsList = () => {
+    setIsTestsListOpen(true);
+    const newUrl = buildRouteUrl({ drill: null, testsList: true });
+    window.history.pushState({ testsList: true }, '', newUrl);
+  };
+
+  const handleBackFromTestsList = () => {
+    if (window.history.state && window.history.state.testsList) {
+      window.history.back();
+    } else {
+      setIsTestsListOpen(false);
+      const newUrl = buildRouteUrl({ drill: null });
+      window.history.pushState({ drill: null }, '', newUrl);
+    }
+  };
+
+  const handleSelectTest = (test: TestPacket, attempt: TestAttempt | null) => {
+    if (attempt && (attempt.status === 'submitted' || attempt.status === 'expired') && attempt.results) {
+      setSelectedCompletedTest({ testPacket: test, results: attempt.results });
+    } else {
+      setSelectedTest(test);
+      setExistingAttempt(attempt);
+      setIsTestBriefingOpen(true);
+    }
+  };
+
   const handleBeginTest = () => {
-    if (!activeTest) return;
+    if (!selectedTest) return;
     setIsTestBriefingOpen(false);
-    clearLocalTestAttempt(activeTest.testId);
+    clearLocalTestAttempt(selectedTest.testId);
     setExistingAttempt(null);
-    setActiveTestSession(activeTest);
+    setActiveTestSession(selectedTest);
     setActiveDrill(null);
     setWorkoutSession(null);
-    const newUrl = buildRouteUrl({ drill: null, testId: activeTest.testId });
-    window.history.pushState({ testId: activeTest.testId }, '', newUrl);
+    const newUrl = buildRouteUrl({ drill: null, testId: selectedTest.testId });
+    window.history.pushState({ testId: selectedTest.testId }, '', newUrl);
   };
 
   const handleResumeTest = () => {
-    if (!activeTest) return;
+    if (!selectedTest) return;
     setIsTestBriefingOpen(false);
-    setActiveTestSession(activeTest);
+    setActiveTestSession(selectedTest);
     setActiveDrill(null);
     setWorkoutSession(null);
-    const newUrl = buildRouteUrl({ drill: null, testId: activeTest.testId });
-    window.history.pushState({ testId: activeTest.testId }, '', newUrl);
+    const newUrl = buildRouteUrl({ drill: null, testId: selectedTest.testId });
+    window.history.pushState({ testId: selectedTest.testId }, '', newUrl);
   };
 
   const handleExitTest = () => {
     setActiveTestSession(null);
-    if (activeTest) {
-      setExistingAttempt(getLocalTestAttempt(activeTest.testId));
+    if (selectedTest) {
+      setExistingAttempt(getLocalTestAttempt(selectedTest.testId));
     }
     if (window.history.state && window.history.state.testId) {
       window.history.back();
+    } else if (isTestsListOpen) {
+      const newUrl = buildRouteUrl({ drill: null, testsList: true });
+      window.history.pushState({ testsList: true }, '', newUrl);
     } else {
       const newUrl = buildRouteUrl({ drill: null });
       window.history.pushState({ drill: null }, '', newUrl);
@@ -332,7 +396,7 @@ export const App: React.FC = () => {
   return (
     <div className="app-container">
       {/* Main Header only visible on the main menu */}
-      {!activeDrill && !activeTestSession && (
+      {!activeDrill && !activeTestSession && !isTestsListOpen && (
         <header className="main-header">
           <div className="brand-text">
             <h1>DaVinci Decoders</h1>
@@ -392,46 +456,38 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* Simplified Main Menu Dashboard */}
-      {!activeDrill && !activeTestSession && (
-        <main className="menu-container">
-          {/* Assigned Practice Test Card (Visible to Authenticated Allowed Students) */}
-          {isAllowed && activeTest && (
-            <div className="practice-test-card">
-              <div className="test-card-top-row">
-                <span className="test-card-badge">ASSIGNED PRACTICE TEST</span>
-                {existingAttempt && existingAttempt.status === 'in_progress' && (
-                  <span className="test-card-resume-pill">In Progress</span>
-                )}
-              </div>
-              <h3 className="test-card-title">{activeTest.title}</h3>
-              <div className="test-card-meta">
-                <span className="test-card-meta-item">⏱️ {Math.round(activeTest.timeLimitSeconds / 60)} Mins</span>
-                <span className="test-card-meta-item">🧩 {activeTest.questions.length} Questions</span>
-                <span className="test-card-meta-item">⭐ {activeTest.questions.reduce((sum, q) => sum + q.points, 0)} Pts</span>
-              </div>
-              <button
-                className="btn-main-action btn-test-action"
-                onClick={() => {
-                  if (activeTest) {
-                    setExistingAttempt(getLocalTestAttempt(activeTest.testId));
-                  }
-                  setIsTestBriefingOpen(true);
-                }}
-              >
-                {existingAttempt && existingAttempt.status === 'in_progress'
-                  ? 'Resume Practice Test ➔'
-                  : 'Take Practice Test ➔'}
-              </button>
-            </div>
-          )}
+      {/* Practice Tests List View */}
+      {!activeDrill && !activeTestSession && isTestsListOpen && (
+        <PracticeTestsList
+          tests={availableTests}
+          attempts={studentAttempts}
+          isLoading={isTestsLoading}
+          onSelectTest={handleSelectTest}
+          onBack={handleBackFromTestsList}
+        />
+      )}
 
+      {/* Simplified Main Menu Dashboard */}
+      {!activeDrill && !activeTestSession && !isTestsListOpen && (
+        <main className="menu-container">
           {/* General Practice Button at Top */}
           <div className="general-practice-section">
             <button className="btn-main-action" onClick={() => startWorkout(1)}>
               ⚡ General Practice
             </button>
           </div>
+
+          {/* Practice Tests Button (Visible to Authenticated Allowed Students) */}
+          {isAllowed && (
+            <div className="practice-tests-section">
+              <button
+                className="btn-main-action btn-practice-tests"
+                onClick={handleOpenTestsList}
+              >
+                📝 Practice Tests
+              </button>
+            </div>
+          )}
 
           {/* Divider: Individual Practice */}
           <div className="menu-divider">
@@ -498,13 +554,22 @@ export const App: React.FC = () => {
       )}
 
       {/* Practice Test Briefing Modal */}
-      {isTestBriefingOpen && activeTest && (
+      {isTestBriefingOpen && selectedTest && (
         <TestBriefingModal
-          testPacket={activeTest}
+          testPacket={selectedTest}
           existingAttempt={existingAttempt}
           onBegin={handleBeginTest}
           onResume={handleResumeTest}
           onClose={() => setIsTestBriefingOpen(false)}
+        />
+      )}
+
+      {/* Completed Test Results Review Modal */}
+      {selectedCompletedTest && (
+        <TestResultsModal
+          testPacket={selectedCompletedTest.testPacket}
+          results={selectedCompletedTest.results}
+          onClose={() => setSelectedCompletedTest(null)}
         />
       )}
 

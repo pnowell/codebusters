@@ -4,6 +4,7 @@ export interface Route {
   drill: CipherType | null;
   quoteId?: number;
   testId?: string;
+  testsList?: boolean;
 }
 
 export function parseUrlRoute(search = window.location.search): Route {
@@ -11,15 +12,17 @@ export function parseUrlRoute(search = window.location.search): Route {
   const drill = p.get('drill');
   const q = p.get('q');
   const test = p.get('test');
+  const tests = p.get('tests');
   const quoteId = q !== null ? parseInt(q, 10) : NaN;
   return {
     drill: isCipherType(drill) ? drill : null,
     quoteId: Number.isNaN(quoteId) ? undefined : quoteId,
     testId: test || undefined,
+    testsList: tests === 'true' || tests === '1',
   };
 }
 
-/** Returns a URL for the current path with drill/q/test set (or removed), preserving other params like ?unlocked. */
+/** Returns a URL for the current path with drill/q/test/tests set (or removed), preserving other params like ?unlocked. */
 export function buildRouteUrl(route: Route): string {
   const p = new URLSearchParams(window.location.search);
   if (route.drill) p.set('drill', route.drill);
@@ -28,6 +31,8 @@ export function buildRouteUrl(route: Route): string {
   else p.delete('q');
   if (route.testId) p.set('test', route.testId);
   else p.delete('test');
+  if (route.testsList) p.set('tests', 'true');
+  else p.delete('tests');
   const qs = p.toString();
   return qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
 }

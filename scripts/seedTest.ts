@@ -74,15 +74,66 @@ const practiceTest1 = {
   ],
 };
 
+const practiceTest2 = {
+  testId: 'invitational-practice-2',
+  title: 'Invitational Practice Test #2',
+  description:
+    'Science Olympiad Division A Warmup Exam. 4 problems covering Caesar, Atbash, and Pigpen ciphers. Decode accurately and beat the clock!',
+  timeLimitSeconds: 1500, // 25 minutes
+  active: true,
+  createdAt: serverTimestamp(),
+  questions: [
+    {
+      questionNumber: 1,
+      cipher: 'caesar',
+      quoteId: 21, // "Do no harm and leave the world a better place than you found it."
+      points: 125,
+      params: { caesarShift: 4 },
+      description: 'Decode this quote encrypted with a Caesar shift of +4 (A → E).',
+    },
+    {
+      questionNumber: 2,
+      cipher: 'atbash',
+      quoteId: 70, // "The reward of a thing well done is having done it."
+      points: 125,
+      description: 'Decode this quote using the Atbash cipher (A ↔ Z, B ↔ Y).',
+    },
+    {
+      questionNumber: 3,
+      cipher: 'pigpen',
+      quoteId: 22, // "This book fills a much-needed gap."
+      points: 150,
+      description: 'Decode this quote encrypted with the Pigpen / Masonic cipher.',
+    },
+    {
+      questionNumber: 4,
+      cipher: 'galactic',
+      quoteId: 72, // "Instead of cursing the darkness, light a candle."
+      points: 200,
+      isTiebreaker: true,
+      description: '★ TIEBREAKER: Decode this quote written in the Standard Galactic Alphabet.',
+    },
+  ],
+};
+
 async function main() {
-  console.log(`Seeding test "${practiceTest1.testId}" to Firestore projectId: ${process.env.VITE_FIREBASE_PROJECT_ID}...`);
+  console.log(`Seeding practice tests to Firestore projectId: ${env.VITE_FIREBASE_PROJECT_ID}...`);
   try {
-    const testDoc = doc(db, 'tests', practiceTest1.testId);
-    await setDoc(testDoc, practiceTest1, { merge: true });
-    console.log('✅ Successfully seeded practice test to Firestore!');
+    const testDoc1 = doc(db, 'tests', practiceTest1.testId);
+    await setDoc(testDoc1, practiceTest1, { merge: true });
+    console.log(`✅ Seeded ${practiceTest1.testId}`);
+
+    // Slight delay so createdAt timestamp is distinctly newer
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    const testDoc2 = doc(db, 'tests', practiceTest2.testId);
+    await setDoc(testDoc2, practiceTest2, { merge: true });
+    console.log(`✅ Seeded ${practiceTest2.testId}`);
+
+    console.log('🎉 Successfully seeded practice tests to Firestore!');
     process.exit(0);
   } catch (err) {
-    console.error('❌ Failed to seed test to Firestore:', err);
+    console.error('❌ Failed to seed tests to Firestore:', err);
     process.exit(1);
   }
 }
