@@ -19,7 +19,7 @@ const LeaderboardModalContent: React.FC<LeaderboardModalContentProps> = ({
   onClose,
   initialMode,
 }) => {
-  const { user, isAllowed, signIn } = useAuth();
+  const { user } = useAuth();
   const [mode, setMode] = useState<OffsetsMode>(initialMode);
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -111,9 +111,7 @@ const LeaderboardModalContent: React.FC<LeaderboardModalContentProps> = ({
               {userRank !== null ? (
                 <span className="my-card-rank">Rank #{userRank} of {entries.length}</span>
               ) : (
-                <span className="my-card-rank-unranked">
-                  {isAllowed ? 'Play to Rank' : 'Guest Record'}
-                </span>
+                <span className="my-card-rank-unranked">Play to Rank</span>
               )}
             </div>
 
@@ -127,22 +125,6 @@ const LeaderboardModalContent: React.FC<LeaderboardModalContentProps> = ({
                 <span className="stat-val">🔥 {displayMyStreak}</span>
               </div>
             </div>
-
-            {!isAllowed && (
-              <div className="my-card-guest-notice">
-                <span>Sign in to save scores to the team leaderboard.</span>
-                <button
-                  type="button"
-                  className="btn-simple btn-guest-signin"
-                  onClick={() => {
-                    onClose();
-                    signIn();
-                  }}
-                >
-                  Sign In with Google
-                </button>
-              </div>
-            )}
           </div>
 
           {/* Leaderboard Table / Cards */}
@@ -208,7 +190,8 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
   onClose,
   initialMode = 'letterToNum',
 }) => {
-  if (!isOpen) return null;
+  const { isAllowed } = useAuth();
+  if (!isOpen || !isAllowed) return null;
 
   return (
     <LeaderboardModalContent

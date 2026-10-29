@@ -28,6 +28,7 @@ import { UserAuthBadge } from './components/auth/UserAuthBadge';
 import { NotAllowedModal } from './components/auth/NotAllowedModal';
 import { parseUrlRoute, buildRouteUrl, parseUnlockedParam } from './utils/routing';
 import { useVisualViewportHeight } from './hooks/useVisualViewportHeight';
+import { useAuth } from './context/useAuth';
 
 function initSettings(): UserSettings {
   const loaded = loadSettings();
@@ -50,6 +51,7 @@ interface WorkoutSession {
 }
 
 export const App: React.FC = () => {
+  const { isAllowed } = useAuth();
   const [settings, setSettings] = useState<UserSettings>(initSettings);
 
   const [activeDrill, setActiveDrill] = useState<CipherType | null>(() => parseUrlRoute().drill);
@@ -253,14 +255,16 @@ export const App: React.FC = () => {
 
           <div className="header-user-actions">
             <UserAuthBadge onOpenOptions={openOptions} />
-            <button
-              type="button"
-              className="btn-simple"
-              onClick={openLeaderboard}
-              title="Team Leaderboard"
-            >
-              🏆 Leaderboard
-            </button>
+            {isAllowed && (
+              <button
+                type="button"
+                className="btn-simple"
+                onClick={openLeaderboard}
+                title="Team Leaderboard"
+              >
+                🏆 Leaderboard
+              </button>
+            )}
             <button
               className="btn-simple"
               onClick={openOptions}
@@ -341,10 +345,12 @@ export const App: React.FC = () => {
       )}
 
       {/* Team Leaderboard Modal */}
-      <LeaderboardModal
-        isOpen={isLeaderboardOpen}
-        onClose={closeLeaderboard}
-      />
+      {isAllowed && (
+        <LeaderboardModal
+          isOpen={isLeaderboardOpen}
+          onClose={closeLeaderboard}
+        />
+      )}
 
       {/* Workout Summary Modal */}
       {workoutSummary && (

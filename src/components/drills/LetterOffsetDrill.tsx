@@ -14,6 +14,7 @@ import { DrillHeader } from '../drill/DrillHeader';
 import { DrillActionRow } from '../drill/DrillActionRow';
 import { AlphabetMasteryModal } from '../drill/AlphabetMasteryModal';
 import { LeaderboardModal } from '../leaderboard/LeaderboardModal';
+import { useAuth } from '../../context/useAuth';
 
 export interface WorkoutStepContext {
   round: number;
@@ -138,6 +139,7 @@ function getHeatTier(cpm: number): {
 }
 
 export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, workoutContext }) => {
+  const { isAllowed } = useAuth();
   const initialMode: DrillMode = workoutContext?.offsetsMode || 'letterToNum';
   const [mode, setMode] = useState<DrillMode>(initialMode);
   const [scores, setScores] = useState<OffsetsModeScores>(() => loadOffsetsModeScores(initialMode));
@@ -534,14 +536,16 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, wo
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-          <button
-            type="button"
-            className="leaderboard-chip-btn"
-            onClick={() => setIsLeaderboardOpen(true)}
-            title="View Team Leaderboard for this mode"
-          >
-            🏆 Leaderboard
-          </button>
+          {isAllowed && (
+            <button
+              type="button"
+              className="leaderboard-chip-btn"
+              onClick={() => setIsLeaderboardOpen(true)}
+              title="View Team Leaderboard for this mode"
+            >
+              🏆 Leaderboard
+            </button>
+          )}
           <button
             type="button"
             className="mastery-chip-btn"
@@ -686,11 +690,13 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, wo
       />
 
       {/* Team Leaderboard Modal */}
-      <LeaderboardModal
-        isOpen={isLeaderboardOpen}
-        onClose={() => setIsLeaderboardOpen(false)}
-        initialMode={mode}
-      />
+      {isAllowed && (
+        <LeaderboardModal
+          isOpen={isLeaderboardOpen}
+          onClose={() => setIsLeaderboardOpen(false)}
+          initialMode={mode}
+        />
+      )}
     </div>
   );
 };
