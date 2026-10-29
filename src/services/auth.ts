@@ -40,7 +40,7 @@ export async function checkAllowlist(email: string): Promise<AllowedUser | null>
     return {
       email: normalized,
       displayName: data.displayName || 'Decoder',
-      role: data.role === 'coach' || data.role === 'teacher' ? data.role : 'student',
+      role: data.role === 'teacher' ? 'teacher' : 'student',
       addedAt: data.addedAt,
       active: true,
     };

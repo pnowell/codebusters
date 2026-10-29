@@ -48,7 +48,7 @@ export interface EvaluationResult {
 export interface AllowedUser {
   email: string;
   displayName: string;
-  role: 'student' | 'coach' | 'teacher';
+  role: 'student' | 'teacher';
   addedAt?: unknown;
   active: boolean;
 }
@@ -57,7 +57,7 @@ export interface UserProfile {
   uid: string;
   email: string;
   displayName: string;
-  role: 'student' | 'coach' | 'teacher';
+  role: 'student' | 'teacher';
   unlockedCiphers: CipherType[];
   settings?: {
     soundEffects?: boolean;
@@ -126,7 +126,7 @@ export interface TestEvaluationResult {
 export interface PublicProfile {
   uid: string;
   displayName: string;
-  role: 'student' | 'coach' | 'teacher';
+  role: 'student' | 'teacher';
   offsetsScores?: Record<string, { best60s: number; bestStreak: number }>;
   updatedAt?: unknown;
 }
@@ -136,8 +136,6 @@ export interface TestAttempt {
   testId: string;
   studentUids: string[];
   teamName?: string;
-  studentUid?: string;   // Legacy backwards-compatibility
-  studentName?: string;  // Legacy backwards-compatibility
   startedAt: number;
   submittedAt?: number;
   status: 'in_progress' | 'submitted' | 'expired';

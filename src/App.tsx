@@ -491,7 +491,7 @@ export const App: React.FC = () => {
       {activeTestSession && (
         <TestRunner
           testPacket={activeTestSession}
-          studentUid={user?.uid || 'student'}
+          studentUids={[user?.uid || 'student']}
           initialAttempt={existingAttempt}
           onExitToMenu={handleExitTest}
         />

@@ -19,18 +19,14 @@ import { TestResultsView } from './TestResultsView';
 
 interface TestRunnerProps {
   testPacket: TestPacket;
-  studentUid?: string;
-  studentUids?: string[];
-  studentName?: string;
+  studentUids: string[];
   initialAttempt?: TestAttempt | null;
   onExitToMenu: () => void;
 }
 
 export const TestRunner: React.FC<TestRunnerProps> = ({
   testPacket,
-  studentUid,
   studentUids,
-  studentName: _studentName,
   initialAttempt,
   onExitToMenu,
 }) => {
@@ -38,9 +34,8 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
   const resolvedStudentUids = useMemo(() => {
     if (studentUids && studentUids.length > 0) return studentUids;
     if (initialAttempt?.studentUids && initialAttempt.studentUids.length > 0) return initialAttempt.studentUids;
-    if (studentUid) return [studentUid];
     return ['student'];
-  }, [studentUids, initialAttempt?.studentUids, studentUid]);
+  }, [studentUids, initialAttempt?.studentUids]);
 
   // Total questions count (review screen is index === questions.length)
   const totalQuestions = testPacket.questions.length;

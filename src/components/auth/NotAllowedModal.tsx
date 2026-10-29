@@ -19,11 +19,11 @@ export const NotAllowedModal: React.FC = () => {
           <h4>Google Account Not on Allowlist</h4>
           <p className="not-allowed-desc">
             The account <strong className="highlight-email">{rejectedEmail}</strong> is not
-            currently registered on the DaVinci Decoders coaching roster.
+            currently registered on the DaVinci Decoders classroom roster.
           </p>
           <p className="not-allowed-subdesc">
             You can continue practicing in <strong>Guest Mode</strong> (all progress is safely
-            saved on this device), or ask Coach to add your email address to the team list.
+            saved on this device), or ask your teacher to add your email address to the team list.
           </p>
 
           <div className="not-allowed-actions">

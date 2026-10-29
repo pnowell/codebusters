@@ -103,7 +103,7 @@ export function subscribeTeamProfiles(
 }
 
 /**
- * Upserts a student or coach public profile in `/profiles/{uid}`
+ * Upserts a student or teacher public profile in `/profiles/{uid}`
  */
 export async function upsertPublicProfile(
   uid: string,

@@ -44,7 +44,7 @@ export const PracticeTestsList: React.FC<PracticeTestsListProps> = ({
           <div className="tests-list-empty">
             <div className="empty-icon">📝</div>
             <p>No practice tests available yet.</p>
-            <small>New tests authored by your coach will appear here automatically.</small>
+            <small>New tests authored by your teacher will appear here automatically.</small>
           </div>
         ) : (
           tests.map((test) => {
