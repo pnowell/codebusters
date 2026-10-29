@@ -258,19 +258,22 @@ export const App: React.FC = () => {
             {isAllowed && (
               <button
                 type="button"
-                className="btn-simple"
+                className="btn-simple btn-icon-square"
                 onClick={openLeaderboard}
                 title="Team Leaderboard"
+                aria-label="Team Leaderboard"
               >
-                🏆 Leaderboard
+                <span className="btn-icon">🏆</span>
               </button>
             )}
             <button
-              className="btn-simple"
+              type="button"
+              className="btn-simple btn-icon-square"
               onClick={openOptions}
               title="Classroom Settings"
+              aria-label="Classroom Settings"
             >
-              ⚙️ Options
+              <span className="btn-icon">⚙️</span>
             </button>
           </div>
         </header>
