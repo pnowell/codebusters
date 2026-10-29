@@ -30,7 +30,6 @@ export const PracticeTestsList: React.FC<PracticeTestsListProps> = ({
         </button>
         <div className="practice-tests-header-title">
           <h2>Practice Tests</h2>
-          <div className="practice-tests-subtitle">Science Olympiad Division A Exam Packets</div>
         </div>
       </header>
 

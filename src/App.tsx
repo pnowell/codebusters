@@ -7,7 +7,7 @@ import { LeaderboardModal } from './components/leaderboard/LeaderboardModal';
 import { TestRunner } from './components/test/TestRunner';
 import { TestBriefingModal } from './components/test/TestBriefingModal';
 import { PracticeTestsList } from './components/test/PracticeTestsList';
-import { TestResultsModal } from './components/test/TestResultsModal';
+import { TestResultsView } from './components/test/TestResultsView';
 import {
   WorkoutSummaryModal,
   type WorkoutSummaryData,
@@ -151,6 +151,29 @@ export const App: React.FC = () => {
     }
   }, [isAllowed, availableTests]);
 
+  // Deep-link direct test results review if ?results=testId is provided
+  useEffect(() => {
+    const route = parseUrlRoute();
+    if (!route.resultsTestId || !isAllowed) return;
+
+    const test = availableTests.find((t) => t.testId === route.resultsTestId);
+    const attempt = studentAttempts[route.resultsTestId] || getLocalTestAttempt(route.resultsTestId);
+    if (test && attempt?.results) {
+      queueMicrotask(() => {
+        setSelectedCompletedTest({ testPacket: test, results: attempt.results! });
+      });
+    } else if (route.resultsTestId) {
+      fetchTestById(route.resultsTestId).then((fetched) => {
+        if (fetched) {
+          const localAtt = getLocalTestAttempt(fetched.testId);
+          if (localAtt?.results) {
+            setSelectedCompletedTest({ testPacket: fetched, results: localAtt.results });
+          }
+        }
+      });
+    }
+  }, [isAllowed, availableTests, studentAttempts]);
+
   // Listen to browser Back / Forward buttons
   useEffect(() => {
     const handlePopState = (e: PopStateEvent) => {
@@ -162,6 +185,15 @@ export const App: React.FC = () => {
       setActiveDrill(route.drill);
       setActiveQuoteId(route.quoteId);
       setIsTestsListOpen(Boolean(route.testsList));
+      if (!route.resultsTestId) {
+        setSelectedCompletedTest(null);
+      } else {
+        const test = availableTests.find((t) => t.testId === route.resultsTestId);
+        const attempt = studentAttempts[route.resultsTestId] || getLocalTestAttempt(route.resultsTestId);
+        if (test && attempt?.results) {
+          setSelectedCompletedTest({ testPacket: test, results: attempt.results });
+        }
+      }
       if (!route.drill) {
         setWorkoutSession(null);
       }
@@ -172,7 +204,7 @@ export const App: React.FC = () => {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, [availableTests, studentAttempts]);
 
   // Handle deep-link history: if user lands directly on a drill from a link,
   // seed the history stack with the menu first so browser back goes to menu instead of closing app
@@ -188,6 +220,7 @@ export const App: React.FC = () => {
   const navigateToDrill = (drill: CipherType, quoteId?: number, replaceHistory = false) => {
     setActiveTestSession(null);
     setIsTestsListOpen(false);
+    setSelectedCompletedTest(null);
     setActiveDrill(drill);
     setActiveQuoteId(quoteId);
     const newUrl = buildRouteUrl({ drill, quoteId });
@@ -202,6 +235,7 @@ export const App: React.FC = () => {
     setWorkoutSession(null);
     setActiveTestSession(null);
     setIsTestsListOpen(false);
+    setSelectedCompletedTest(null);
     if (window.history.state && (window.history.state.drill || window.history.state.testId || window.history.state.testsList)) {
       window.history.back();
     } else {
@@ -214,11 +248,13 @@ export const App: React.FC = () => {
 
   const handleOpenTestsList = () => {
     setIsTestsListOpen(true);
+    setSelectedCompletedTest(null);
     const newUrl = buildRouteUrl({ drill: null, testsList: true });
     window.history.pushState({ testsList: true }, '', newUrl);
   };
 
   const handleBackFromTestsList = () => {
+    setSelectedCompletedTest(null);
     if (window.history.state && window.history.state.testsList) {
       window.history.back();
     } else {
@@ -231,10 +267,22 @@ export const App: React.FC = () => {
   const handleSelectTest = (test: TestPacket, attempt: TestAttempt | null) => {
     if (attempt && (attempt.status === 'submitted' || attempt.status === 'expired') && attempt.results) {
       setSelectedCompletedTest({ testPacket: test, results: attempt.results });
+      const newUrl = buildRouteUrl({ drill: null, testsList: true, resultsTestId: test.testId });
+      window.history.pushState({ testsList: true, resultsTestId: test.testId }, '', newUrl);
     } else {
       setSelectedTest(test);
       setExistingAttempt(attempt);
       setIsTestBriefingOpen(true);
+    }
+  };
+
+  const handleBackFromTestResults = () => {
+    setSelectedCompletedTest(null);
+    if (window.history.state && window.history.state.resultsTestId) {
+      window.history.back();
+    } else {
+      const newUrl = buildRouteUrl({ drill: null, testsList: true });
+      window.history.pushState({ testsList: true }, '', newUrl);
     }
   };
 
@@ -396,7 +444,7 @@ export const App: React.FC = () => {
   return (
     <div className="app-container">
       {/* Main Header only visible on the main menu */}
-      {!activeDrill && !activeTestSession && !isTestsListOpen && (
+      {!activeDrill && !activeTestSession && !selectedCompletedTest && !isTestsListOpen && (
         <header className="main-header">
           <div className="brand-text">
             <h1>DaVinci Decoders</h1>
@@ -456,8 +504,17 @@ export const App: React.FC = () => {
         />
       )}
 
+      {/* Practice Test Results Page View */}
+      {!activeDrill && !activeTestSession && selectedCompletedTest && (
+        <TestResultsView
+          testPacket={selectedCompletedTest.testPacket}
+          results={selectedCompletedTest.results}
+          onBack={handleBackFromTestResults}
+        />
+      )}
+
       {/* Practice Tests List View */}
-      {!activeDrill && !activeTestSession && isTestsListOpen && (
+      {!activeDrill && !activeTestSession && !selectedCompletedTest && isTestsListOpen && (
         <PracticeTestsList
           tests={availableTests}
           attempts={studentAttempts}
@@ -468,11 +525,11 @@ export const App: React.FC = () => {
       )}
 
       {/* Simplified Main Menu Dashboard */}
-      {!activeDrill && !activeTestSession && !isTestsListOpen && (
+      {!activeDrill && !activeTestSession && !selectedCompletedTest && !isTestsListOpen && (
         <main className="menu-container">
           {/* General Practice Button at Top */}
           <div className="general-practice-section">
-            <button className="btn-main-action" onClick={() => startWorkout(1)}>
+            <button className="menu-action-btn" onClick={() => startWorkout(1)}>
               ⚡ General Practice
             </button>
           </div>
@@ -481,7 +538,7 @@ export const App: React.FC = () => {
           {isAllowed && (
             <div className="practice-tests-section">
               <button
-                className="btn-main-action btn-practice-tests"
+                className="menu-action-btn"
                 onClick={handleOpenTestsList}
               >
                 📝 Practice Tests
@@ -561,15 +618,6 @@ export const App: React.FC = () => {
           onBegin={handleBeginTest}
           onResume={handleResumeTest}
           onClose={() => setIsTestBriefingOpen(false)}
-        />
-      )}
-
-      {/* Completed Test Results Review Modal */}
-      {selectedCompletedTest && (
-        <TestResultsModal
-          testPacket={selectedCompletedTest.testPacket}
-          results={selectedCompletedTest.results}
-          onClose={() => setSelectedCompletedTest(null)}
         />
       )}
 

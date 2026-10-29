@@ -15,7 +15,7 @@ import {
 } from '../../services/testService';
 import { TestCipherWorkspace } from './TestCipherWorkspace';
 import { TestReviewScreen } from './TestReviewScreen';
-import { TestResultsModal } from './TestResultsModal';
+import { TestResultsView } from './TestResultsView';
 
 interface TestRunnerProps {
   testPacket: TestPacket;
@@ -268,6 +268,16 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
+  if (isFinished && results) {
+    return (
+      <TestResultsView
+        testPacket={testPacket}
+        results={results}
+        onBack={handleCloseResults}
+      />
+    );
+  }
+
   return (
     <div className="test-runner-container">
       {/* 1. Header Navigation Bar */}
@@ -392,15 +402,6 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
           />
         )}
       </main>
-
-      {/* 4. Results Screen (Modal) */}
-      {isFinished && results && (
-        <TestResultsModal
-          testPacket={testPacket}
-          results={results}
-          onClose={handleCloseResults}
-        />
-      )}
     </div>
   );
 };
