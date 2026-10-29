@@ -218,6 +218,13 @@ body {
   margin: 0 auto;
 }
 
+.practice-test-card,
+.general-practice-section,
+.menu-divider,
+.menu-buttons-list {
+  flex-shrink: 0;
+}
+
 .general-practice-section {
   display: flex;
   justify-content: center;
@@ -2131,16 +2138,17 @@ body {
    ========================================================================== */
 
 /* Main Menu Assigned Practice Test Card */
+/* Main Menu Assigned Practice Test Card */
 .practice-test-card {
-  background: linear-gradient(135deg, rgba(30, 41, 59, 0.85) 0%, rgba(15, 23, 42, 0.95) 100%);
+  flex-shrink: 0;
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.96) 100%);
   border: 1px solid rgba(56, 189, 248, 0.35);
   border-radius: 14px;
-  padding: 1.1rem 1.25rem;
-  margin-bottom: 1rem;
+  padding: 1rem 1.15rem;
   box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.4), 0 0 16px rgba(56, 189, 248, 0.12);
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.65rem;
   position: relative;
   overflow: hidden;
 }
@@ -2193,38 +2201,60 @@ body {
 }
 
 .test-card-title {
-  font-size: 1.2rem;
+  font-size: 1.18rem;
   font-weight: 700;
   color: var(--text-main);
-  line-height: 1.25;
+  line-height: 1.28;
 }
 
 .test-card-meta {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.45rem;
-  font-size: 0.85rem;
-  color: var(--text-muted);
+  gap: 0.4rem 0.55rem;
 }
 
-.test-card-meta .dot-sep {
-  color: rgba(148, 163, 184, 0.4);
+.test-card-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  padding: 0.22rem 0.55rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #cbd5e1;
+  white-space: nowrap;
 }
 
 .btn-test-action {
-  margin-top: 0.35rem;
+  margin-top: 0.25rem;
   width: 100%;
   font-weight: 700;
+  font-size: 1rem;
+  padding: 0.85rem 1rem;
+  min-height: 46px;
   letter-spacing: 0.02em;
   background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
   border: 1px solid rgba(56, 189, 248, 0.4);
+  border-radius: 10px;
   box-shadow: 0 4px 14px rgba(2, 132, 199, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #fff;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 
 .btn-test-action:hover {
   background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
   transform: translateY(-1px);
+}
+
+.btn-test-action:active {
+  transform: translateY(0);
 }
 
 /* Test Runner Layout */
@@ -3303,6 +3333,26 @@ body {
   .briefing-stats-strip {
     grid-template-columns: 1fr;
     gap: 0.4rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .practice-test-card {
+    padding: 0.75rem 0.85rem;
+    gap: 0.45rem;
+    border-radius: 12px;
+  }
+  .test-card-title {
+    font-size: 1.05rem;
+  }
+  .test-card-meta-item {
+    font-size: 0.74rem;
+    padding: 0.16rem 0.45rem;
+  }
+  .btn-test-action {
+    padding: 0.7rem 0.85rem;
+    font-size: 0.95rem;
+    min-height: 42px;
   }
 }
 

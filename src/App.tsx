@@ -406,11 +406,9 @@ export const App: React.FC = () => {
               </div>
               <h3 className="test-card-title">{activeTest.title}</h3>
               <div className="test-card-meta">
-                <span>⏱️ {Math.round(activeTest.timeLimitSeconds / 60)} Mins</span>
-                <span className="dot-sep">•</span>
-                <span>🧩 {activeTest.questions.length} Questions</span>
-                <span className="dot-sep">•</span>
-                <span>⭐ {activeTest.questions.reduce((sum, q) => sum + q.points, 0)} Pts</span>
+                <span className="test-card-meta-item">⏱️ {Math.round(activeTest.timeLimitSeconds / 60)} Mins</span>
+                <span className="test-card-meta-item">🧩 {activeTest.questions.length} Questions</span>
+                <span className="test-card-meta-item">⭐ {activeTest.questions.reduce((sum, q) => sum + q.points, 0)} Pts</span>
               </div>
               <button
                 className="btn-main-action btn-test-action"
