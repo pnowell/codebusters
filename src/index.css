@@ -219,23 +219,16 @@ body {
 }
 
 .practice-test-card,
-.general-practice-section,
-.practice-tests-section,
+.menu-featured-actions,
 .menu-divider,
 .menu-buttons-list {
   flex-shrink: 0;
 }
 
-.general-practice-section {
+.menu-featured-actions {
   display: flex;
-  justify-content: center;
-  margin-bottom: 0.25rem;
-}
-
-.practice-tests-section {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 0.5rem;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
 .menu-action-btn {
@@ -3068,13 +3061,18 @@ body {
    ========================================================================== */
 
 .test-results-view {
+  flex: 1;
+  min-height: 0;
   width: 100%;
   max-width: 780px;
   margin: 0 auto;
-  padding: 1.25rem 1rem 4rem 1rem;
+  padding: 0.5rem 0.65rem 3.5rem 0.65rem;
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
   animation: fadeIn 0.2s ease-in-out;
 }
 
@@ -3082,6 +3080,12 @@ body {
   display: flex;
   align-items: center;
   gap: 1rem;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  background: var(--bg-primary);
+  padding: 0.45rem 0;
+  z-index: 10;
 }
 
 .test-results-header-title h2 {
@@ -3089,6 +3093,12 @@ body {
   font-weight: 800;
   color: var(--text-main);
   line-height: 1.2;
+}
+
+.results-summary-card,
+.results-questions-section,
+.results-footer-nav {
+  flex-shrink: 0;
 }
 
 .results-summary-card {

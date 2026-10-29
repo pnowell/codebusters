@@ -527,24 +527,20 @@ export const App: React.FC = () => {
       {/* Simplified Main Menu Dashboard */}
       {!activeDrill && !activeTestSession && !selectedCompletedTest && !isTestsListOpen && (
         <main className="menu-container">
-          {/* General Practice Button at Top */}
-          <div className="general-practice-section">
+          {/* Featured Practice Actions */}
+          <div className="menu-featured-actions">
             <button className="menu-action-btn" onClick={() => startWorkout(1)}>
               ⚡ General Practice
             </button>
-          </div>
-
-          {/* Practice Tests Button (Visible to Authenticated Allowed Students) */}
-          {isAllowed && (
-            <div className="practice-tests-section">
+            {isAllowed && (
               <button
                 className="menu-action-btn"
                 onClick={handleOpenTestsList}
               >
                 📝 Practice Tests
               </button>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Divider: Individual Practice */}
           <div className="menu-divider">
