@@ -134,12 +134,18 @@ export async function mergeAndInitializeCloudUser(uid: string, email: string, de
   const profileDocRef = doc(db, 'profiles', uid);
 
   const [snap, profileSnap] = await Promise.all([
-    getDoc(userDocRef),
-    getDoc(profileDocRef),
+    getDoc(userDocRef).catch((err) => {
+      console.warn('[Sync] Failed to read user doc:', err);
+      return null;
+    }),
+    getDoc(profileDocRef).catch((err) => {
+      console.warn('[Sync] Failed to read profile doc (check Firestore rules if permission-denied):', err);
+      return null;
+    }),
   ]);
 
-  const cloudData = (snap.exists() ? snap.data() : {}) as Partial<UserProfile>;
-  const profileData = (profileSnap.exists() ? profileSnap.data() : {}) as Partial<PublicProfile>;
+  const cloudData = (snap && snap.exists() ? snap.data() : {}) as Partial<UserProfile>;
+  const profileData = (profileSnap && profileSnap.exists() ? profileSnap.data() : {}) as Partial<PublicProfile>;
 
   const localSettings = loadSettings();
   const localCompleted = loadCompletedQuoteIds();
