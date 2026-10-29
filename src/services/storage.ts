@@ -145,6 +145,22 @@ export interface LetterProgress {
 export type OffsetsProgress = Record<string, LetterProgress>;
 export type OffsetsProgressByMode = Record<OffsetsMode, OffsetsProgress>;
 
+function sanitizeProgressDict(raw: unknown): OffsetsProgress {
+  if (!raw || typeof raw !== 'object') return {};
+  const clean: OffsetsProgress = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (v && typeof v === 'object') {
+      const item = v as Partial<LetterProgress>;
+      clean[k] = {
+        streak: typeof item.streak === 'number' ? item.streak : 0,
+        attempts: typeof item.attempts === 'number' ? item.attempts : 0,
+        correct: typeof item.correct === 'number' ? item.correct : 0,
+      };
+    }
+  }
+  return clean;
+}
+
 export function loadAllOffsetsProgress(): OffsetsProgressByMode {
   try {
     const raw = localStorage.getItem(KEYS.offsetsProgress);
@@ -159,14 +175,14 @@ export function loadAllOffsetsProgress(): OffsetsProgressByMode {
     // Check if it's already keyed by mode
     if ('letterToNum' in parsed || 'numToLetter' in parsed) {
       return {
-        letterToNum: (parsed.letterToNum as OffsetsProgress) || {},
-        numToLetter: (parsed.numToLetter as OffsetsProgress) || {},
+        letterToNum: sanitizeProgressDict(parsed.letterToNum),
+        numToLetter: sanitizeProgressDict(parsed.numToLetter),
       };
     }
 
     // Legacy migration: single flat record belonged to letterToNum
     return {
-      letterToNum: parsed as OffsetsProgress,
+      letterToNum: sanitizeProgressDict(parsed),
       numToLetter: {},
     };
   } catch {

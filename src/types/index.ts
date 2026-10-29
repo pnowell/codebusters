@@ -64,7 +64,6 @@ export interface UserProfile {
     highContrast?: boolean;
   };
   offsetsProgress?: Record<string, unknown>;
-  offsetsScores?: Record<string, { best60s: number; bestStreak: number }>;
   completedQuotes?: number[];
   practiceHistory?: Record<string, { count: number; lastPracticed: number }>;
   lastActiveAt?: unknown;

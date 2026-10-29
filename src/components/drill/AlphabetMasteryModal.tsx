@@ -26,7 +26,9 @@ export const AlphabetMasteryModal: React.FC<AlphabetMasteryModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  const masteredCount = Object.values(progress).filter(p => p.streak >= 3).length;
+  const masteredCount = progress
+    ? Object.values(progress).filter(p => p && typeof p === 'object' && (p.streak || 0) >= 3).length
+    : 0;
 
   const renderBadge = (offset: number) => {
     const letter = offsetToLetter(offset);

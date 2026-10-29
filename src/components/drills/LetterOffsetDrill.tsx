@@ -97,10 +97,10 @@ function initDeck(progress: OffsetsProgress): number[] {
 
   for (let o = 0; o < 26; o++) {
     const letter = offsetToLetter(o);
-    const p = progress[letter];
-    if (!p || p.attempts === 0) {
+    const p = progress ? progress[letter] : undefined;
+    if (!p || typeof p !== 'object' || p.attempts === 0) {
       unseen.push(o);
-    } else if (p.streak >= 3) {
+    } else if ((p.streak || 0) >= 3) {
       mastered.push(o);
     } else {
       learningOrMissed.push(o);
@@ -460,7 +460,9 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, wo
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const masteredCount = Object.values(progress).filter(p => p.streak >= 3).length;
+  const masteredCount = progress
+    ? Object.values(progress).filter(p => p && typeof p === 'object' && (p.streak || 0) >= 3).length
+    : 0;
   const heat = getHeatTier(cadence);
   const barPercent = Math.min(100, Math.round((cadence / 45) * 100));
 

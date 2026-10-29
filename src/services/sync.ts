@@ -27,6 +27,22 @@ const syncListeners: Set<() => void> = new Set();
 let pendingCloudUpdates: Partial<UserProfile> = {};
 let cloudDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
+function sanitizeProgress(raw: unknown): OffsetsProgress {
+  if (!raw || typeof raw !== 'object') return {};
+  const clean: OffsetsProgress = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (v && typeof v === 'object') {
+      const item = v as { streak?: number; attempts?: number; correct?: number };
+      clean[k] = {
+        streak: typeof item.streak === 'number' ? item.streak : 0,
+        attempts: typeof item.attempts === 'number' ? item.attempts : 0,
+        correct: typeof item.correct === 'number' ? item.correct : 0,
+      };
+    }
+  }
+  return clean;
+}
+
 function normalizeOffsetsProgress(raw: unknown): OffsetsProgressByMode {
   if (!raw || typeof raw !== 'object') {
     return { letterToNum: {}, numToLetter: {} };
@@ -34,19 +50,22 @@ function normalizeOffsetsProgress(raw: unknown): OffsetsProgressByMode {
   const obj = raw as Record<string, unknown>;
   if ('letterToNum' in obj || 'numToLetter' in obj) {
     return {
-      letterToNum: (obj.letterToNum as OffsetsProgress) || {},
-      numToLetter: (obj.numToLetter as OffsetsProgress) || {},
+      letterToNum: sanitizeProgress(obj.letterToNum),
+      numToLetter: sanitizeProgress(obj.numToLetter),
     };
   }
   return {
-    letterToNum: obj as OffsetsProgress,
+    letterToNum: sanitizeProgress(obj),
     numToLetter: {},
   };
 }
 
 function mergeLetterStats(localP: OffsetsProgress, cloudP: OffsetsProgress): OffsetsProgress {
-  const merged: OffsetsProgress = { ...cloudP };
-  for (const [char, localStat] of Object.entries(localP)) {
+  const cleanLocal = sanitizeProgress(localP);
+  const cleanCloud = sanitizeProgress(cloudP);
+  const merged: OffsetsProgress = { ...cleanCloud };
+
+  for (const [char, localStat] of Object.entries(cleanLocal)) {
     const cloudStat = merged[char];
     if (!cloudStat) {
       merged[char] = localStat;
@@ -81,7 +100,6 @@ registerSyncDispatcher((type, data) => {
       break;
     case 'offsetsScores': {
       const scores = data as OffsetsScoresByMode;
-      pushCloudUpdate({ offsetsScores: scores });
       const currentSettings = loadSettings();
       if (scores.letterToNum && (scores.letterToNum.best60s > 0 || scores.letterToNum.bestStreak > 0)) {
         updateLeaderboardScore(
@@ -163,20 +181,18 @@ export async function mergeAndInitializeCloudUser(uid: string, email: string, de
   const cloudCompleted = cloudData.completedQuotes ?? [];
   const mergedCompleted = Array.from(new Set([...localCompleted, ...cloudCompleted]));
 
-  // 3. Offsets Scores: Max scores across Local, Cloud Profile, and User Profile
-  const cloudLetterToNum = cloudData.offsetsScores?.letterToNum ?? { best60s: 0, bestStreak: 0 };
-  const cloudNumToLetter = cloudData.offsetsScores?.numToLetter ?? { best60s: 0, bestStreak: 0 };
+  // 3. Offsets Scores: Max scores across Local and Cloud Profile
   const profileL2N = profileData.offsetsScores?.letterToNum ?? { best60s: 0, bestStreak: 0 };
   const profileN2L = profileData.offsetsScores?.numToLetter ?? { best60s: 0, bestStreak: 0 };
 
   const mergedOffsetsScores: OffsetsScoresByMode = {
     letterToNum: {
-      best60s: Math.max(localLetterToNum.best60s, cloudLetterToNum.best60s, profileL2N.best60s),
-      bestStreak: Math.max(localLetterToNum.bestStreak, cloudLetterToNum.bestStreak, profileL2N.bestStreak),
+      best60s: Math.max(localLetterToNum.best60s, profileL2N.best60s),
+      bestStreak: Math.max(localLetterToNum.bestStreak, profileL2N.bestStreak),
     },
     numToLetter: {
-      best60s: Math.max(localNumToLetter.best60s, cloudNumToLetter.best60s, profileN2L.best60s),
-      bestStreak: Math.max(localNumToLetter.bestStreak, cloudNumToLetter.bestStreak, profileN2L.bestStreak),
+      best60s: Math.max(localNumToLetter.best60s, profileN2L.best60s),
+      bestStreak: Math.max(localNumToLetter.bestStreak, profileN2L.bestStreak),
     },
   };
 
@@ -231,7 +247,6 @@ export async function mergeAndInitializeCloudUser(uid: string, email: string, de
       displayName: finalName,
       unlockedCiphers: mergedUnlocked,
       completedQuotes: mergedCompleted,
-      offsetsScores: mergedOffsetsScores,
       offsetsProgress: mergedProgress,
       practiceHistory: mergedHistory,
       lastActiveAt: serverTimestamp(),
@@ -326,26 +341,6 @@ export function startCloudSync(uid: string): void {
         }
       }
 
-      if (data.offsetsScores) {
-        if (data.offsetsScores.letterToNum) {
-          const cur = loadOffsetsModeScores('letterToNum');
-          const maxBest60s = Math.max(cur.best60s, data.offsetsScores.letterToNum.best60s);
-          const maxBestStreak = Math.max(cur.bestStreak, data.offsetsScores.letterToNum.bestStreak);
-          if (cur.best60s !== maxBest60s || cur.bestStreak !== maxBestStreak) {
-            saveOffsetsModeScore('letterToNum', { best60s: maxBest60s, bestStreak: maxBestStreak });
-            hasChanged = true;
-          }
-        }
-        if (data.offsetsScores.numToLetter) {
-          const cur = loadOffsetsModeScores('numToLetter');
-          const maxBest60s = Math.max(cur.best60s, data.offsetsScores.numToLetter.best60s);
-          const maxBestStreak = Math.max(cur.bestStreak, data.offsetsScores.numToLetter.bestStreak);
-          if (cur.best60s !== maxBest60s || cur.bestStreak !== maxBestStreak) {
-            saveOffsetsModeScore('numToLetter', { best60s: maxBest60s, bestStreak: maxBestStreak });
-            hasChanged = true;
-          }
-        }
-      }
 
       if (data.completedQuotes && Array.isArray(data.completedQuotes)) {
         const current = loadCompletedQuoteIds();
