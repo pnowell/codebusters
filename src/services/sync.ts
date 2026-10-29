@@ -18,7 +18,7 @@ import {
   type OffsetsScoresByMode,
 } from './storage';
 import type { UserProfile, UserSettings, PublicProfile } from '../types';
-import { upsertPublicProfile } from './profileService';
+import { upsertPublicProfile, normalizePublicProfile } from './profileService';
 
 let activeSyncUnsubscribe: Unsubscribe | null = null;
 let currentSyncedUid: string | null = null;
@@ -163,7 +163,9 @@ export async function mergeAndInitializeCloudUser(uid: string, email: string, de
   ]);
 
   const cloudData = (snap && snap.exists() ? snap.data() : {}) as Partial<UserProfile>;
-  const profileData = (profileSnap && profileSnap.exists() ? profileSnap.data() : {}) as Partial<PublicProfile>;
+  const profileData = (profileSnap && profileSnap.exists()
+    ? normalizePublicProfile(profileSnap.data() as Record<string, unknown>, uid)
+    : {}) as Partial<PublicProfile>;
 
   const localSettings = loadSettings();
   const localCompleted = loadCompletedQuoteIds();
@@ -255,10 +257,18 @@ export async function mergeAndInitializeCloudUser(uid: string, email: string, de
   );
 
   // Sync to Public Profile (public roster & leaderboards)
-  await upsertPublicProfile(uid, {
+  const profilePayload: Partial<PublicProfile> = {
     displayName: finalName,
-    offsetsScores: mergedOffsetsScores,
-  });
+  };
+  const hasScores =
+    (mergedOffsetsScores.letterToNum && (mergedOffsetsScores.letterToNum.best60s > 0 || mergedOffsetsScores.letterToNum.bestStreak > 0)) ||
+    (mergedOffsetsScores.numToLetter && (mergedOffsetsScores.numToLetter.best60s > 0 || mergedOffsetsScores.numToLetter.bestStreak > 0));
+
+  if (hasScores) {
+    profilePayload.offsetsScores = mergedOffsetsScores;
+  }
+
+  await upsertPublicProfile(uid, profilePayload);
 
   notifySyncListeners();
 }

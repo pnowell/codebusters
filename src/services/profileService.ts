@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteField,
   doc,
   getDoc,
   onSnapshot,
@@ -43,6 +44,42 @@ export function getDisplayNamesForUids(uids: string[] | undefined, fallback: str
 }
 
 /**
+ * Normalizes a public profile document from Firestore, recovering any scores
+ * stored under nested maps or accidental dot-notated literal fields,
+ * and ensuring clean data structures.
+ */
+export function normalizePublicProfile(raw: Record<string, unknown>, uid: string): PublicProfile {
+  const nestedScores = (raw.offsetsScores as Record<string, { best60s?: number; bestStreak?: number }>) || {};
+  const dotL2N = raw['offsetsScores.letterToNum'] as { best60s?: number; bestStreak?: number } | undefined;
+  const dotN2L = raw['offsetsScores.numToLetter'] as { best60s?: number; bestStreak?: number } | undefined;
+
+  const letterToNum = {
+    best60s: Math.max(nestedScores.letterToNum?.best60s ?? 0, dotL2N?.best60s ?? 0),
+    bestStreak: Math.max(nestedScores.letterToNum?.bestStreak ?? 0, dotL2N?.bestStreak ?? 0),
+  };
+  const numToLetter = {
+    best60s: Math.max(nestedScores.numToLetter?.best60s ?? 0, dotN2L?.best60s ?? 0),
+    bestStreak: Math.max(nestedScores.numToLetter?.bestStreak ?? 0, dotN2L?.bestStreak ?? 0),
+  };
+
+  const offsetsScores: Record<string, { best60s: number; bestStreak: number }> = {};
+  if (letterToNum.best60s > 0 || letterToNum.bestStreak > 0) {
+    offsetsScores.letterToNum = letterToNum;
+  }
+  if (numToLetter.best60s > 0 || numToLetter.bestStreak > 0) {
+    offsetsScores.numToLetter = numToLetter;
+  }
+
+  return {
+    uid,
+    displayName: (raw.displayName as string) || 'Decoder',
+    role: (raw.role as 'student' | 'teacher') || 'student',
+    offsetsScores: Object.keys(offsetsScores).length > 0 ? offsetsScores : undefined,
+    updatedAt: raw.updatedAt,
+  };
+}
+
+/**
  * Subscribes to real-time changes across all team public profiles in `/profiles`
  */
 export function subscribeTeamProfiles(
@@ -69,15 +106,25 @@ export function subscribeTeamProfiles(
     (snap) => {
       const list: PublicProfile[] = [];
       snap.forEach((docSnap) => {
-        const data = docSnap.data() as PublicProfile;
-        const profile: PublicProfile = {
-          ...data,
-          uid: docSnap.id,
-          displayName: data.displayName || 'Decoder',
-          role: data.role || 'student',
-        };
+        const raw = docSnap.data() as Record<string, unknown>;
+        const profile = normalizePublicProfile(raw, docSnap.id);
         profilesCache.set(docSnap.id, profile);
         list.push(profile);
+
+        // Auto-heal any accidental literal dot fields in Firestore
+        if (raw['offsetsScores.letterToNum'] !== undefined || raw['offsetsScores.numToLetter'] !== undefined) {
+          const docRef = docSnap.ref;
+          const healPayload: Record<string, unknown> = {
+            'offsetsScores.letterToNum': deleteField(),
+            'offsetsScores.numToLetter': deleteField(),
+          };
+          if (profile.offsetsScores) {
+            healPayload.offsetsScores = profile.offsetsScores;
+          }
+          setDoc(docRef, healPayload, { merge: true }).catch((err) => {
+            console.warn('[ProfileService] Auto-heal literal dot fields error:', err);
+          });
+        }
       });
 
       profileListeners.forEach((listener) => {
@@ -124,15 +171,18 @@ export async function upsertPublicProfile(
 
     profilesCache.set(uid, merged);
 
-    await setDoc(
-      docRef,
-      {
-        ...profile,
-        uid,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
+    const payload: Record<string, unknown> = {
+      ...profile,
+      uid,
+      updatedAt: serverTimestamp(),
+    };
+
+    if (profile.offsetsScores) {
+      payload['offsetsScores.letterToNum'] = deleteField();
+      payload['offsetsScores.numToLetter'] = deleteField();
+    }
+
+    await setDoc(docRef, payload, { merge: true });
   } catch (err) {
     console.warn(`[ProfileService] Failed to upsert profile for ${uid}:`, err);
   }
@@ -159,7 +209,7 @@ export async function upsertPublicProfileScore(
     if (!existing) {
       const snap = await getDoc(docRef);
       if (snap.exists()) {
-        existing = snap.data() as PublicProfile;
+        existing = normalizePublicProfile(snap.data() as Record<string, unknown>, uid);
         profilesCache.set(uid, existing);
       }
     }
@@ -201,11 +251,10 @@ export async function upsertPublicProfileScore(
       {
         uid,
         displayName: targetName,
-        [`offsetsScores.${mode}`]: {
-          best60s: targetScore,
-          bestStreak: targetStreak,
-        },
+        offsetsScores: updatedOffsetsScores,
         updatedAt: serverTimestamp(),
+        'offsetsScores.letterToNum': deleteField(),
+        'offsetsScores.numToLetter': deleteField(),
       },
       { merge: true }
     );
@@ -230,7 +279,7 @@ export async function fetchPublicProfile(uid: string): Promise<PublicProfile | n
     const docRef = doc(db, 'profiles', uid);
     const snap = await getDoc(docRef);
     if (!snap.exists()) return null;
-    const profile = snap.data() as PublicProfile;
+    const profile = normalizePublicProfile(snap.data() as Record<string, unknown>, uid);
     profilesCache.set(uid, profile);
     return profile;
   } catch (err) {
