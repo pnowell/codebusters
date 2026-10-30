@@ -2577,6 +2577,21 @@ body {
 .test-header-right {
   display: flex;
   align-items: center;
+  gap: 0.4rem;
+}
+
+.btn-test-exit {
+  font-weight: 600;
+  font-size: 0.82rem;
+  padding: 0.35rem 0.65rem;
+  min-height: 34px;
+  color: var(--text-muted);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.btn-test-exit:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .btn-nav-step {

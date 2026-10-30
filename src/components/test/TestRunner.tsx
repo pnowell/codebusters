@@ -32,10 +32,22 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
 }) => {
   // Resolve array of student UIDs
   const resolvedStudentUids = useMemo(() => {
-    if (studentUids && studentUids.length > 0) return studentUids;
-    if (initialAttempt?.studentUids && initialAttempt.studentUids.length > 0) return initialAttempt.studentUids;
-    return ['student'];
-  }, [studentUids, initialAttempt?.studentUids]);
+    const list = new Set<string>();
+    if (studentUids) {
+      studentUids.forEach((id) => {
+        if (id && id !== 'student') list.add(id);
+      });
+    }
+    if (initialAttempt?.studentUids) {
+      initialAttempt.studentUids.forEach((id) => {
+        if (id && id !== 'student') list.add(id);
+      });
+    }
+    if (list.size === 0) {
+      return ['student'];
+    }
+    return Array.from(list);
+  }, [studentUids, initialAttempt]);
 
   // Total questions count (review screen is index === questions.length)
   const totalQuestions = testPacket.questions.length;
@@ -113,6 +125,16 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
       results: results ?? undefined,
     };
   }, [attemptId, testPacket.testId, resolvedStudentUids, startedAt, isFinished, workspaces, results]);
+
+  const firestoreDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 1. Immediately persist initial attempt on mount if in progress
+  useEffect(() => {
+    if (!isFinished) {
+      saveLocalTestAttempt(attemptRef.current);
+      saveTestAttemptToFirestore(attemptRef.current);
+    }
+  }, [isFinished]);
 
   // Evaluate all solutions and finalize attempt
   const submitTest = useCallback((isTimerExpired = false) => {
@@ -197,14 +219,23 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
     return () => clearInterval(timer);
   }, [endTime, isFinished, submitTest]);
 
-  // Periodic Firestore sync every 30 seconds
+  // Periodic Firestore sync every 30 seconds & flush on unmount
   useEffect(() => {
     if (isFinished) return;
     const interval = setInterval(() => {
       saveTestAttemptToFirestore(attemptRef.current);
     }, 30000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (firestoreDebounceRef.current) {
+        clearTimeout(firestoreDebounceRef.current);
+      }
+      if (attemptRef.current.status === 'in_progress') {
+        saveLocalTestAttempt(attemptRef.current);
+        saveTestAttemptToFirestore(attemptRef.current);
+      }
+    };
   }, [isFinished]);
 
   // User input handler for currently active question
@@ -235,7 +266,16 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
       status: 'in_progress',
       workspaces: updated,
     };
+    attemptRef.current = currentAttempt;
     saveLocalTestAttempt(currentAttempt);
+
+    // Debounce syncing keystroke changes to Firestore
+    if (firestoreDebounceRef.current) {
+      clearTimeout(firestoreDebounceRef.current);
+    }
+    firestoreDebounceRef.current = setTimeout(() => {
+      saveTestAttemptToFirestore(attemptRef.current);
+    }, 2000);
   };
 
   const currentQuestion = testPacket.questions[activeQIndex];
@@ -257,6 +297,17 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
 
   const handleCloseResults = () => {
     clearLocalTestAttempt(testPacket.testId);
+    onExitToMenu();
+  };
+
+  const handleExit = () => {
+    if (!isFinished) {
+      if (firestoreDebounceRef.current) {
+        clearTimeout(firestoreDebounceRef.current);
+      }
+      saveLocalTestAttempt(attemptRef.current);
+      saveTestAttemptToFirestore(attemptRef.current);
+    }
     onExitToMenu();
   };
 
@@ -285,6 +336,13 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
       {/* 1. Header Navigation Bar */}
       <header className="test-runner-header">
         <div className="test-header-left">
+          <button
+            className="btn-simple btn-test-exit"
+            onClick={handleExit}
+            title="Pause and Exit to Practice Tests"
+          >
+            ← Tests
+          </button>
           <button
             className="btn-simple btn-nav-step"
             onClick={handlePrev}

@@ -156,15 +156,22 @@ function mergeAttemptIntoMap(map: Record<string, TestAttempt>, data: TestAttempt
   const existing = map[testId];
   if (!existing) {
     map[testId] = data;
+    return;
+  }
+
+  const dataStart = data.startedAt || 0;
+  const existingStart = existing.startedAt || 0;
+
+  if (dataStart > existingStart) {
+    map[testId] = data;
+  } else if (dataStart < existingStart) {
+    return;
   } else {
     const isCurrentSubmitted = data.status === 'submitted' || data.status === 'expired';
     const isExistingSubmitted = existing.status === 'submitted' || existing.status === 'expired';
     if (isCurrentSubmitted && !isExistingSubmitted) {
       map[testId] = data;
-    } else if (
-      (data.submittedAt || data.startedAt || 0) >
-      (existing.submittedAt || existing.startedAt || 0)
-    ) {
+    } else if ((data.submittedAt || 0) >= (existing.submittedAt || 0)) {
       map[testId] = data;
     }
   }
@@ -268,10 +275,11 @@ export async function seedTestPacket(packet: TestPacket): Promise<boolean> {
   if (!db) return false;
   try {
     const docRef = doc(db, 'tests', packet.testId);
+    const cleaned = JSON.parse(JSON.stringify(packet));
     await setDoc(
       docRef,
       {
-        ...packet,
+        ...cleaned,
         createdAt: serverTimestamp(),
       },
       { merge: true }
@@ -290,10 +298,11 @@ export async function saveTestAttemptToFirestore(attempt: TestAttempt): Promise<
   if (!db) return false;
   try {
     const docRef = doc(db, 'test_attempts', attempt.attemptId);
+    const cleaned = JSON.parse(JSON.stringify(attempt));
     await setDoc(
       docRef,
       {
-        ...attempt,
+        ...cleaned,
         updatedAt: serverTimestamp(),
       },
       { merge: true }

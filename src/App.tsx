@@ -222,6 +222,15 @@ export const App: React.FC = () => {
       }
       if (!route.testId) {
         setActiveTestSession(null);
+        availableTests.forEach((t) => {
+          const local = getLocalTestAttempt(t.testId);
+          if (local) {
+            setStudentAttempts((prev) => ({
+              ...prev,
+              [t.testId]: local,
+            }));
+          }
+        });
       }
     };
 
@@ -295,13 +304,18 @@ export const App: React.FC = () => {
   };
 
   const handleSelectTest = (test: TestPacket, attempt: TestAttempt | null) => {
-    if (attempt && (attempt.status === 'submitted' || attempt.status === 'expired') && attempt.results) {
-      setSelectedCompletedTest({ testPacket: test, results: attempt.results, attempt });
+    const local = getLocalTestAttempt(test.testId);
+    let freshest = attempt;
+    if (local && (!attempt || (local.submittedAt || local.startedAt || 0) >= (attempt.submittedAt || attempt.startedAt || 0))) {
+      freshest = local;
+    }
+    if (freshest && (freshest.status === 'submitted' || freshest.status === 'expired') && freshest.results) {
+      setSelectedCompletedTest({ testPacket: test, results: freshest.results, attempt: freshest });
       const newUrl = buildRouteUrl({ drill: null, testsList: true, resultsTestId: test.testId });
       window.history.pushState({ testsList: true, resultsTestId: test.testId }, '', newUrl);
     } else {
       setSelectedTest(test);
-      setExistingAttempt(attempt);
+      setExistingAttempt(freshest);
       setIsTestBriefingOpen(true);
     }
   };
@@ -341,16 +355,20 @@ export const App: React.FC = () => {
   const handleExitTest = () => {
     setActiveTestSession(null);
     if (selectedTest) {
-      setExistingAttempt(getLocalTestAttempt(selectedTest.testId));
+      const local = getLocalTestAttempt(selectedTest.testId);
+      setExistingAttempt(local);
+      if (local) {
+        setStudentAttempts((prev) => ({
+          ...prev,
+          [selectedTest.testId]: local,
+        }));
+      }
     }
     if (window.history.state && window.history.state.testId) {
       window.history.back();
-    } else if (isTestsListOpen) {
+    } else {
       const newUrl = buildRouteUrl({ drill: null, testsList: true });
       window.history.pushState({ testsList: true }, '', newUrl);
-    } else {
-      const newUrl = buildRouteUrl({ drill: null });
-      window.history.pushState({ drill: null }, '', newUrl);
     }
   };
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { TestPacket, TestAttempt } from '../../types';
 import { getLocalTestAttempt } from '../../services/testService';
 
@@ -17,6 +17,8 @@ export const PracticeTestsList: React.FC<PracticeTestsListProps> = ({
   onSelectTest,
   onBack,
 }) => {
+  const [now] = useState(() => Date.now());
+
   return (
     <div className="practice-tests-view">
       {/* 1. Header */}
@@ -53,22 +55,24 @@ export const PracticeTestsList: React.FC<PracticeTestsListProps> = ({
             const localAttempt = getLocalTestAttempt(test.testId);
 
             let resolvedAttempt: TestAttempt | null = null;
-            if (localAttempt && localAttempt.status === 'in_progress') {
-              resolvedAttempt = localAttempt;
-            } else if (
-              cloudAttempt &&
-              (cloudAttempt.status === 'submitted' || cloudAttempt.status === 'expired')
-            ) {
-              resolvedAttempt = cloudAttempt;
-            } else if (localAttempt) {
-              resolvedAttempt = localAttempt;
+            if (localAttempt && cloudAttempt) {
+              const localTime = Math.max(localAttempt.submittedAt || 0, localAttempt.startedAt || 0);
+              const cloudTime = Math.max(cloudAttempt.submittedAt || 0, cloudAttempt.startedAt || 0);
+              if (localTime >= cloudTime) {
+                resolvedAttempt = localAttempt;
+              } else {
+                resolvedAttempt = cloudAttempt;
+              }
             } else {
-              resolvedAttempt = cloudAttempt || null;
+              resolvedAttempt = localAttempt || cloudAttempt || null;
             }
 
+            const isTimeRemaining = resolvedAttempt?.startedAt
+              ? now < (resolvedAttempt.startedAt + test.timeLimitSeconds * 1000)
+              : true;
             const isCompleted =
               resolvedAttempt?.status === 'submitted' || resolvedAttempt?.status === 'expired';
-            const isInProgress = resolvedAttempt?.status === 'in_progress';
+            const isInProgress = resolvedAttempt?.status === 'in_progress' && isTimeRemaining;
             const results = resolvedAttempt?.results;
 
             const totalPoints = test.questions.reduce((sum, q) => sum + q.points, 0);
