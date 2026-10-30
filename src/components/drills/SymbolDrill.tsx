@@ -17,14 +17,12 @@ import { AlphabetMasteryModal } from '../drill/AlphabetMasteryModal';
 import { LeaderboardModal } from '../leaderboard/LeaderboardModal';
 import { useAuth } from '../../context/useAuth';
 import type { DrillProgress, DrillScore } from '../../types';
-import type { WorkoutStepContext } from './LetterOffsetDrill';
 
 export type SymbolCipherType = 'atbash' | 'pigpen' | 'galactic';
 
 interface SymbolDrillProps {
   cipher: SymbolCipherType;
   onBack: () => void;
-  workoutContext?: WorkoutStepContext;
 }
 
 interface FloatingGhost {
@@ -123,7 +121,6 @@ const CIPHER_INFO = {
 export const SymbolDrill: React.FC<SymbolDrillProps> = ({
   cipher,
   onBack,
-  workoutContext,
 }) => {
   const { isAllowed } = useAuth();
   const info = CIPHER_INFO[cipher];
@@ -140,16 +137,6 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({
   const [streak, setStreak] = useState<number>(0);
   const correctTimestampsRef = useRef<number[]>([]);
   const lastCorrectTimeRef = useRef<number | null>(null);
-
-  // Warm-up timer when in Workout session
-  const [elapsedWarmup, setElapsedWarmup] = useState(0);
-  useEffect(() => {
-    if (!workoutContext) return;
-    const interval = window.setInterval(() => {
-      setElapsedWarmup(s => s + 1);
-    }, 1000);
-    return () => window.clearInterval(interval);
-  }, [workoutContext]);
 
   // Spaced Repetition deck initialization
   const [initialData] = useState(() => {
@@ -443,47 +430,6 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({
     </div>
   );
 
-  const formatWarmup = (sec: number) => {
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
-  };
-
-  const headerRight = workoutContext ? (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-      {streakBadge}
-      {elapsedWarmup >= 120 ? (
-        <button
-          type="button"
-          className="btn-workout-next"
-          onClick={() =>
-            workoutContext.onAdvance({
-              offsets60s: scores.best60s,
-              offsetsCadence: cadence,
-            })
-          }
-          title="Warm-up complete! Click to start next cipher"
-        >
-          Next: {workoutContext.nextCipherTitle || 'Next'} ➔
-        </button>
-      ) : (
-        <span
-          className="workout-warmup-timer"
-          onDoubleClick={() => setElapsedWarmup(120)}
-          title="Warm-up target: 2:00 (double-click to complete in testing)"
-        >
-          ⏱️ {formatWarmup(elapsedWarmup)} / 2:00
-        </span>
-      )}
-    </div>
-  ) : (
-    streakBadge
-  );
-
-  const headerTitle = workoutContext
-    ? `Warm-up: ${info.shortTitle}`
-    : info.title;
-
   const renderCiphertextGlyph = () => {
     if (cipher === 'atbash') {
       return (
@@ -513,7 +459,7 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({
 
   return (
     <div className="drill-container symbol-drill-container">
-      <DrillHeader title={headerTitle} onBack={onBack} right={headerRight} />
+      <DrillHeader title={info.title} onBack={onBack} right={streakBadge} />
 
       {/* Sub-bar: Leaderboard + Mastery modal button */}
       <div className="offsets-subbar" style={{ justifyContent: 'flex-end' }}>

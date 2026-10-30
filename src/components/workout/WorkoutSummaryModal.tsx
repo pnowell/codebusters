@@ -9,7 +9,6 @@ export interface WorkoutStepResult {
   accuracy?: number;
   author?: string;
   offsets60s?: number;
-  offsetsCadence?: number;
   offsetsMode?: OffsetsMode;
 }
 

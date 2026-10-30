@@ -15,14 +15,12 @@ interface TestResultsViewProps {
 
 interface QuestionDetailCardProps {
   questionResult: QuestionResult;
-  questionNumber: number;
   isExpanded: boolean;
   onToggle: () => void;
 }
 
 const QuestionDetailCard: React.FC<QuestionDetailCardProps> = ({
   questionResult,
-  questionNumber: _qNum,
   isExpanded,
   onToggle,
 }) => {
@@ -271,7 +269,6 @@ export const TestResultsView: React.FC<TestResultsViewProps> = ({
           {results.questions.map((q, idx) => (
             <QuestionDetailCard
               key={q.questionNumber}
-              questionNumber={q.questionNumber}
               questionResult={q}
               isExpanded={Boolean(expandedIndices[idx])}
               onToggle={() => toggleQuestion(idx)}

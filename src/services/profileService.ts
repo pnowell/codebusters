@@ -9,16 +9,22 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import type { PublicProfile, DrillId, DrillScore } from '../types';
-import type { OffsetsMode } from './storage';
+import { offsetsModeToDrillId, type OffsetsMode } from './storage';
+
+interface ProfileListenerEntry {
+  onUpdate: (profiles: PublicProfile[]) => void;
+  onError?: (err: Error) => void;
+}
 
 // In-memory cache of public profiles for instant, synchronous UI name lookups
 const profilesCache = new Map<string, PublicProfile>();
-const profileListeners = new Set<(profiles: PublicProfile[]) => void>();
+const profileListeners = new Set<ProfileListenerEntry>();
+let activeProfilesUnsubscribe: Unsubscribe | null = null;
 
 /**
  * Formats an array of names into a human-friendly English list (e.g., "Alice", "Alice & Bob", "Alice, Bob & Charlie")
  */
-export function formatNamesList(names: string[]): string {
+function formatNamesList(names: string[]): string {
   if (names.length === 0) return 'Decoder';
   if (names.length === 1) return names[0];
   if (names.length === 2) return `${names[0]} & ${names[1]}`;
@@ -28,7 +34,7 @@ export function formatNamesList(names: string[]): string {
 /**
  * Gets a display name for a single UID from the in-memory cache
  */
-export function getCachedDisplayName(uid: string, fallback: string = 'Decoder'): string {
+function getCachedDisplayName(uid: string, fallback: string = 'Decoder'): string {
   if (!uid) return fallback;
   return profilesCache.get(uid)?.displayName || fallback;
 }
@@ -76,7 +82,8 @@ export function subscribeTeamProfiles(
   onUpdate: (profiles: PublicProfile[]) => void,
   onError?: (err: Error) => void
 ): Unsubscribe {
-  profileListeners.add(onUpdate);
+  const entry: ProfileListenerEntry = { onUpdate, onError };
+  profileListeners.add(entry);
 
   // If we already have cached profiles, emit immediately
   if (profilesCache.size > 0) {
@@ -85,41 +92,46 @@ export function subscribeTeamProfiles(
 
   if (!db) {
     return () => {
-      profileListeners.delete(onUpdate);
+      profileListeners.delete(entry);
     };
   }
 
-  const colRef = collection(db, 'profiles');
+  if (!activeProfilesUnsubscribe) {
+    const colRef = collection(db, 'profiles');
 
-  const unsubscribeFirestore = onSnapshot(
-    colRef,
-    (snap) => {
-      const list: PublicProfile[] = [];
-      snap.forEach((docSnap) => {
-        const raw = docSnap.data() as Record<string, unknown>;
-        const profile = normalizePublicProfile(raw, docSnap.id);
-        profilesCache.set(docSnap.id, profile);
-        list.push(profile);
-      });
+    activeProfilesUnsubscribe = onSnapshot(
+      colRef,
+      (snap) => {
+        const list: PublicProfile[] = [];
+        snap.forEach((docSnap) => {
+          const raw = docSnap.data() as Record<string, unknown>;
+          const profile = normalizePublicProfile(raw, docSnap.id);
+          profilesCache.set(docSnap.id, profile);
+          list.push(profile);
+        });
 
-      profileListeners.forEach((listener) => {
-        try {
-          listener(list);
-        } catch (e) {
-          console.warn('[ProfileService] Listener error:', e);
-        }
-      });
-    },
-    (err) => {
-      console.warn('[ProfileService] Error querying profiles:', err);
-      onError?.(err);
-    }
-  );
+        profileListeners.forEach((listener) => {
+          try {
+            listener.onUpdate(list);
+          } catch (e) {
+            console.warn('[ProfileService] Listener error:', e);
+          }
+        });
+      },
+      (err) => {
+        console.warn('[ProfileService] Error querying profiles:', err);
+        profileListeners.forEach((listener) => {
+          listener.onError?.(err);
+        });
+      }
+    );
+  }
 
   return () => {
-    profileListeners.delete(onUpdate);
-    if (profileListeners.size === 0) {
-      unsubscribeFirestore();
+    profileListeners.delete(entry);
+    if (profileListeners.size === 0 && activeProfilesUnsubscribe) {
+      activeProfilesUnsubscribe();
+      activeProfilesUnsubscribe = null;
     }
   };
 }
@@ -173,7 +185,7 @@ export async function upsertPublicProfileScore(
   if (score <= 0 && bestStreak <= 0) return null;
 
   const drillId: DrillId =
-    drill === 'letterToNum' ? 'offsetsLetterToNum' : drill === 'numToLetter' ? 'offsetsNumToLetter' : drill;
+    drill === 'letterToNum' || drill === 'numToLetter' ? offsetsModeToDrillId(drill) : drill;
 
   try {
     const docRef = doc(db, 'profiles', uid);
@@ -233,28 +245,6 @@ export async function upsertPublicProfileScore(
     return { score: targetScore, bestStreak: targetStreak };
   } catch (err) {
     console.warn(`[ProfileService] Failed to update score for ${uid}:`, err);
-    return null;
-  }
-}
-
-/**
- * Fetches a single public profile by UID (checks cache first)
- */
-export async function fetchPublicProfile(uid: string): Promise<PublicProfile | null> {
-  if (!uid) return null;
-  const cached = profilesCache.get(uid);
-  if (cached) return cached;
-
-  if (!db) return null;
-  try {
-    const docRef = doc(db, 'profiles', uid);
-    const snap = await getDoc(docRef);
-    if (!snap.exists()) return null;
-    const profile = normalizePublicProfile(snap.data() as Record<string, unknown>, uid);
-    profilesCache.set(uid, profile);
-    return profile;
-  } catch (err) {
-    console.warn(`[ProfileService] Failed to fetch profile for ${uid}:`, err);
     return null;
   }
 }

@@ -488,7 +488,6 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
           <TestReviewScreen
             testPacket={testPacket}
             workspaces={workspaces}
-            remainingSeconds={remainingSeconds}
             onJumpToQuestion={idx => setActiveQIndex(idx)}
             onSubmitTest={() => setShowSubmitModal(true)}
           />

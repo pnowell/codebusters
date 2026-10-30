@@ -127,9 +127,11 @@ export const App: React.FC = () => {
         if (myProfile?.displayName) {
           const cur = loadSettings();
           if (cur.studentName !== myProfile.displayName) {
+            const next = { ...cur, studentName: myProfile.displayName };
             withoutSyncDispatch(() => {
-              saveSettings({ ...cur, studentName: myProfile.displayName });
+              saveSettings(next);
             });
+            setSettings(next);
           }
         }
       }
@@ -392,8 +394,8 @@ export const App: React.FC = () => {
   const handleQuoteChange = (newQuoteId: number) => {
     setActiveQuoteId(newQuoteId);
     if (activeDrill) {
-      const newUrl = buildRouteUrl({ drill: activeDrill, quoteId: newQuoteId });
-      window.history.replaceState({ drill: activeDrill, quoteId: newQuoteId }, '', newUrl);
+      const newUrl = buildRouteUrl({ drill: activeDrill, section: activeSection, quoteId: newQuoteId });
+      window.history.replaceState({ drill: activeDrill, section: activeSection, quoteId: newQuoteId }, '', newUrl);
     }
   };
 
@@ -512,7 +514,7 @@ export const App: React.FC = () => {
           </div>
 
           <div className="header-user-actions">
-            <UserAuthBadge onOpenOptions={openOptions} />
+            <UserAuthBadge displayName={settings.studentName} onOpenOptions={openOptions} />
             {isAllowed && (
               <button
                 type="button"
@@ -567,7 +569,6 @@ export const App: React.FC = () => {
             key={activeDrill}
             cipher={activeDrill}
             onBack={navigateToMenu}
-            workoutContext={workoutContext}
           />
         )
       )}

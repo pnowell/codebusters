@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { CipherType, UserSettings } from '../../types';
-import { DRILLS } from '../../data/drills';
+import { IMPLEMENTED_DRILLS } from '../../data/drills';
 import { useAuth } from '../../context/useAuth';
 
 interface OptionsModalProps {
@@ -107,8 +107,11 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
 
           <div className="form-group">
             <label>Ciphers included in General Practice:</label>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.45rem' }}>
+              Letter Offsets is always included as the warm-up step.
+            </div>
             <div className="cipher-checkbox-list">
-              {DRILLS.map(c => {
+              {IMPLEMENTED_DRILLS.filter(c => c.id !== 'offsets').map(c => {
                 const isChecked = unlocked.includes(c.id);
                 return (
                   <label key={c.id} className="checkbox-row">

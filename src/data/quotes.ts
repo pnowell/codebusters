@@ -2,31 +2,26 @@ import quotesData from './quotes.json';
 import type { Quote, QuoteCategory, CryptanalysisTier } from '../types';
 import { loadCompletedQuoteIds } from '../services/storage';
 
-export const ALL_QUOTES = quotesData as Quote[];
+const ALL_QUOTES = quotesData as Quote[];
 
 /** Quotes clean and suitable for 5th graders (no archaic language, no intentional typos) */
-export const CLEAN_QUOTES = ALL_QUOTES.filter(q => !q.isArchaic && !q.isMisspelled);
+const CLEAN_QUOTES = ALL_QUOTES.filter(q => !q.isArchaic && !q.isMisspelled);
 
 /** Maximum length for symbol lookup drills to prevent excessive wrapping on mobile */
-export const MAX_LOOKUP_LENGTH = 75;
+const MAX_LOOKUP_LENGTH = 75;
 
 /** Lookup-eligible quotes (clean and not excessively long) */
-export const LOOKUP_ELIGIBLE_QUOTES = CLEAN_QUOTES.filter(q => q.length <= MAX_LOOKUP_LENGTH);
+const LOOKUP_ELIGIBLE_QUOTES = CLEAN_QUOTES.filter(q => q.length <= MAX_LOOKUP_LENGTH);
 
-export const KID_LOOKUP_POOL = LOOKUP_ELIGIBLE_QUOTES.filter(q => q.category && q.category !== 'general');
-export const GENERAL_LOOKUP_POOL = LOOKUP_ELIGIBLE_QUOTES.filter(q => !q.category || q.category === 'general');
+const KID_LOOKUP_POOL = LOOKUP_ELIGIBLE_QUOTES.filter(q => q.category && q.category !== 'general');
+const GENERAL_LOOKUP_POOL = LOOKUP_ELIGIBLE_QUOTES.filter(q => !q.category || q.category === 'general');
 
 /** Fast O(1) lookup table indexed by permanent, stable quote ID */
-export const QUOTES_BY_ID = new Map<number, Quote>(ALL_QUOTES.map(q => [q.id, q]));
+const QUOTES_BY_ID = new Map<number, Quote>(ALL_QUOTES.map(q => [q.id, q]));
 
 /** Retrieve a quote by its stable ID */
 export function getQuoteById(id: number): Quote | undefined {
   return QUOTES_BY_ID.get(id);
-}
-
-/** Check if a quote exists by its stable ID */
-export function hasQuoteId(id: number): boolean {
-  return QUOTES_BY_ID.has(id);
 }
 
 /**
@@ -37,7 +32,7 @@ export function hasQuoteId(id: number): boolean {
  * - Caps length at MAX_LOOKUP_LENGTH (75 chars) so quotes are not excessively long.
  * - Gracefully falls back if the completed list exhausts the uncompleted pool.
  */
-export function pickRandomLookupQuote(): Quote {
+function pickRandomLookupQuote(): Quote {
   const completedSet = new Set(loadCompletedQuoteIds());
 
   // Filter out completed quotes from both pools

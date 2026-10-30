@@ -2,10 +2,11 @@ import React from 'react';
 import { useAuth } from '../../context/useAuth';
 
 interface UserAuthBadgeProps {
+  displayName?: string;
   onOpenOptions?: () => void;
 }
 
-export const UserAuthBadge: React.FC<UserAuthBadgeProps> = ({ onOpenOptions }) => {
+export const UserAuthBadge: React.FC<UserAuthBadgeProps> = ({ displayName, onOpenOptions }) => {
   const { user, allowedUser, isAllowed, isLoading, isConfigured, signIn } = useAuth();
 
   if (isLoading) {
@@ -17,15 +18,19 @@ export const UserAuthBadge: React.FC<UserAuthBadgeProps> = ({ onOpenOptions }) =
   }
 
   if (isAllowed && user) {
-    const displayName = allowedUser?.displayName || user.displayName || 'Decoder';
+    const badgeName =
+      (displayName && displayName !== 'Decoder' ? displayName : null) ||
+      allowedUser?.displayName ||
+      user.displayName ||
+      'Decoder';
 
     return (
       <button
         className="auth-badge logged-in-badge"
         onClick={onOpenOptions}
-        title={`${displayName} (${user.email}) - Click for Options`}
+        title={`${badgeName} (${user.email}) - Click for Options`}
       >
-        <span className="auth-name">{displayName}</span>
+        <span className="auth-name">{badgeName}</span>
         <span className="auth-sync-indicator" title="Cloud Sync Active">●</span>
       </button>
     );
@@ -36,12 +41,12 @@ export const UserAuthBadge: React.FC<UserAuthBadgeProps> = ({ onOpenOptions }) =
       className="auth-badge guest-badge"
       onClick={() => {
         if (!isConfigured) {
-          alert('Firebase is not configured yet. Please add your credentials to .env.local.');
+          onOpenOptions?.();
           return;
         }
         signIn();
       }}
-      title={isConfigured ? 'Sign in with your Google account' : 'Firebase not configured in .env.local'}
+      title={isConfigured ? 'Sign in with your Google account' : 'Firebase not configured — click for Options'}
     >
       <span className="auth-avatar-fallback">👤</span>
       <span className="auth-name">Sign In</span>

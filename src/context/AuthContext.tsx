@@ -38,7 +38,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await mergeAndInitializeCloudUser(
             currentUser.uid,
             currentUser.email ?? '',
-            currentAllowed.displayName
+            currentAllowed.displayName,
+            currentAllowed.role
           );
           startCloudSync(currentUser.uid);
         } catch (e) {

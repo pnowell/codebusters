@@ -15,7 +15,6 @@ export function parseUrlRoute(search = window.location.search): Route {
   const p = new URLSearchParams(search);
   const cipherParam = p.get('cipher');
   const drillParam = p.get('drill');
-  const sectionParam = p.get('section');
   const q = p.get('q');
   const test = p.get('test');
   const tests = p.get('tests');
@@ -30,7 +29,7 @@ export function parseUrlRoute(search = window.location.search): Route {
     section = 'cipher';
   } else if (drillParam && isCipherType(drillParam)) {
     drill = drillParam;
-    section = sectionParam === 'cipher' ? 'cipher' : 'memorize';
+    section = 'memorize';
   }
 
   return {
@@ -58,7 +57,6 @@ export function buildRouteUrl(route: Route): string {
     p.delete('drill');
     p.delete('cipher');
   }
-  p.delete('section');
 
   if (route.drill && route.quoteId !== undefined) p.set('q', String(route.quoteId));
   else p.delete('q');

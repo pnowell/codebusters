@@ -16,12 +16,12 @@ const KEYS = {
   lastWarmupOffsetsMode: 'davinci_last_warmup_offsets_mode',
 } as const;
 
-export const DEFAULT_SETTINGS: UserSettings = {
+const DEFAULT_SETTINGS: UserSettings = {
   studentName: 'Decoder',
   unlockedCiphers: DEFAULT_UNLOCKED,
 };
 
-export type SyncDispatcher = (
+type SyncDispatcher = (
   type: 'settings' | 'completedQuotes' | 'drillProgress' | 'drillScores' | 'practiceHistory',
   data: unknown
 ) => void;
@@ -116,32 +116,11 @@ export function saveCompletedQuoteIds(ids: number[]): void {
   }
 }
 
-export function isQuoteCompleted(id: number): boolean {
-  return loadCompletedQuoteIds().includes(id);
-}
-
-export function clearCompletedQuotes(): void {
-  try {
-    localStorage.removeItem(KEYS.completedQuotes);
-  } catch {
-    // Ignore
-  }
-}
-
 export type OffsetsMode = 'letterToNum' | 'numToLetter';
 
 export function offsetsModeToDrillId(mode: OffsetsMode): DrillId {
   return mode === 'letterToNum' ? 'offsetsLetterToNum' : 'offsetsNumToLetter';
 }
-
-export function drillIdToOffsetsMode(id: DrillId): OffsetsMode | null {
-  if (id === 'offsetsLetterToNum') return 'letterToNum';
-  if (id === 'offsetsNumToLetter') return 'numToLetter';
-  return null;
-}
-
-export type OffsetsProgress = Record<string, LetterProgress>;
-export type OffsetsProgressByMode = Record<OffsetsMode, OffsetsProgress>;
 
 export type DrillProgressRecord = Partial<Record<DrillId, DrillProgress>>;
 export type DrillScoresRecord = Partial<Record<DrillId, DrillScore>>;
@@ -259,68 +238,12 @@ export function resetDrillProgress(drillId: DrillId): void {
   saveDrillProgress(drillId, {});
 }
 
-// ---------------------------------------------------------------------------
-// Backward-compatible Offsets Drill Wrappers
-// ---------------------------------------------------------------------------
-
-export type OffsetsModeScores = DrillScore;
-export type OffsetsScoresByMode = Record<OffsetsMode, OffsetsModeScores>;
-
-export function loadOffsetsModeScores(mode: OffsetsMode): OffsetsModeScores {
-  return loadDrillScore(offsetsModeToDrillId(mode));
-}
-
-export function saveOffsetsModeScore(
-  mode: OffsetsMode,
-  update: Partial<OffsetsModeScores>
-): OffsetsModeScores {
-  return saveDrillScore(offsetsModeToDrillId(mode), update);
-}
-
-export function loadAllOffsetsProgress(): OffsetsProgressByMode {
-  const all = loadAllDrillProgress();
-  return {
-    letterToNum: all.offsetsLetterToNum || {},
-    numToLetter: all.offsetsNumToLetter || {},
-  };
-}
-
-export function loadOffsetsProgress(mode: OffsetsMode = 'letterToNum'): OffsetsProgress {
-  return loadDrillProgress(offsetsModeToDrillId(mode));
-}
-
-export function saveOffsetsProgress(mode: OffsetsMode, p: OffsetsProgress): void {
-  saveDrillProgress(offsetsModeToDrillId(mode), p);
-}
-
-export function saveAllOffsetsProgress(all: OffsetsProgressByMode): void {
-  const drillProgress = loadAllDrillProgress();
-  drillProgress.offsetsLetterToNum = sanitizeProgressDict(all.letterToNum);
-  drillProgress.offsetsNumToLetter = sanitizeProgressDict(all.numToLetter);
-  saveAllDrillProgress(drillProgress);
-}
-
-export function resetOffsetsProgress(mode?: OffsetsMode): void {
-  try {
-    if (!mode) {
-      const drillProgress = loadAllDrillProgress();
-      delete drillProgress.offsetsLetterToNum;
-      delete drillProgress.offsetsNumToLetter;
-      saveAllDrillProgress(drillProgress);
-    } else {
-      saveDrillProgress(offsetsModeToDrillId(mode), {});
-    }
-  } catch {
-    // Ignore
-  }
-}
-
-export interface CipherPracticeRecord {
+interface CipherPracticeRecord {
   count: number;
   lastPracticed: number;
 }
 
-export type CipherPracticeHistory = Record<string, CipherPracticeRecord>;
+type CipherPracticeHistory = Record<string, CipherPracticeRecord>;
 
 export function loadCipherPracticeHistory(): CipherPracticeHistory {
   try {
@@ -412,7 +335,7 @@ export function getNextWorkoutCiphers(
   return sorted.slice(0, 2);
 }
 
-export function loadLastWarmupOffsetsMode(): OffsetsMode | null {
+function loadLastWarmupOffsetsMode(): OffsetsMode | null {
   try {
     const raw = localStorage.getItem(KEYS.lastWarmupOffsetsMode);
     return raw === 'numToLetter' || raw === 'letterToNum' ? raw : null;

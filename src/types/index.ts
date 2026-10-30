@@ -59,8 +59,8 @@ export type DrillId =
   | 'atbash'
   | 'pigpen'
   | 'galactic'
-  | 'knightsTemplar'
-  | 'tapCode'
+  | 'knights'
+  | 'tap'
   | 'letterAddition'
   | 'letterSubtraction';
 
@@ -81,10 +81,6 @@ export interface UserProfile {
   uid: string;
   email: string;
   unlockedCiphers: CipherType[];
-  settings?: {
-    soundEffects?: boolean;
-    highContrast?: boolean;
-  };
   drillProgress?: Partial<Record<DrillId, DrillProgress>>;
   completedQuotes?: number[];
   practiceHistory?: Record<string, { count: number; lastPracticed: number }>;

@@ -5,10 +5,9 @@ import {
   type User,
   type Unsubscribe,
 } from 'firebase/auth';
-import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { auth, db, googleProvider, isFirebaseConfigured } from './firebase';
 import type { AllowedUser } from '../types';
-import { upsertPublicProfile } from './profileService';
 
 export interface AuthResult {
   allowed: boolean;
@@ -21,12 +20,12 @@ export interface AuthResult {
 /**
  * Normalizes email address to lower case for case-insensitive Firestore allowlist keys
  */
-export const normalizeEmail = (email: string): string => email.trim().toLowerCase();
+const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 
 /**
  * Looks up an email in the Firestore `/allowed_users/{normalizedEmail}` collection
  */
-export async function checkAllowlist(email: string): Promise<AllowedUser | null> {
+async function checkAllowlist(email: string): Promise<AllowedUser | null> {
   if (!db) return null;
   const normalized = normalizeEmail(email);
   try {
@@ -51,7 +50,9 @@ export async function checkAllowlist(email: string): Promise<AllowedUser | null>
 }
 
 /**
- * Signs in via Google OAuth popup and verifies whether the email is on the team allowlist
+ * Signs in via Google OAuth popup and verifies whether the email is on the team allowlist.
+ * Profile and user document initialization/merging is handled by `mergeAndInitializeCloudUser`
+ * via the `onAuthStateChanged` listener so existing custom nicknames are preserved.
  */
 export async function signInWithGoogle(): Promise<AuthResult> {
   if (!isFirebaseConfigured() || !auth || !googleProvider) {
@@ -78,26 +79,6 @@ export async function signInWithGoogle(): Promise<AuthResult> {
         rejectedEmail: email,
         error: 'ACCOUNT_NOT_ON_ALLOWLIST',
       };
-    }
-
-    // Touch user profile / lastActive in Firestore
-    if (db) {
-      const userRef = doc(db, 'users', user.uid);
-      const displayName = allowed.displayName || user.displayName || 'Decoder';
-      await setDoc(
-        userRef,
-        {
-          uid: user.uid,
-          email: normalizeEmail(user.email),
-          lastActiveAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      await upsertPublicProfile(user.uid, {
-        displayName,
-        role: allowed.role,
-      });
     }
 
     return {

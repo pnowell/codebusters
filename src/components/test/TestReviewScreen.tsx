@@ -7,7 +7,6 @@ import { isLetter } from '../../utils/ciphers';
 interface TestReviewScreenProps {
   testPacket: TestPacket;
   workspaces: Record<number, QuestionWorkspace>;
-  remainingSeconds: number;
   onJumpToQuestion: (questionIndex: number) => void;
   onSubmitTest: () => void;
 }

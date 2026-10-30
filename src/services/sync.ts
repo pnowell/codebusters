@@ -124,7 +124,12 @@ const notifySyncListeners = () => {
 /**
  * Merges local storage data into the user's cloud Firestore document on sign-in
  */
-export async function mergeAndInitializeCloudUser(uid: string, email: string, defaultName?: string): Promise<void> {
+export async function mergeAndInitializeCloudUser(
+  uid: string,
+  email: string,
+  defaultName?: string,
+  role: PublicProfile['role'] = 'student'
+): Promise<void> {
   if (!db) return;
 
   const userDocRef = doc(db, 'users', uid);
@@ -211,6 +216,8 @@ export async function mergeAndInitializeCloudUser(uid: string, email: string, de
 
   withoutSyncDispatch(() => {
     saveSettings(updatedLocalSettings);
+    saveCompletedQuoteIds(mergedCompleted);
+    saveCipherPracticeHistory(mergedHistory);
     saveAllDrillProgress(mergedProgress);
     for (const [id, score] of Object.entries(mergedDrillScores)) {
       if (score) {
@@ -224,7 +231,7 @@ export async function mergeAndInitializeCloudUser(uid: string, email: string, de
     userDocRef,
     {
       uid,
-      email,
+      email: email.trim().toLowerCase(),
       unlockedCiphers: mergedUnlocked,
       completedQuotes: mergedCompleted,
       drillProgress: mergedProgress,
@@ -237,6 +244,7 @@ export async function mergeAndInitializeCloudUser(uid: string, email: string, de
   // Sync to Public Profile (public roster & leaderboards)
   const profilePayload: Partial<PublicProfile> = {
     displayName: finalName,
+    role,
   };
   const hasScores = Object.values(mergedDrillScores).some(
     (s) => s && (s.best60s > 0 || s.bestStreak > 0)
@@ -259,24 +267,6 @@ export function startCloudSync(uid: string): void {
 
   stopCloudSync();
   currentSyncedUid = uid;
-
-  // Immediately publish local scores to leaderboard (updateLeaderboardScore enforces Math.max)
-  // and sync down any higher scores that may already exist on the leaderboard
-  const localSettings = loadSettings();
-  const allScores = loadAllDrillScores();
-  for (const [drillIdKey, score] of Object.entries(allScores)) {
-    const drillId = drillIdKey as DrillId;
-    if (score && (score.best60s > 0 || score.bestStreak > 0)) {
-      updateLeaderboardScore(uid, localSettings.studentName, drillId, score.best60s, score.bestStreak).then(res => {
-        if (res && (res.score > score.best60s || res.bestStreak > score.bestStreak)) {
-          withoutSyncDispatch(() => {
-            saveDrillScore(drillId, { best60s: res.score, bestStreak: res.bestStreak });
-          });
-          notifySyncListeners();
-        }
-      });
-    }
-  }
 
   const userDocRef = doc(db, 'users', uid);
   activeSyncUnsubscribe = onSnapshot(userDocRef, (snap) => {
@@ -373,7 +363,7 @@ export function stopCloudSync(): void {
 /**
  * Pushes updated user data to cloud with 400ms debounce to prevent high-frequency write loops
  */
-export function pushCloudUpdate(partial: Partial<UserProfile>): void {
+function pushCloudUpdate(partial: Partial<UserProfile>): void {
   if (!db || !currentSyncedUid) return;
 
   pendingCloudUpdates = { ...pendingCloudUpdates, ...partial };

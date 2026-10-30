@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { offsetToLetter } from '../../utils/ciphers';
 import {
-  loadOffsetsModeScores,
-  saveOffsetsModeScore,
-  loadOffsetsProgress,
-  saveOffsetsProgress,
-  resetOffsetsProgress,
+  loadDrillScore,
+  saveDrillScore,
+  loadDrillProgress,
+  saveDrillProgress,
+  resetDrillProgress,
+  offsetsModeToDrillId,
   type OffsetsMode,
-  type OffsetsModeScores,
-  type OffsetsProgress,
 } from '../../services/storage';
+import type { DrillScore, DrillProgress } from '../../types';
 import { DrillHeader } from '../drill/DrillHeader';
 import { DrillActionRow } from '../drill/DrillActionRow';
 import { AlphabetMasteryModal } from '../drill/AlphabetMasteryModal';
@@ -25,7 +25,6 @@ export interface WorkoutStepContext {
   isLastStep: boolean;
   onAdvance: (stepResult?: {
     offsets60s?: number;
-    offsetsCadence?: number;
     offsetsMode?: OffsetsMode;
     timeSeconds?: number;
     accuracy?: number;
@@ -90,7 +89,7 @@ function getMasteredInsertIndex(deckLength: number): number {
   return Math.max(0, deckLength - offsetFromBack);
 }
 
-function initDeck(progress: OffsetsProgress): number[] {
+function initDeck(progress: DrillProgress): number[] {
   const learningOrMissed: number[] = [];
   const unseen: number[] = [];
   const mastered: number[] = [];
@@ -142,14 +141,15 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, wo
   const { isAllowed } = useAuth();
   const initialMode: DrillMode = workoutContext?.offsetsMode || 'letterToNum';
   const [mode, setMode] = useState<DrillMode>(initialMode);
-  const [scores, setScores] = useState<OffsetsModeScores>(() => loadOffsetsModeScores(initialMode));
-  const [progress, setProgress] = useState<OffsetsProgress>(() => loadOffsetsProgress(initialMode));
+  const [scores, setScores] = useState<DrillScore>(() => loadDrillScore(offsetsModeToDrillId(initialMode)));
+  const [progress, setProgress] = useState<DrillProgress>(() => loadDrillProgress(offsetsModeToDrillId(initialMode)));
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState<boolean>(false);
   const [newRecordAlert, setNewRecordAlert] = useState<boolean>(false);
 
   // Velocity Metrics
   const [current60s, setCurrent60s] = useState<number>(0);
+  const [sessionBest60s, setSessionBest60s] = useState<number>(0);
   const [cadence, setCadence] = useState<number>(0);
   const [streak, setStreak] = useState<number>(0);
   const correctTimestampsRef = useRef<number[]>([]);
@@ -167,7 +167,7 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, wo
 
   // Spaced Repetition deck initialization: always 26 letters in rotation
   const [initialData] = useState(() => {
-    const initialDeck = initDeck(loadOffsetsProgress(initialMode));
+    const initialDeck = initDeck(loadDrillProgress(offsetsModeToDrillId(initialMode)));
     const initialQ = makeQuestionForOffset(initialDeck[0] ?? 0, initialMode);
     return { initialDeck, initialQ };
   });
@@ -233,14 +233,16 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, wo
 
   const handleModeChange = (newMode: DrillMode) => {
     if (newMode === mode) return;
+    const drillId = offsetsModeToDrillId(newMode);
     setMode(newMode);
-    setScores(loadOffsetsModeScores(newMode));
-    const newProgress = loadOffsetsProgress(newMode);
+    setScores(loadDrillScore(drillId));
+    const newProgress = loadDrillProgress(drillId);
     setProgress(newProgress);
     const newDeck = initDeck(newProgress);
     deckQueueRef.current = newDeck;
     setStreak(0);
     setCurrent60s(0);
+    setSessionBest60s(0);
     setCadence(0);
     correctTimestampsRef.current = [];
     lastCorrectTimeRef.current = null;
@@ -254,8 +256,8 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, wo
   };
 
   const handleResetProgress = () => {
-    resetOffsetsProgress(mode);
-    const freshProgress: OffsetsProgress = {};
+    resetDrillProgress(offsetsModeToDrillId(mode));
+    const freshProgress: DrillProgress = {};
     setProgress(freshProgress);
     const freshDeck = initDeck(freshProgress);
     deckQueueRef.current = freshDeck;
@@ -280,6 +282,7 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, wo
     const currentOffset = question.offset;
     const letter = question.letter;
     const now = Date.now();
+    const drillId = offsetsModeToDrillId(mode);
 
     // Pop the answered offset from the front of the active deck
     if (deck && deck[0] === currentOffset) {
@@ -298,17 +301,18 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, wo
       correctTimestampsRef.current.push(now);
       const updated60s = correctTimestampsRef.current.filter(t => now - t <= 60000).length;
       setCurrent60s(updated60s);
+      setSessionBest60s(prev => Math.max(prev, updated60s));
 
       // High Score check (all 26 letters are in the deck from the start)
       if (updated60s > scores.best60s) {
-        const updated = saveOffsetsModeScore(mode, { best60s: updated60s });
+        const updated = saveDrillScore(drillId, { best60s: updated60s });
         setScores(prev => ({ ...prev, best60s: updated.best60s }));
         setNewRecordAlert(true);
         setTimeout(() => setNewRecordAlert(false), 2000);
       }
 
       if (newStreak > scores.bestStreak) {
-        const updated = saveOffsetsModeScore(mode, { bestStreak: newStreak });
+        const updated = saveDrillScore(drillId, { bestStreak: newStreak });
         setScores(prev => ({ ...prev, bestStreak: updated.bestStreak }));
       }
 
@@ -361,12 +365,12 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, wo
         }
       }
 
-      const newProgress: OffsetsProgress = {
+      const newProgress: DrillProgress = {
         ...progress,
         [letter]: updatedLetterProgress,
       };
       setProgress(newProgress);
-      saveOffsetsProgress(mode, newProgress);
+      saveDrillProgress(drillId, newProgress);
 
       if (deck) {
         deck.splice(insertIdx, 0, currentOffset);
@@ -392,12 +396,12 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, wo
         attempts: prevLetterProgress.attempts + 1,
         correct: prevLetterProgress.correct,
       };
-      const newProgress: OffsetsProgress = {
+      const newProgress: DrillProgress = {
         ...progress,
         [letter]: updatedLetterProgress,
       };
       setProgress(newProgress);
-      saveOffsetsProgress(mode, newProgress);
+      saveDrillProgress(drillId, newProgress);
 
       // Miss: re-insert shallowly (index 3 => 2-3 intervening questions)
       if (deck) {
@@ -481,8 +485,7 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, wo
           className="btn-workout-next"
           onClick={() =>
             workoutContext.onAdvance({
-              offsets60s: scores.best60s,
-              offsetsCadence: cadence,
+              offsets60s: sessionBest60s,
               offsetsMode: mode,
             })
           }
