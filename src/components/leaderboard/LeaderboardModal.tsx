@@ -15,15 +15,14 @@ export type LeaderboardBoardId =
 interface LeaderboardTabConfig {
   id: LeaderboardBoardId;
   label: string;
-  icon: string;
 }
 
 const LEADERBOARD_TABS: readonly LeaderboardTabConfig[] = [
-  { id: 'offsetsLetterToNum', label: 'Letter → #', icon: '🔤' },
-  { id: 'offsetsNumToLetter', label: '# → Letter', icon: '🔢' },
-  { id: 'atbash', label: 'Atbash', icon: '🔄' },
-  { id: 'pigpen', label: 'Pigpen', icon: '🔲' },
-  { id: 'galactic', label: 'Galactic', icon: '🌌' },
+  { id: 'offsetsLetterToNum', label: 'Letter → #' },
+  { id: 'offsetsNumToLetter', label: '# → Letter' },
+  { id: 'atbash', label: 'Atbash' },
+  { id: 'pigpen', label: 'Pigpen' },
+  { id: 'galactic', label: 'Galactic' },
 ] as const;
 
 function resolveBoardId(drillOrMode?: DrillId | OffsetsMode): LeaderboardBoardId {
@@ -127,8 +126,7 @@ const LeaderboardModalContent: React.FC<LeaderboardModalContentProps> = ({
                 className={`leaderboard-tab ${board === tab.id ? 'active' : ''}`}
                 onClick={() => handleBoardChange(tab.id)}
               >
-                <span className="tab-icon">{tab.icon}</span>
-                <span className="tab-label">{tab.label}</span>
+                {tab.label}
               </button>
             ))}
           </div>
