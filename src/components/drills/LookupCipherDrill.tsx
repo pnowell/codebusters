@@ -79,7 +79,6 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const scrollPanelRef = useRef<HTMLDivElement | null>(null);
-  const nextButtonRef = useRef<HTMLButtonElement | null>(null);
 
   // Inform parent of quote ID changes via ref to prevent stale closures/unwanted re-renders
   const onQuoteChangeRef = useRef(onQuoteChange);
@@ -95,6 +94,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
   const words = useMemo(() => groupIntoWords(chars), [chars]);
   const totalLetters = useMemo(() => chars.filter(isLetter).length, [chars]);
   const filledLetters = userInputs.filter((c, idx) => isLetter(chars[idx]) && c !== '').length;
+  const isAllFilled = totalLetters > 0 && filledLetters === totalLetters;
 
   // Focus tile helper
   const focusTile = useCallback((index: number) => {
@@ -143,36 +143,20 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
   }, [workoutContext, result, quote?.author, loadNewQuote]);
 
   const handleSubmit = useCallback(() => {
-    if (!quote || isSubmitted) return;
+    if (!quote || isSubmitted || !isAllFilled) return;
     const res = evaluateSolution(quote.quote, userInputs.join(''));
     setResult(res);
     setIsSubmitted(true);
     saveCompletedQuoteId(quote.id);
     recordCipherPractice(cipher);
-  }, [cipher, quote, userInputs, isSubmitted]);
+  }, [cipher, quote, userInputs, isSubmitted, isAllFilled]);
 
-  // When submitted, blur all input tiles so no cursor blinks, and focus the Next button
+  // When submitted, blur all input tiles so no cursor blinks
   useEffect(() => {
     if (isSubmitted) {
       inputRefs.current.forEach(el => el?.blur());
-      nextButtonRef.current?.focus();
     }
   }, [isSubmitted]);
-
-  // Global keydown listener so pressing Enter after submitting moves to the next puzzle
-  useEffect(() => {
-    if (!isSubmitted) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        handleNext();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSubmitted, handleNext]);
 
   const handleTileChange = (index: number, val: string) => {
     if (!puzzle || isSubmitted) return;
@@ -210,7 +194,9 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
       focusTile(findLetterIndex(chars, index, 1));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      handleSubmit();
+      if (isAllFilled && !isSubmitted) {
+        handleSubmit();
+      }
     }
   };
 
@@ -352,13 +338,12 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
           <button
             className="btn-submit"
             onClick={handleSubmit}
-            disabled={filledLetters === 0}
+            disabled={!isAllFilled}
           >
             Submit & Check Solution ✓
           </button>
         ) : workoutContext ? (
           <button
-            ref={nextButtonRef}
             className="btn-submit btn-next btn-workout-next"
             onClick={handleNext}
           >
@@ -368,7 +353,6 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
           </button>
         ) : (
           <button
-            ref={nextButtonRef}
             className="btn-submit btn-next"
             onClick={handleNext}
           >
