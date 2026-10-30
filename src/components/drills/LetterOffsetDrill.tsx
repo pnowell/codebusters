@@ -254,19 +254,13 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({ onBack, wo
   };
 
   const handleResetProgress = () => {
-    const modeLabel = mode === 'letterToNum' ? 'Letter → #' : '# → Letter';
-    const confirmed = window.confirm(
-      `⚠️ Resetting ${modeLabel} alphabet mastery will clear all letter streaks for this mode and return all 26 letters to unseen in the deck.\n\nAre you sure you want to proceed?`
-    );
-    if (confirmed) {
-      resetOffsetsProgress(mode);
-      const freshProgress: OffsetsProgress = {};
-      setProgress(freshProgress);
-      const freshDeck = initDeck(freshProgress);
-      deckQueueRef.current = freshDeck;
-      setIsModalOpen(false);
-      nextQuestion();
-    }
+    resetOffsetsProgress(mode);
+    const freshProgress: OffsetsProgress = {};
+    setProgress(freshProgress);
+    const freshDeck = initDeck(freshProgress);
+    deckQueueRef.current = freshDeck;
+    setIsModalOpen(false);
+    nextQuestion();
   };
 
   const confirmAnswer = useCallback(() => {

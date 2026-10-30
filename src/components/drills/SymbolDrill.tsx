@@ -222,18 +222,13 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({
   }, []);
 
   const handleResetProgress = () => {
-    const confirmed = window.confirm(
-      `⚠️ Resetting ${info.shortTitle} alphabet mastery will clear all letter streaks for this cipher and return all 26 letters to unseen in the deck.\n\nAre you sure you want to proceed?`
-    );
-    if (confirmed) {
-      resetDrillProgress(cipher);
-      const freshProgress: DrillProgress = {};
-      setProgress(freshProgress);
-      const freshDeck = initDeck(freshProgress);
-      deckQueueRef.current = freshDeck;
-      setIsMasteryOpen(false);
-      nextCard();
-    }
+    resetDrillProgress(cipher);
+    const freshProgress: DrillProgress = {};
+    setProgress(freshProgress);
+    const freshDeck = initDeck(freshProgress);
+    deckQueueRef.current = freshDeck;
+    setIsMasteryOpen(false);
+    nextCard();
   };
 
   const confirmAnswerWithChar = useCallback((answeredChar: string) => {

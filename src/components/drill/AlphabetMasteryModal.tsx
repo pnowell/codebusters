@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { offsetToLetter } from '../../utils/ciphers';
 import type { DrillProgress } from '../../types';
 import type { OffsetsMode } from '../../services/storage';
@@ -29,6 +29,21 @@ export const AlphabetMasteryModal: React.FC<AlphabetMasteryModalProps> = ({
   mode,
   title,
 }) => {
+  const [isConfirmingReset, setIsConfirmingReset] = useState<boolean>(false);
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+
+  if (prevIsOpen !== isOpen) {
+    setPrevIsOpen(isOpen);
+    if (!isOpen) {
+      setIsConfirmingReset(false);
+    }
+  }
+
+  const handleClose = () => {
+    setIsConfirmingReset(false);
+    onClose();
+  };
+
   if (!isOpen) return null;
 
   const masteredCount = progress
@@ -76,7 +91,7 @@ export const AlphabetMasteryModal: React.FC<AlphabetMasteryModalProps> = ({
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={handleClose}>
       <div
         className="modal-content"
         onClick={e => e.stopPropagation()}
@@ -96,7 +111,7 @@ export const AlphabetMasteryModal: React.FC<AlphabetMasteryModalProps> = ({
           <button
             type="button"
             className="modal-close-btn"
-            onClick={onClose}
+            onClick={handleClose}
             aria-label="Close dialog"
           >
             ✕
@@ -132,16 +147,45 @@ export const AlphabetMasteryModal: React.FC<AlphabetMasteryModalProps> = ({
         </div>
 
         <div className="modal-danger-zone">
-          <div className="modal-danger-warning">
-            ⚠️ <strong>Reset Notice:</strong> Resetting clears individual letter streaks and returns all 26 letters to unseen in the deck.
-          </div>
-          <button
-            type="button"
-            className="modal-reset-btn"
-            onClick={onResetProgress}
-          >
-            ↺ Reset Alphabet Mastery
-          </button>
+          {!isConfirmingReset ? (
+            <>
+              <div className="modal-danger-warning">
+                ⚠️ <strong>Reset Notice:</strong> Resetting clears individual letter streaks and returns all 26 letters to unseen in the deck.
+              </div>
+              <button
+                type="button"
+                className="modal-reset-btn"
+                onClick={() => setIsConfirmingReset(true)}
+              >
+                ↺ Reset Alphabet Mastery
+              </button>
+            </>
+          ) : (
+            <div className="modal-confirm-reset-box">
+              <div className="modal-danger-warning" style={{ color: '#f87171', fontWeight: 600 }}>
+                Are you sure you want to reset all letter mastery streaks? All 26 letters will return to unseen.
+              </div>
+              <div className="modal-confirm-actions">
+                <button
+                  type="button"
+                  className="btn-simple btn-cancel-reset"
+                  onClick={() => setIsConfirmingReset(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="modal-reset-btn btn-confirm-reset"
+                  onClick={() => {
+                    setIsConfirmingReset(false);
+                    onResetProgress();
+                  }}
+                >
+                  Yes, Reset Mastery ✓
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

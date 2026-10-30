@@ -1155,6 +1155,39 @@ body {
   border-color: rgba(244, 63, 94, 0.6);
 }
 
+.modal-confirm-reset-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: rgba(244, 63, 94, 0.08);
+  border: 1px solid rgba(244, 63, 94, 0.25);
+  padding: 0.55rem 0.75rem;
+  border-radius: 8px;
+}
+
+.modal-confirm-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-confirm-reset {
+  background: rgba(244, 63, 94, 0.3) !important;
+  border-color: rgba(244, 63, 94, 0.7) !important;
+  color: #fff !important;
+}
+
+.btn-confirm-reset:hover {
+  background: rgba(244, 63, 94, 0.5) !important;
+}
+
+.btn-cancel-reset {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border-radius: 6px;
+}
+
 /* Workout & General Practice Circuit Styles */
 @keyframes pulseNext {
   0%, 100% {

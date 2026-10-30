@@ -1,4 +1,4 @@
-import { doc, getDoc, onSnapshot, setDoc, serverTimestamp, type Unsubscribe } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, setDoc, updateDoc, serverTimestamp, type Unsubscribe } from 'firebase/firestore';
 import { db } from './firebase';
 import {
   loadSettings,
@@ -307,9 +307,8 @@ export function startCloudSync(uid: string): void {
       if (data.drillProgress) {
         const remoteProgress = normalizeCloudDrillProgress(data);
         const currentProgress = loadAllDrillProgress();
-        const mergedProgress = mergeAllDrillProgress(currentProgress, remoteProgress);
-        if (JSON.stringify(currentProgress) !== JSON.stringify(mergedProgress)) {
-          saveAllDrillProgress(mergedProgress);
+        if (JSON.stringify(currentProgress) !== JSON.stringify(remoteProgress)) {
+          saveAllDrillProgress(remoteProgress);
           hasChanged = true;
         }
       }
@@ -391,7 +390,18 @@ export function pushCloudUpdate(partial: Partial<UserProfile>): void {
 
     try {
       const userDocRef = doc(db, 'users', currentSyncedUid);
-      await setDoc(userDocRef, { ...toWrite, lastActiveAt: serverTimestamp() }, { merge: true });
+      if (toWrite.drillProgress) {
+        try {
+          await updateDoc(userDocRef, {
+            ...toWrite,
+            lastActiveAt: serverTimestamp(),
+          });
+        } catch {
+          await setDoc(userDocRef, { ...toWrite, lastActiveAt: serverTimestamp() }, { merge: true });
+        }
+      } else {
+        await setDoc(userDocRef, { ...toWrite, lastActiveAt: serverTimestamp() }, { merge: true });
+      }
     } catch (err) {
       console.warn('[Sync] Failed to push update to cloud:', err);
     }
