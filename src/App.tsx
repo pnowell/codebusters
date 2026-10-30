@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { CipherType, UserSettings, TestPacket, TestAttempt, TestEvaluationResult } from './types';
 import { LetterOffsetDrill, type WorkoutStepContext } from './components/drills/LetterOffsetDrill';
 import { LookupCipherDrill } from './components/drills/LookupCipherDrill';
+import { SymbolDrill } from './components/drills/SymbolDrill';
 import { OptionsModal } from './components/options/OptionsModal';
 import { LeaderboardModal } from './components/leaderboard/LeaderboardModal';
 import { TestRunner } from './components/test/TestRunner';
@@ -69,6 +70,7 @@ export const App: React.FC = () => {
 
   const [activeDrill, setActiveDrill] = useState<CipherType | null>(() => parseUrlRoute().drill);
   const [activeQuoteId, setActiveQuoteId] = useState<number | undefined>(() => parseUrlRoute().quoteId);
+  const [isQuotePractice, setIsQuotePractice] = useState<boolean>(false);
   const [isOptionsOpen, setIsOptionsOpen] = useState<boolean>(false);
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState<boolean>(false);
 
@@ -242,6 +244,7 @@ export const App: React.FC = () => {
     setActiveTestSession(null);
     setIsTestsListOpen(false);
     setSelectedCompletedTest(null);
+    setIsQuotePractice(false);
     setActiveDrill(drill);
     setActiveQuoteId(quoteId);
     const newUrl = buildRouteUrl({ drill, quoteId });
@@ -257,6 +260,7 @@ export const App: React.FC = () => {
     setActiveTestSession(null);
     setIsTestsListOpen(false);
     setSelectedCompletedTest(null);
+    setIsQuotePractice(false);
     if (window.history.state && (window.history.state.drill || window.history.state.testId || window.history.state.testsList)) {
       window.history.back();
     } else {
@@ -514,14 +518,25 @@ export const App: React.FC = () => {
       )}
 
       {activeDrill && isLookupCipher(activeDrill) && !activeTestSession && (
-        <LookupCipherDrill
-          key={`${activeDrill}:${activeQuoteId ?? 'random'}`}
-          cipher={activeDrill}
-          initialQuoteId={activeQuoteId}
-          onQuoteChange={handleQuoteChange}
-          onBack={navigateToMenu}
-          workoutContext={workoutContext}
-        />
+        workoutContext || isQuotePractice ? (
+          <LookupCipherDrill
+            key={`${activeDrill}:${activeQuoteId ?? 'random'}`}
+            cipher={activeDrill}
+            initialQuoteId={activeQuoteId}
+            onQuoteChange={handleQuoteChange}
+            onSwitchToFlashcards={() => setIsQuotePractice(false)}
+            onBack={navigateToMenu}
+            workoutContext={workoutContext}
+          />
+        ) : (
+          <SymbolDrill
+            key={activeDrill}
+            cipher={activeDrill}
+            onBack={navigateToMenu}
+            onSwitchToQuotes={() => setIsQuotePractice(true)}
+            workoutContext={workoutContext}
+          />
+        )
       )}
 
       {/* Practice Test Results Page View */}

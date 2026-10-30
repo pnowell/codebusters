@@ -1,41 +1,72 @@
 import React, { useState, useEffect } from 'react';
+import type { DrillId } from '../../types';
 import type { OffsetsMode } from '../../services/storage';
-import { loadOffsetsModeScores } from '../../services/storage';
+import { loadDrillScore } from '../../services/storage';
 import { subscribeLeaderboard, type LeaderboardEntry } from '../../services/leaderboard';
 import { useAuth } from '../../context/useAuth';
+
+export type LeaderboardBoardId =
+  | 'offsetsLetterToNum'
+  | 'offsetsNumToLetter'
+  | 'atbash'
+  | 'pigpen'
+  | 'galactic';
+
+interface LeaderboardTabConfig {
+  id: LeaderboardBoardId;
+  label: string;
+  icon: string;
+}
+
+const LEADERBOARD_TABS: readonly LeaderboardTabConfig[] = [
+  { id: 'offsetsLetterToNum', label: 'Letter → #', icon: '🔤' },
+  { id: 'offsetsNumToLetter', label: '# → Letter', icon: '🔢' },
+  { id: 'atbash', label: 'Atbash', icon: '🔄' },
+  { id: 'pigpen', label: 'Pigpen', icon: '🔲' },
+  { id: 'galactic', label: 'Galactic', icon: '🌌' },
+] as const;
+
+function resolveBoardId(drillOrMode?: DrillId | OffsetsMode): LeaderboardBoardId {
+  if (drillOrMode === 'numToLetter' || drillOrMode === 'offsetsNumToLetter') return 'offsetsNumToLetter';
+  if (drillOrMode === 'atbash') return 'atbash';
+  if (drillOrMode === 'pigpen') return 'pigpen';
+  if (drillOrMode === 'galactic') return 'galactic';
+  return 'offsetsLetterToNum';
+}
 
 interface LeaderboardModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialDrill?: DrillId | OffsetsMode;
   initialMode?: OffsetsMode;
 }
 
 interface LeaderboardModalContentProps {
   onClose: () => void;
-  initialMode: OffsetsMode;
+  initialBoard: LeaderboardBoardId;
 }
 
 const LeaderboardModalContent: React.FC<LeaderboardModalContentProps> = ({
   onClose,
-  initialMode,
+  initialBoard,
 }) => {
   const { user } = useAuth();
-  const [mode, setMode] = useState<OffsetsMode>(initialMode);
+  const [board, setBoard] = useState<LeaderboardBoardId>(initialBoard);
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const handleModeChange = (newMode: OffsetsMode) => {
-    if (newMode === mode) return;
+  const handleBoardChange = (newBoard: LeaderboardBoardId) => {
+    if (newBoard === board) return;
     setIsLoading(true);
     setError(null);
-    setMode(newMode);
+    setBoard(newBoard);
   };
 
-  // Subscribe to real-time leaderboard data
+  // Subscribe to real-time leaderboard data for the selected drill
   useEffect(() => {
     const unsubscribe = subscribeLeaderboard(
-      mode,
+      board,
       (newEntries) => {
         setEntries(newEntries);
         setIsLoading(false);
@@ -49,15 +80,15 @@ const LeaderboardModalContent: React.FC<LeaderboardModalContentProps> = ({
     return () => {
       unsubscribe();
     };
-  }, [mode]);
+  }, [board]);
 
-  const localScores = loadOffsetsModeScores(mode);
+  const localScore = loadDrillScore(board);
   const userRankIndex = entries.findIndex(e => e.uid === user?.uid);
   const userRank = userRankIndex !== -1 ? userRankIndex + 1 : null;
   const userEntry = userRankIndex !== -1 ? entries[userRankIndex] : null;
 
-  const displayMyScore = userEntry ? userEntry.score : localScores.best60s;
-  const displayMyStreak = userEntry ? userEntry.bestStreak : localScores.bestStreak;
+  const displayMyScore = userEntry ? userEntry.score : localScore.best60s;
+  const displayMyStreak = userEntry ? userEntry.bestStreak : localScore.bestStreak;
 
   const getRankBadge = (rank: number) => {
     if (rank === 1) return <span className="leaderboard-medal gold">🥇 1st</span>;
@@ -77,8 +108,7 @@ const LeaderboardModalContent: React.FC<LeaderboardModalContentProps> = ({
       >
         <div className="modal-header">
           <div className="leaderboard-title-group">
-            <h3 id="leaderboard-modal-title">🏆 Team Leaderboard</h3>
-            <span className="leaderboard-subtitle">Letter Offsets 60s Blitz</span>
+            <h3 id="leaderboard-modal-title">🏆 Team Leaderboards</h3>
           </div>
           <button className="close-btn" onClick={onClose} aria-label="Close leaderboard">
             ✕
@@ -86,22 +116,21 @@ const LeaderboardModalContent: React.FC<LeaderboardModalContentProps> = ({
         </div>
 
         <div className="modal-body leaderboard-modal-body">
-          {/* Mode Tabs */}
-          <div className="leaderboard-mode-tabs">
-            <button
-              type="button"
-              className={`leaderboard-tab ${mode === 'letterToNum' ? 'active' : ''}`}
-              onClick={() => handleModeChange('letterToNum')}
-            >
-              Letter → # (A=1)
-            </button>
-            <button
-              type="button"
-              className={`leaderboard-tab ${mode === 'numToLetter' ? 'active' : ''}`}
-              onClick={() => handleModeChange('numToLetter')}
-            >
-              # → Letter (1=A)
-            </button>
+          {/* Multi-drill Switcher Tabs */}
+          <div className="leaderboard-mode-tabs" role="tablist" aria-label="Select Leaderboard">
+            {LEADERBOARD_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={board === tab.id}
+                className={`leaderboard-tab ${board === tab.id ? 'active' : ''}`}
+                onClick={() => handleBoardChange(tab.id)}
+              >
+                <span className="tab-icon">{tab.icon}</span>
+                <span className="tab-label">{tab.label}</span>
+              </button>
+            ))}
           </div>
 
           {/* User's Personal Standing Card */}
@@ -164,7 +193,7 @@ const LeaderboardModalContent: React.FC<LeaderboardModalContentProps> = ({
                       </div>
 
                       <div className="row-right">
-                        <div className="score-badge" title="60-second score">
+                        <div className="score-badge" title="60-second blitz score">
                           <span className="score-icon">⚡</span>
                           <span className="score-number">{entry.score}</span>
                         </div>
@@ -188,16 +217,19 @@ const LeaderboardModalContent: React.FC<LeaderboardModalContentProps> = ({
 export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
   isOpen,
   onClose,
-  initialMode = 'letterToNum',
+  initialDrill,
+  initialMode,
 }) => {
   const { isAllowed } = useAuth();
   if (!isOpen || !isAllowed) return null;
 
+  const targetBoard = resolveBoardId(initialDrill ?? initialMode);
+
   return (
     <LeaderboardModalContent
-      key={initialMode}
+      key={targetBoard}
       onClose={onClose}
-      initialMode={initialMode}
+      initialBoard={targetBoard}
     />
   );
 };

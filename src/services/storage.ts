@@ -255,6 +255,10 @@ export function saveAllDrillProgress(all: DrillProgressRecord): void {
   }
 }
 
+export function resetDrillProgress(drillId: DrillId): void {
+  saveDrillProgress(drillId, {});
+}
+
 // ---------------------------------------------------------------------------
 // Backward-compatible Offsets Drill Wrappers
 // ---------------------------------------------------------------------------

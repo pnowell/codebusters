@@ -1,14 +1,17 @@
 import React from 'react';
 import { offsetToLetter } from '../../utils/ciphers';
-import type { OffsetsProgress, OffsetsMode } from '../../services/storage';
+import type { DrillProgress } from '../../types';
+import type { OffsetsMode } from '../../services/storage';
 
 interface AlphabetMasteryModalProps {
   isOpen: boolean;
   onClose: () => void;
-  progress: OffsetsProgress;
+  progress: DrillProgress;
   onResetProgress: () => void;
-  currentOffset: number;
+  currentOffset?: number;
+  currentLetter?: string;
   mode?: OffsetsMode;
+  title?: string;
 }
 
 const ALL_OFFSETS = Array.from({ length: 26 }, (_, i) => i);
@@ -22,7 +25,9 @@ export const AlphabetMasteryModal: React.FC<AlphabetMasteryModalProps> = ({
   progress,
   onResetProgress,
   currentOffset,
+  currentLetter,
   mode,
+  title,
 }) => {
   if (!isOpen) return null;
 
@@ -34,7 +39,7 @@ export const AlphabetMasteryModal: React.FC<AlphabetMasteryModalProps> = ({
     const letter = offsetToLetter(offset);
     const p = progress[letter];
     const isAnchor = ANCHOR_OFFSETS.includes(offset as any);
-    const isCurrent = currentOffset === offset;
+    const isCurrent = currentLetter !== undefined ? currentLetter === letter : currentOffset === offset;
 
     let statusClass = 'status-unseen';
     let statusLabel = 'Unseen';
@@ -82,7 +87,7 @@ export const AlphabetMasteryModal: React.FC<AlphabetMasteryModalProps> = ({
         <div className="modal-header">
           <div>
             <h3 id="mastery-modal-title" className="modal-title">
-              Alphabet Mastery {mode ? `(${mode === 'numToLetter' ? '# → Letter' : 'Letter → #'})` : ''}
+              {title || `Alphabet Mastery ${mode ? `(${mode === 'numToLetter' ? '# → Letter' : 'Letter → #'})` : ''}`}
             </h3>
             <div className="modal-subtitle" style={{ fontSize: '0.8rem', color: '#34d399', fontWeight: 700, marginTop: '2px' }}>
               {masteredCount} / 26 Mastered (Streak 3+)

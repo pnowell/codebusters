@@ -19,6 +19,7 @@ interface LookupCipherDrillProps {
   onBack: () => void;
   initialQuoteId?: number;
   onQuoteChange?: (quoteId: number) => void;
+  onSwitchToFlashcards?: () => void;
   workoutContext?: WorkoutStepContext;
 }
 
@@ -54,6 +55,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
   onBack,
   initialQuoteId,
   onQuoteChange,
+  onSwitchToFlashcards,
   workoutContext,
 }) => {
   const [initialResolved] = useState<{ quote: Quote | null; notFoundId?: number }>(() => {
@@ -240,6 +242,29 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
           )
         }
       />
+
+      {/* Mode Sub-bar: Flashcards vs Quote Practice */}
+      {!workoutContext && onSwitchToFlashcards && (
+        <div className="offsets-subbar" style={{ marginBottom: '0.4rem' }}>
+          <div className="mode-selector" style={{ margin: 0 }}>
+            <button
+              type="button"
+              className="mode-btn"
+              onClick={onSwitchToFlashcards}
+              title="Rapid symbol flashcard speed drill"
+            >
+              ⚡ Flashcards
+            </button>
+            <button
+              type="button"
+              className="mode-btn active"
+              title="Practice full quote decoding for this cipher"
+            >
+              📜 Quote Practice
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 2. Collapsible Reference Table */}
       <CollapsibleReference
