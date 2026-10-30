@@ -5,7 +5,7 @@ import {
   type User,
   type Unsubscribe,
 } from 'firebase/auth';
-import { deleteField, doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db, googleProvider, isFirebaseConfigured } from './firebase';
 import type { AllowedUser } from '../types';
 import { upsertPublicProfile } from './profileService';
@@ -90,9 +90,6 @@ export async function signInWithGoogle(): Promise<AuthResult> {
           uid: user.uid,
           email: normalizeEmail(user.email),
           lastActiveAt: serverTimestamp(),
-          displayName: deleteField(),
-          role: deleteField(),
-          offsetsScores: deleteField(),
         },
         { merge: true }
       );

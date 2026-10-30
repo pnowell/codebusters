@@ -86,7 +86,6 @@ export interface UserProfile {
     highContrast?: boolean;
   };
   drillProgress?: Partial<Record<DrillId, DrillProgress>>;
-  offsetsProgress?: Record<string, unknown>;
   completedQuotes?: number[];
   practiceHistory?: Record<string, { count: number; lastPracticed: number }>;
   lastActiveAt?: unknown;
@@ -150,7 +149,6 @@ export interface PublicProfile {
   displayName: string;
   role: 'student' | 'teacher';
   drillScores?: Partial<Record<DrillId, DrillScore>>;
-  offsetsScores?: Record<string, { best60s: number; bestStreak: number }>;
   updatedAt?: unknown;
 }
 

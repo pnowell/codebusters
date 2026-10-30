@@ -1,4 +1,4 @@
-import { deleteField, doc, getDoc, onSnapshot, setDoc, serverTimestamp, type Unsubscribe } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, setDoc, serverTimestamp, type Unsubscribe } from 'firebase/firestore';
 import { db } from './firebase';
 import {
   loadSettings,
@@ -16,8 +16,6 @@ import {
   sanitizeProgressDict,
   type DrillProgressRecord,
   type DrillScoresRecord,
-  type OffsetsProgressByMode,
-  type OffsetsScoresByMode,
 } from './storage';
 import type { UserProfile, UserSettings, PublicProfile, DrillId, DrillScore, DrillProgress } from '../types';
 import { upsertPublicProfile, normalizePublicProfile } from './profileService';
@@ -69,22 +67,6 @@ function normalizeCloudDrillProgress(data: Partial<UserProfile>): DrillProgressR
       result[k as DrillId] = sanitizeProgressDict(v);
     }
   }
-  // Fall back / merge legacy offsetsProgress if present
-  if (data.offsetsProgress && typeof data.offsetsProgress === 'object') {
-    const legacy = data.offsetsProgress as Record<string, unknown>;
-    if ('letterToNum' in legacy || 'numToLetter' in legacy) {
-      if (legacy.letterToNum && !result.offsetsLetterToNum) {
-        result.offsetsLetterToNum = sanitizeProgressDict(legacy.letterToNum);
-      }
-      if (legacy.numToLetter && !result.offsetsNumToLetter) {
-        result.offsetsNumToLetter = sanitizeProgressDict(legacy.numToLetter);
-      }
-    } else {
-      if (!result.offsetsLetterToNum) {
-        result.offsetsLetterToNum = sanitizeProgressDict(legacy);
-      }
-    }
-  }
   return result;
 }
 
@@ -114,40 +96,6 @@ registerSyncDispatcher((type, data) => {
           payload.drillId,
           payload.score.best60s,
           payload.score.bestStreak
-        );
-      }
-      break;
-    }
-    case 'offsetsProgress': {
-      // Legacy dispatcher support
-      const legacy = data as OffsetsProgressByMode;
-      const progress: DrillProgressRecord = {
-        offsetsLetterToNum: sanitizeProgressDict(legacy.letterToNum),
-        offsetsNumToLetter: sanitizeProgressDict(legacy.numToLetter),
-      };
-      pushCloudUpdate({ drillProgress: progress });
-      break;
-    }
-    case 'offsetsScores': {
-      // Legacy dispatcher support
-      const scores = data as OffsetsScoresByMode;
-      const currentSettings = loadSettings();
-      if (scores.letterToNum && (scores.letterToNum.best60s > 0 || scores.letterToNum.bestStreak > 0)) {
-        updateLeaderboardScore(
-          currentSyncedUid,
-          currentSettings.studentName,
-          'offsetsLetterToNum',
-          scores.letterToNum.best60s,
-          scores.letterToNum.bestStreak
-        );
-      }
-      if (scores.numToLetter && (scores.numToLetter.best60s > 0 || scores.numToLetter.bestStreak > 0)) {
-        updateLeaderboardScore(
-          currentSyncedUid,
-          currentSettings.studentName,
-          'offsetsNumToLetter',
-          scores.numToLetter.best60s,
-          scores.numToLetter.bestStreak
         );
       }
       break;
@@ -282,10 +230,6 @@ export async function mergeAndInitializeCloudUser(uid: string, email: string, de
       drillProgress: mergedProgress,
       practiceHistory: mergedHistory,
       lastActiveAt: serverTimestamp(),
-      displayName: deleteField(),
-      role: deleteField(),
-      offsetsScores: deleteField(),
-      offsetsProgress: deleteField(),
     },
     { merge: true }
   );
@@ -360,7 +304,7 @@ export function startCloudSync(uid: string): void {
         }
       }
 
-      if (data.drillProgress || data.offsetsProgress) {
+      if (data.drillProgress) {
         const remoteProgress = normalizeCloudDrillProgress(data);
         const currentProgress = loadAllDrillProgress();
         const mergedProgress = mergeAllDrillProgress(currentProgress, remoteProgress);

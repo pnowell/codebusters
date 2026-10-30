@@ -1,6 +1,5 @@
 import {
   collection,
-  deleteField,
   doc,
   getDoc,
   onSnapshot,
@@ -44,13 +43,11 @@ export function getDisplayNamesForUids(uids: string[] | undefined, fallback: str
 }
 
 /**
- * Normalizes a public profile document from Firestore, recovering any scores
- * stored under new drillScores or legacy offsetsScores maps, and ensuring clean data structures.
+ * Normalizes a public profile document from Firestore, ensuring clean data structures.
  */
 export function normalizePublicProfile(raw: Record<string, unknown>, uid: string): PublicProfile {
   const cleanDrillScores: Partial<Record<DrillId, DrillScore>> = {};
 
-  // 1. Read existing drillScores map if present
   if (raw.drillScores && typeof raw.drillScores === 'object') {
     for (const [k, v] of Object.entries(raw.drillScores as Record<string, unknown>)) {
       if (v && typeof v === 'object') {
@@ -61,31 +58,6 @@ export function normalizePublicProfile(raw: Record<string, unknown>, uid: string
         };
       }
     }
-  }
-
-  // 2. Seamlessly migrate legacy offsetsScores (including literal dot notation if present)
-  const legacyScores = (raw.offsetsScores as Record<string, { best60s?: number; bestStreak?: number }>) || {};
-  const dotL2N = raw['offsetsScores.letterToNum'] as { best60s?: number; bestStreak?: number } | undefined;
-  const dotN2L = raw['offsetsScores.numToLetter'] as { best60s?: number; bestStreak?: number } | undefined;
-
-  const legacyL2NBest60s = Math.max(legacyScores.letterToNum?.best60s ?? 0, dotL2N?.best60s ?? 0);
-  const legacyL2NStreak = Math.max(legacyScores.letterToNum?.bestStreak ?? 0, dotL2N?.bestStreak ?? 0);
-  if (legacyL2NBest60s > 0 || legacyL2NStreak > 0) {
-    const cur = cleanDrillScores.offsetsLetterToNum || { best60s: 0, bestStreak: 0 };
-    cleanDrillScores.offsetsLetterToNum = {
-      best60s: Math.max(cur.best60s, legacyL2NBest60s),
-      bestStreak: Math.max(cur.bestStreak, legacyL2NStreak),
-    };
-  }
-
-  const legacyN2LBest60s = Math.max(legacyScores.numToLetter?.best60s ?? 0, dotN2L?.best60s ?? 0);
-  const legacyN2LStreak = Math.max(legacyScores.numToLetter?.bestStreak ?? 0, dotN2L?.bestStreak ?? 0);
-  if (legacyN2LBest60s > 0 || legacyN2LStreak > 0) {
-    const cur = cleanDrillScores.offsetsNumToLetter || { best60s: 0, bestStreak: 0 };
-    cleanDrillScores.offsetsNumToLetter = {
-      best60s: Math.max(cur.best60s, legacyN2LBest60s),
-      bestStreak: Math.max(cur.bestStreak, legacyN2LStreak),
-    };
   }
 
   return {
@@ -128,26 +100,6 @@ export function subscribeTeamProfiles(
         const profile = normalizePublicProfile(raw, docSnap.id);
         profilesCache.set(docSnap.id, profile);
         list.push(profile);
-
-        // Auto-heal any legacy offsetsScores fields in Firestore
-        if (
-          raw.offsetsScores !== undefined ||
-          raw['offsetsScores.letterToNum'] !== undefined ||
-          raw['offsetsScores.numToLetter'] !== undefined
-        ) {
-          const docRef = docSnap.ref;
-          const healPayload: Record<string, unknown> = {
-            offsetsScores: deleteField(),
-            'offsetsScores.letterToNum': deleteField(),
-            'offsetsScores.numToLetter': deleteField(),
-          };
-          if (profile.drillScores) {
-            healPayload.drillScores = profile.drillScores;
-          }
-          setDoc(docRef, healPayload, { merge: true }).catch((err) => {
-            console.warn('[ProfileService] Auto-heal legacy drill scores error:', err);
-          });
-        }
       });
 
       profileListeners.forEach((listener) => {
@@ -199,12 +151,6 @@ export async function upsertPublicProfile(
       uid,
       updatedAt: serverTimestamp(),
     };
-
-    if (profile.drillScores) {
-      payload.offsetsScores = deleteField();
-      payload['offsetsScores.letterToNum'] = deleteField();
-      payload['offsetsScores.numToLetter'] = deleteField();
-    }
 
     await setDoc(docRef, payload, { merge: true });
   } catch (err) {
@@ -280,9 +226,6 @@ export async function upsertPublicProfileScore(
         displayName: targetName,
         drillScores: updatedDrillScores,
         updatedAt: serverTimestamp(),
-        offsetsScores: deleteField(),
-        'offsetsScores.letterToNum': deleteField(),
-        'offsetsScores.numToLetter': deleteField(),
       },
       { merge: true }
     );
