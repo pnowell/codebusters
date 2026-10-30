@@ -1875,9 +1875,8 @@ body {
 }
 
 .leaderboard-tab {
-  flex: 1 1 auto;
-  min-width: 90px;
-  padding: 0.45rem 0.75rem;
+  flex: 0 0 auto;
+  padding: 0.45rem 0.85rem;
   font-size: 0.85rem;
   font-weight: 600;
   border: none;
