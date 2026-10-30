@@ -24,7 +24,6 @@ export type SymbolCipherType = 'atbash' | 'pigpen' | 'galactic';
 interface SymbolDrillProps {
   cipher: SymbolCipherType;
   onBack: () => void;
-  onSwitchToQuotes?: () => void;
   workoutContext?: WorkoutStepContext;
 }
 
@@ -124,7 +123,6 @@ const CIPHER_INFO = {
 export const SymbolDrill: React.FC<SymbolDrillProps> = ({
   cipher,
   onBack,
-  onSwitchToQuotes,
   workoutContext,
 }) => {
   const { isAllowed } = useAuth();
@@ -522,28 +520,8 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({
     <div className="drill-container symbol-drill-container">
       <DrillHeader title={headerTitle} onBack={onBack} right={headerRight} />
 
-      {/* Sub-bar: Flashcards / Quotes toggle + Leaderboard + Mastery modal button */}
-      <div className="offsets-subbar">
-        <div className="mode-selector" style={{ margin: 0 }}>
-          <button
-            type="button"
-            className="mode-btn active"
-            title="Rapid symbol flashcard speed drill"
-          >
-            ⚡ Flashcards
-          </button>
-          {onSwitchToQuotes && (
-            <button
-              type="button"
-              className="mode-btn"
-              onClick={onSwitchToQuotes}
-              title="Practice full quote decoding for this cipher"
-            >
-              📜 Quote Practice
-            </button>
-          )}
-        </div>
-
+      {/* Sub-bar: Leaderboard + Mastery modal button */}
+      <div className="offsets-subbar" style={{ justifyContent: 'flex-end' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
           {isAllowed && (
             <button

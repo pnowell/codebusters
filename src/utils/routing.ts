@@ -1,7 +1,10 @@
 import { isCipherType, type CipherType } from '../data/drills';
 
+export type DrillSection = 'memorize' | 'cipher';
+
 export interface Route {
   drill: CipherType | null;
+  section?: DrillSection;
   quoteId?: number;
   testId?: string;
   testsList?: boolean;
@@ -10,14 +13,29 @@ export interface Route {
 
 export function parseUrlRoute(search = window.location.search): Route {
   const p = new URLSearchParams(search);
-  const drill = p.get('drill');
+  const cipherParam = p.get('cipher');
+  const drillParam = p.get('drill');
+  const sectionParam = p.get('section');
   const q = p.get('q');
   const test = p.get('test');
   const tests = p.get('tests');
   const results = p.get('results');
   const quoteId = q !== null ? parseInt(q, 10) : NaN;
+
+  let drill: CipherType | null = null;
+  let section: DrillSection = 'memorize';
+
+  if (cipherParam && isCipherType(cipherParam)) {
+    drill = cipherParam;
+    section = 'cipher';
+  } else if (drillParam && isCipherType(drillParam)) {
+    drill = drillParam;
+    section = sectionParam === 'cipher' ? 'cipher' : 'memorize';
+  }
+
   return {
-    drill: isCipherType(drill) ? drill : null,
+    drill,
+    section,
     quoteId: Number.isNaN(quoteId) ? undefined : quoteId,
     testId: test || undefined,
     testsList: tests === 'true' || tests === '1' || Boolean(results),
@@ -25,11 +43,23 @@ export function parseUrlRoute(search = window.location.search): Route {
   };
 }
 
-/** Returns a URL for the current path with drill/q/test/tests/results set (or removed), preserving other params like ?unlocked. */
+/** Returns a URL for the current path with drill/cipher/q/test/tests/results set (or removed), preserving other params like ?unlocked. */
 export function buildRouteUrl(route: Route): string {
   const p = new URLSearchParams(window.location.search);
-  if (route.drill) p.set('drill', route.drill);
-  else p.delete('drill');
+  if (route.drill) {
+    if (route.section === 'cipher') {
+      p.set('cipher', route.drill);
+      p.delete('drill');
+    } else {
+      p.set('drill', route.drill);
+      p.delete('cipher');
+    }
+  } else {
+    p.delete('drill');
+    p.delete('cipher');
+  }
+  p.delete('section');
+
   if (route.drill && route.quoteId !== undefined) p.set('q', String(route.quoteId));
   else p.delete('q');
   if (route.testId) p.set('test', route.testId);

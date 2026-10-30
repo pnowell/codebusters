@@ -15,7 +15,6 @@ import {
   type WorkoutStepResult,
 } from './components/workout/WorkoutSummaryModal';
 import {
-  IMPLEMENTED_DRILLS,
   COMING_SOON_DRILLS,
   isLookupCipher,
   getDrill,
@@ -39,7 +38,7 @@ import {
 import { subscribeToSyncUpdates } from './services/sync';
 import { UserAuthBadge } from './components/auth/UserAuthBadge';
 import { NotAllowedModal } from './components/auth/NotAllowedModal';
-import { parseUrlRoute, buildRouteUrl, parseUnlockedParam } from './utils/routing';
+import { parseUrlRoute, buildRouteUrl, parseUnlockedParam, type DrillSection } from './utils/routing';
 import { useVisualViewportHeight } from './hooks/useVisualViewportHeight';
 import { useAuth } from './context/useAuth';
 import { subscribeTeamProfiles } from './services/profileService';
@@ -69,8 +68,8 @@ export const App: React.FC = () => {
   const [settings, setSettings] = useState<UserSettings>(initSettings);
 
   const [activeDrill, setActiveDrill] = useState<CipherType | null>(() => parseUrlRoute().drill);
+  const [activeSection, setActiveSection] = useState<DrillSection>(() => parseUrlRoute().section || 'memorize');
   const [activeQuoteId, setActiveQuoteId] = useState<number | undefined>(() => parseUrlRoute().quoteId);
-  const [isQuotePractice, setIsQuotePractice] = useState<boolean>(false);
   const [isOptionsOpen, setIsOptionsOpen] = useState<boolean>(false);
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState<boolean>(false);
 
@@ -206,6 +205,7 @@ export const App: React.FC = () => {
       }
       const route = parseUrlRoute();
       setActiveDrill(route.drill);
+      setActiveSection(route.section || 'memorize');
       setActiveQuoteId(route.quoteId);
       setIsTestsListOpen(Boolean(route.testsList));
       if (!route.resultsTestId) {
@@ -236,22 +236,27 @@ export const App: React.FC = () => {
     if (route.drill && (!window.history.state || !('drill' in window.history.state))) {
       window.history.replaceState({ drill: null }, '', window.location.pathname);
       const drillUrl = `${window.location.pathname}${window.location.search}`;
-      window.history.pushState({ drill: route.drill, quoteId: route.quoteId }, '', drillUrl);
+      window.history.pushState({ drill: route.drill, section: route.section, quoteId: route.quoteId }, '', drillUrl);
     }
   }, []);
 
-  const navigateToDrill = (drill: CipherType, quoteId?: number, replaceHistory = false) => {
+  const navigateToDrill = (
+    drill: CipherType,
+    section: DrillSection = 'memorize',
+    quoteId?: number,
+    replaceHistory = false
+  ) => {
     setActiveTestSession(null);
     setIsTestsListOpen(false);
     setSelectedCompletedTest(null);
-    setIsQuotePractice(false);
     setActiveDrill(drill);
+    setActiveSection(section);
     setActiveQuoteId(quoteId);
-    const newUrl = buildRouteUrl({ drill, quoteId });
+    const newUrl = buildRouteUrl({ drill, section, quoteId });
     if (replaceHistory) {
-      window.history.replaceState({ drill, quoteId }, '', newUrl);
+      window.history.replaceState({ drill, section, quoteId }, '', newUrl);
     } else {
-      window.history.pushState({ drill, quoteId }, '', newUrl);
+      window.history.pushState({ drill, section, quoteId }, '', newUrl);
     }
   };
 
@@ -260,11 +265,11 @@ export const App: React.FC = () => {
     setActiveTestSession(null);
     setIsTestsListOpen(false);
     setSelectedCompletedTest(null);
-    setIsQuotePractice(false);
     if (window.history.state && (window.history.state.drill || window.history.state.testId || window.history.state.testsList)) {
       window.history.back();
     } else {
       setActiveDrill(null);
+      setActiveSection('memorize');
       setActiveQuoteId(undefined);
       const newUrl = buildRouteUrl({ drill: null });
       window.history.pushState({ drill: null }, '', newUrl);
@@ -432,7 +437,7 @@ export const App: React.FC = () => {
         currentStepIndex: nextStepIndex,
         results: updatedResults,
       });
-      navigateToDrill(nextCipher, undefined, true);
+      navigateToDrill(nextCipher, 'cipher', undefined, true);
     } else {
       // Complete round
       const totalTimeSeconds = Math.round((Date.now() - workoutSession.startTime) / 1000);
@@ -460,11 +465,6 @@ export const App: React.FC = () => {
         onAdvance: handleAdvanceWorkout,
       }
     : undefined;
-
-  const handleIndividualDrillClick = (drillId: CipherType) => {
-    setWorkoutSession(null);
-    navigateToDrill(drillId);
-  };
 
   return (
     <div className="app-container">
@@ -518,13 +518,12 @@ export const App: React.FC = () => {
       )}
 
       {activeDrill && isLookupCipher(activeDrill) && !activeTestSession && (
-        workoutContext || isQuotePractice ? (
+        activeSection === 'cipher' || workoutContext ? (
           <LookupCipherDrill
             key={`${activeDrill}:${activeQuoteId ?? 'random'}`}
             cipher={activeDrill}
             initialQuoteId={activeQuoteId}
             onQuoteChange={handleQuoteChange}
-            onSwitchToFlashcards={() => setIsQuotePractice(false)}
             onBack={navigateToMenu}
             workoutContext={workoutContext}
           />
@@ -533,7 +532,6 @@ export const App: React.FC = () => {
             key={activeDrill}
             cipher={activeDrill}
             onBack={navigateToMenu}
-            onSwitchToQuotes={() => setIsQuotePractice(true)}
             workoutContext={workoutContext}
           />
         )
@@ -579,24 +577,72 @@ export const App: React.FC = () => {
             )}
           </div>
 
-          {/* Divider: Individual Practice */}
+          {/* Section: Drills */}
           <div className="menu-divider">
-            <span>Individual Practice</span>
+            <span>Drills</span>
           </div>
 
           <div className="menu-buttons-list">
-            {IMPLEMENTED_DRILLS.map(d => (
-              <button
-                key={d.id}
-                className="menu-drill-btn"
-                onClick={() => handleIndividualDrillClick(d.id)}
-              >
-                {d.name}
-              </button>
-            ))}
+            <button
+              type="button"
+              className="menu-drill-btn"
+              onClick={() => navigateToDrill('offsets', 'memorize')}
+            >
+              Letter Offsets
+            </button>
+            <button
+              type="button"
+              className="menu-drill-btn"
+              onClick={() => navigateToDrill('atbash', 'memorize')}
+            >
+              Atbash
+            </button>
+            <button
+              type="button"
+              className="menu-drill-btn"
+              onClick={() => navigateToDrill('pigpen', 'memorize')}
+            >
+              Pigpen
+            </button>
+            <button
+              type="button"
+              className="menu-drill-btn"
+              onClick={() => navigateToDrill('galactic', 'memorize')}
+            >
+              Standard Galactic Alphabet
+            </button>
           </div>
 
-          {/* Divider: Coming Soon */}
+          {/* Section: Ciphers */}
+          <div className="menu-divider">
+            <span>Ciphers</span>
+          </div>
+
+          <div className="menu-buttons-list">
+            <button
+              type="button"
+              className="menu-drill-btn"
+              onClick={() => navigateToDrill('atbash', 'cipher')}
+            >
+              Atbash
+            </button>
+            <button
+              type="button"
+              className="menu-drill-btn"
+              onClick={() => navigateToDrill('pigpen', 'cipher')}
+            >
+              Pigpen
+            </button>
+            <button
+              type="button"
+              className="menu-drill-btn"
+              onClick={() => navigateToDrill('galactic', 'cipher')}
+            >
+              Standard Galactic Alphabet
+            </button>
+          </div>
+
+          {/* Section: Coming Soon */}
           <div className="menu-divider coming-soon-divider">
             <span>Coming Soon</span>
           </div>
