@@ -56,12 +56,19 @@ export const PracticeTestsList: React.FC<PracticeTestsListProps> = ({
 
             let resolvedAttempt: TestAttempt | null = null;
             if (localAttempt && cloudAttempt) {
-              const localTime = Math.max(localAttempt.submittedAt || 0, localAttempt.startedAt || 0);
-              const cloudTime = Math.max(cloudAttempt.submittedAt || 0, cloudAttempt.startedAt || 0);
-              if (localTime >= cloudTime) {
+              const localIsComplete =
+                localAttempt.status === 'submitted' || localAttempt.status === 'expired';
+              const cloudIsComplete =
+                cloudAttempt.status === 'submitted' || cloudAttempt.status === 'expired';
+
+              if (localIsComplete && !cloudIsComplete && (localAttempt.startedAt || 0) >= (cloudAttempt.startedAt || 0)) {
                 resolvedAttempt = localAttempt;
-              } else {
+              } else if (cloudIsComplete && !localIsComplete && (cloudAttempt.startedAt || 0) >= (localAttempt.startedAt || 0)) {
                 resolvedAttempt = cloudAttempt;
+              } else {
+                const localTime = Math.max(localAttempt.submittedAt || 0, localAttempt.startedAt || 0);
+                const cloudTime = Math.max(cloudAttempt.submittedAt || 0, cloudAttempt.startedAt || 0);
+                resolvedAttempt = localTime >= cloudTime ? localAttempt : cloudAttempt;
               }
             } else {
               resolvedAttempt = localAttempt || cloudAttempt || null;

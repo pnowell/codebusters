@@ -179,7 +179,9 @@ export const App: React.FC = () => {
     if (!route.resultsTestId || !isAllowed) return;
 
     const test = availableTests.find((t) => t.testId === route.resultsTestId);
-    const attempt = studentAttempts[route.resultsTestId] || getLocalTestAttempt(route.resultsTestId);
+    const cloudAtt = studentAttempts[route.resultsTestId];
+    const localAtt = getLocalTestAttempt(route.resultsTestId);
+    const attempt = (cloudAtt?.results ? cloudAtt : null) || (localAtt?.results ? localAtt : null) || cloudAtt || localAtt;
     if (test && attempt?.results) {
       queueMicrotask(() => {
         setSelectedCompletedTest({ testPacket: test, results: attempt.results!, attempt });
@@ -212,7 +214,9 @@ export const App: React.FC = () => {
         setSelectedCompletedTest(null);
       } else {
         const test = availableTests.find((t) => t.testId === route.resultsTestId);
-        const attempt = studentAttempts[route.resultsTestId] || getLocalTestAttempt(route.resultsTestId);
+        const cloudAtt = studentAttempts[route.resultsTestId];
+        const localAtt = getLocalTestAttempt(route.resultsTestId);
+        const attempt = (cloudAtt?.results ? cloudAtt : null) || (localAtt?.results ? localAtt : null) || cloudAtt || localAtt;
         if (test && attempt?.results) {
           setSelectedCompletedTest({ testPacket: test, results: attempt.results, attempt });
         }
@@ -306,8 +310,21 @@ export const App: React.FC = () => {
   const handleSelectTest = (test: TestPacket, attempt: TestAttempt | null) => {
     const local = getLocalTestAttempt(test.testId);
     let freshest = attempt;
-    if (local && (!attempt || (local.submittedAt || local.startedAt || 0) >= (attempt.submittedAt || attempt.startedAt || 0))) {
+    const localIsComplete = local?.status === 'submitted' || local?.status === 'expired';
+    const attemptIsComplete = attempt?.status === 'submitted' || attempt?.status === 'expired';
+
+    if (local && !attempt) {
       freshest = local;
+    } else if (local && attempt) {
+      if (localIsComplete && !attemptIsComplete && (local.startedAt || 0) >= (attempt.startedAt || 0)) {
+        freshest = local;
+      } else if (attemptIsComplete && !localIsComplete && (attempt.startedAt || 0) >= (local.startedAt || 0)) {
+        freshest = attempt;
+      } else {
+        const localTime = Math.max(local.submittedAt || 0, local.startedAt || 0);
+        const attemptTime = Math.max(attempt.submittedAt || 0, attempt.startedAt || 0);
+        freshest = localTime >= attemptTime ? local : attempt;
+      }
     }
     if (freshest && (freshest.status === 'submitted' || freshest.status === 'expired') && freshest.results) {
       setSelectedCompletedTest({ testPacket: test, results: freshest.results, attempt: freshest });

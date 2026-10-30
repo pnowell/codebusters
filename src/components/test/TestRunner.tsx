@@ -11,7 +11,6 @@ import { evaluateSolution, isLetter } from '../../utils/ciphers';
 import {
   saveLocalTestAttempt,
   saveTestAttemptToFirestore,
-  clearLocalTestAttempt,
 } from '../../services/testService';
 import { TestCipherWorkspace } from './TestCipherWorkspace';
 import { TestReviewScreen } from './TestReviewScreen';
@@ -142,7 +141,9 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
       testId: testPacket.testId,
       studentUids: resolvedStudentUids,
       startedAt,
-      status: isFinished ? (attemptRef.current.status || 'submitted') : 'in_progress',
+      status: isFinished
+        ? (attemptRef.current.status === 'expired' ? 'expired' : 'submitted')
+        : 'in_progress',
       workspaces,
       results: results ?? undefined,
     };
@@ -216,6 +217,12 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
       results: evaluated,
     };
 
+    if (firestoreDebounceRef.current) {
+      clearTimeout(firestoreDebounceRef.current);
+      firestoreDebounceRef.current = null;
+    }
+
+    attemptRef.current = finalAttempt;
     setResults(evaluated);
     setIsFinished(true);
 
@@ -245,13 +252,16 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
   useEffect(() => {
     if (isFinished) return;
     const interval = setInterval(() => {
-      saveTestAttemptToFirestore(attemptRef.current);
+      if (attemptRef.current.status === 'in_progress') {
+        saveTestAttemptToFirestore(attemptRef.current);
+      }
     }, 30000);
 
     return () => {
       clearInterval(interval);
       if (firestoreDebounceRef.current) {
         clearTimeout(firestoreDebounceRef.current);
+        firestoreDebounceRef.current = null;
       }
       if (attemptRef.current.status === 'in_progress') {
         saveLocalTestAttempt(attemptRef.current);
@@ -318,7 +328,6 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
   };
 
   const handleCloseResults = () => {
-    clearLocalTestAttempt(testPacket.testId);
     onExitToMenu();
   };
 
@@ -326,6 +335,7 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
     if (!isFinished) {
       if (firestoreDebounceRef.current) {
         clearTimeout(firestoreDebounceRef.current);
+        firestoreDebounceRef.current = null;
       }
       saveLocalTestAttempt(attemptRef.current);
       saveTestAttemptToFirestore(attemptRef.current);
