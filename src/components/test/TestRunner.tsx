@@ -103,6 +103,28 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
     return initialAttempt?.results ?? null;
   });
 
+  const [showSubmitModal, setShowSubmitModal] = useState<boolean>(false);
+
+  const incompleteCount = useMemo(() => {
+    let count = 0;
+    testPacket.questions.forEach((q, idx) => {
+      const quote = getQuoteById(q.quoteId);
+      const targetAlpha = quote ? quote.quote.toUpperCase().split('').filter(isLetter).length : 0;
+      const ws = workspaces[idx];
+      const filled = ws
+        ? ws.userInputs.filter((c, cIdx) => {
+            if (!quote) return false;
+            const orig = quote.quote.toUpperCase()[cIdx];
+            return isLetter(orig) && c !== '';
+          }).length
+        : 0;
+      if (targetAlpha === 0 || filled < targetAlpha) {
+        count++;
+      }
+    });
+    return count;
+  }, [testPacket.questions, workspaces]);
+
   // Track latest attempt state via ref for timer callback / auto-submit
   const attemptRef = useRef<TestAttempt>({
     attemptId,
@@ -391,7 +413,7 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
           ) : (
             <button
               className="btn-simple btn-nav-step btn-submit-cta"
-              onClick={() => submitTest(false)}
+              onClick={() => setShowSubmitModal(true)}
             >
               Submit ✓
             </button>
@@ -458,10 +480,55 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
             workspaces={workspaces}
             remainingSeconds={remainingSeconds}
             onJumpToQuestion={idx => setActiveQIndex(idx)}
-            onSubmitTest={() => submitTest(false)}
+            onSubmitTest={() => setShowSubmitModal(true)}
           />
         )}
       </main>
+
+      {/* 4. Submit Confirmation Modal */}
+      {showSubmitModal && (
+        <div className="modal-backdrop confirm-modal-backdrop" onClick={() => setShowSubmitModal(false)}>
+          <div className="modal-card confirm-modal" onClick={e => e.stopPropagation()}>
+            <h3 className="confirm-modal-title">Submit Practice Test?</h3>
+            {incompleteCount > 0 ? (
+              <>
+                <p className="confirm-modal-text">
+                  You have <strong>{formatTimer(remainingSeconds)}</strong> remaining on the clock and{' '}
+                  <strong>{incompleteCount} problem{incompleteCount > 1 ? 's' : ''}</strong> incomplete or not started.
+                </p>
+                <div className="confirm-modal-warning">
+                  ⚠️ Unanswered letters are counted as errors under Science Olympiad rules.
+                </div>
+              </>
+            ) : (
+              <p className="confirm-modal-text">
+                You have completed all <strong>{totalQuestions} problems</strong> with{' '}
+                <strong>{formatTimer(remainingSeconds)}</strong> remaining on the clock!
+              </p>
+            )}
+            <p className="confirm-modal-text-sub">
+              Are you sure you want to finish now and score your test?
+            </p>
+            <div className="confirm-modal-buttons">
+              <button
+                className="btn-simple"
+                onClick={() => setShowSubmitModal(false)}
+              >
+                Keep Solving ➔
+              </button>
+              <button
+                className="btn-main-action btn-submit-confirm"
+                onClick={() => {
+                  setShowSubmitModal(false);
+                  submitTest(false);
+                }}
+              >
+                Submit Score Now ✓
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

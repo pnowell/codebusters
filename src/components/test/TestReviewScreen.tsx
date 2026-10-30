@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import type { TestPacket, QuestionWorkspace } from '../../types';
 import { getQuoteById } from '../../data/quotes';
 import { getDrill } from '../../data/drills';
@@ -15,18 +15,9 @@ interface TestReviewScreenProps {
 export const TestReviewScreen: React.FC<TestReviewScreenProps> = ({
   testPacket,
   workspaces,
-  remainingSeconds,
   onJumpToQuestion,
   onSubmitTest,
 }) => {
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
-
-  const formatTime = (secs: number) => {
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
-  };
-
   // Compute status for each question
   const questionStatuses = testPacket.questions.map((q, idx) => {
     const quote = getQuoteById(q.quoteId);
@@ -65,16 +56,8 @@ export const TestReviewScreen: React.FC<TestReviewScreenProps> = ({
 
   const completedCount = questionStatuses.filter(s => s.status === 'complete').length;
   const inProgressCount = questionStatuses.filter(s => s.status === 'in_progress').length;
-  const untouchedCount = questionStatuses.filter(s => s.status === 'untouched').length;
-  const hasIncomplete = inProgressCount > 0 || untouchedCount > 0;
-
-  const handleEndTestClick = () => {
-    if (hasIncomplete && remainingSeconds > 30) {
-      setShowConfirmModal(true);
-    } else {
-      onSubmitTest();
-    }
-  };
+  const notStartedCount = questionStatuses.filter(s => s.status === 'untouched').length;
+  const hasIncomplete = inProgressCount > 0 || notStartedCount > 0;
 
   return (
     <div className="test-review-screen">
@@ -96,8 +79,8 @@ export const TestReviewScreen: React.FC<TestReviewScreenProps> = ({
             <span className="pill-label">In Progress</span>
           </div>
           <div className="summary-pill untouched-pill">
-            <span className="pill-number">{untouchedCount}</span>
-            <span className="pill-label">Untouched</span>
+            <span className="pill-number">{notStartedCount}</span>
+            <span className="pill-label">Not started</span>
           </div>
         </div>
       </div>
@@ -126,7 +109,7 @@ export const TestReviewScreen: React.FC<TestReviewScreenProps> = ({
                 <td className="col-status">
                   {qs.status === 'complete' && (
                     <span className="status-badge badge-complete">
-                      ✓ Done ({qs.filledCount}/{qs.targetAlphaCount})
+                      ✓ Complete ({qs.filledCount}/{qs.targetAlphaCount})
                     </span>
                   )}
                   {qs.status === 'in_progress' && (
@@ -136,7 +119,7 @@ export const TestReviewScreen: React.FC<TestReviewScreenProps> = ({
                   )}
                   {qs.status === 'untouched' && (
                     <span className="status-badge badge-untouched">
-                      ⚠️ Untouched (0/{qs.targetAlphaCount})
+                      Not started (0/{qs.targetAlphaCount})
                     </span>
                   )}
                 </td>
@@ -158,47 +141,14 @@ export const TestReviewScreen: React.FC<TestReviewScreenProps> = ({
       <div className="test-review-actions-bar">
         {hasIncomplete && (
           <div className="test-review-warning-note">
-            ⚠️ You have {inProgressCount + untouchedCount} incomplete question{inProgressCount + untouchedCount > 1 ? 's' : ''}. Unanswered letters are counted as errors.
+            ⚠️ You have {inProgressCount + notStartedCount} incomplete question{inProgressCount + notStartedCount > 1 ? 's' : ''}. Unanswered letters are counted as errors.
           </div>
         )}
 
-        <button className="btn-main-action btn-submit-test-final" onClick={handleEndTestClick}>
+        <button className="btn-main-action btn-submit-test-final" onClick={onSubmitTest}>
           End Test & Submit Solutions ✓
         </button>
       </div>
-
-      {/* Confirmation Dialog */}
-      {showConfirmModal && (
-        <div className="modal-backdrop" onClick={() => setShowConfirmModal(false)}>
-          <div className="modal-card confirm-modal" onClick={e => e.stopPropagation()}>
-            <h3 className="confirm-modal-title">Submit Test Early?</h3>
-            <p className="confirm-modal-text">
-              You still have <strong>{formatTime(remainingSeconds)}</strong> remaining on the clock and{' '}
-              <strong>{inProgressCount + untouchedCount} question(s)</strong> with missing answers.
-            </p>
-            <p className="confirm-modal-text-sub">
-              Are you sure you want to finish now and score your test?
-            </p>
-            <div className="confirm-modal-buttons">
-              <button
-                className="btn-simple"
-                onClick={() => setShowConfirmModal(false)}
-              >
-                Keep Solving ➔
-              </button>
-              <button
-                className="btn-main-action btn-danger"
-                onClick={() => {
-                  setShowConfirmModal(false);
-                  onSubmitTest();
-                }}
-              >
-                Submit Score Now
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
