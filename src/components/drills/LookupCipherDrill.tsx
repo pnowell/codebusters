@@ -79,6 +79,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const scrollPanelRef = useRef<HTMLDivElement | null>(null);
+  const nextButtonRef = useRef<HTMLButtonElement | null>(null);
 
   // Inform parent of quote ID changes via ref to prevent stale closures/unwanted re-renders
   const onQuoteChangeRef = useRef(onQuoteChange);
@@ -97,22 +98,23 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
 
   // Focus tile helper
   const focusTile = useCallback((index: number) => {
+    if (isSubmitted) return;
     setPuzzle(prev => (prev ? { ...prev, activeIdx: index } : null));
     inputRefs.current[index]?.focus({ preventScroll: true });
-  }, []);
+  }, [isSubmitted]);
 
   // Refocus first active tile whenever quote changes
   useEffect(() => {
-    if (puzzle) {
+    if (puzzle && !isSubmitted) {
       inputRefs.current[puzzle.activeIdx]?.focus({ preventScroll: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only refocus when quote changes
-  }, [quote?.id]);
+  }, [quote?.id, isSubmitted]);
 
   // Keep focused character tile visible horizontally and vertically
   useKeepInView(scrollPanelRef, () => inputRefs.current[activeIdx], activeIdx);
 
-  const loadNewQuote = () => {
+  const loadNewQuote = useCallback(() => {
     const nextQ = pickLookupQuote();
     if (nextQ) {
       setNotFoundId(undefined);
@@ -122,23 +124,58 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
       startTimeRef.current = Date.now();
       onQuoteChange?.(nextQ.id);
     }
-  };
+  }, [onQuoteChange]);
+
+  const handleNext = useCallback(() => {
+    if (workoutContext) {
+      const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
+      const accuracy = result
+        ? Math.round((result.correctChars / (result.totalChars || 1)) * 100)
+        : 100;
+      workoutContext.onAdvance({
+        timeSeconds: elapsed,
+        accuracy,
+        author: quote?.author,
+      });
+    } else {
+      loadNewQuote();
+    }
+  }, [workoutContext, result, quote?.author, loadNewQuote]);
 
   const handleSubmit = useCallback(() => {
-    if (!quote) return;
+    if (!quote || isSubmitted) return;
     const res = evaluateSolution(quote.quote, userInputs.join(''));
     setResult(res);
     setIsSubmitted(true);
     saveCompletedQuoteId(quote.id);
     recordCipherPractice(cipher);
-  }, [cipher, quote, userInputs]);
+  }, [cipher, quote, userInputs, isSubmitted]);
+
+  // When submitted, blur all input tiles so no cursor blinks, and focus the Next button
+  useEffect(() => {
+    if (isSubmitted) {
+      inputRefs.current.forEach(el => el?.blur());
+      nextButtonRef.current?.focus();
+    }
+  }, [isSubmitted]);
+
+  // Global keydown listener so pressing Enter after submitting moves to the next puzzle
+  useEffect(() => {
+    if (!isSubmitted) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleNext();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSubmitted, handleNext]);
 
   const handleTileChange = (index: number, val: string) => {
-    if (!puzzle) return;
-    if (isSubmitted) {
-      setIsSubmitted(false);
-      setResult(null);
-    }
+    if (!puzzle || isSubmitted) return;
 
     const lastChar = val.slice(-1).toUpperCase();
     const updated = [...userInputs];
@@ -155,7 +192,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
   };
 
   const handleTileKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!puzzle) return;
+    if (!puzzle || isSubmitted) return;
     if (e.key === 'Backspace') {
       if (!userInputs[index]) {
         e.preventDefault();
@@ -173,11 +210,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
       focusTile(findLetterIndex(chars, index, 1));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      if (!isSubmitted) {
-        handleSubmit();
-      } else {
-        loadNewQuote();
-      }
+      handleSubmit();
     }
   };
 
@@ -257,7 +290,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
               <div key={wIdx} className="word-cluster">
                 {word.map(({ char, index }) => {
                   const isAlpha = isLetter(char);
-                  const isActive = activeIdx === index;
+                  const isActive = !isSubmitted && activeIdx === index;
                   const userVal = userInputs[index] || '';
                   const isCorrect = isSubmitted && userVal === char;
                   const isWrong = isSubmitted && isAlpha && userVal !== '' && userVal !== char;
@@ -266,7 +299,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
                     <div
                       key={index}
                       className={`char-tile ${isActive ? 'active-tile' : ''} ${isCorrect ? 'correct-tile' : ''} ${isWrong ? 'wrong-tile' : ''}`}
-                      onClick={() => isAlpha && focusTile(index)}
+                      onClick={() => isAlpha && !isSubmitted && focusTile(index)}
                     >
                       <div className="tile-cipher">
                         <CipherGlyph cipher={cipher} char={char} />
@@ -285,9 +318,10 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
                           enterKeyHint="done"
                           className="tile-native-input"
                           value={userVal}
+                          disabled={isSubmitted}
                           onChange={e => handleTileChange(index, e.target.value)}
                           onKeyDown={e => handleTileKeyDown(index, e)}
-                          onFocus={() => setPuzzle(prev => (prev ? { ...prev, activeIdx: index } : null))}
+                          onFocus={() => !isSubmitted && setPuzzle(prev => (prev ? { ...prev, activeIdx: index } : null))}
                           maxLength={2}
                         />
                       ) : (
@@ -324,25 +358,20 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
           </button>
         ) : workoutContext ? (
           <button
+            ref={nextButtonRef}
             className="btn-submit btn-next btn-workout-next"
-            onClick={() => {
-              const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
-              const accuracy = result
-                ? Math.round((result.correctChars / (result.totalChars || 1)) * 100)
-                : 100;
-              workoutContext.onAdvance({
-                timeSeconds: elapsed,
-                accuracy,
-                author: quote.author,
-              });
-            }}
+            onClick={handleNext}
           >
             {workoutContext.isLastStep
               ? 'Finish Round 🏆 ➔'
               : `Next: ${workoutContext.nextCipherTitle || 'Next'} ➔`}
           </button>
         ) : (
-          <button className="btn-submit btn-next" onClick={loadNewQuote}>
+          <button
+            ref={nextButtonRef}
+            className="btn-submit btn-next"
+            onClick={handleNext}
+          >
             Next Puzzle →
           </button>
         )}

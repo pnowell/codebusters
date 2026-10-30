@@ -617,8 +617,17 @@ body {
   background: rgba(16, 185, 129, 0.12);
 }
 
-.correct-tile .tile-native-input {
+.tile-native-input:disabled {
+  cursor: default;
+  caret-color: transparent;
+  user-select: none;
+}
+
+.correct-tile .tile-native-input,
+.correct-tile .tile-native-input:disabled {
   color: var(--accent-emerald);
+  -webkit-text-fill-color: var(--accent-emerald);
+  opacity: 1;
 }
 
 .wrong-tile {
@@ -626,8 +635,11 @@ body {
   background: rgba(244, 63, 94, 0.12);
 }
 
-.wrong-tile .tile-native-input {
+.wrong-tile .tile-native-input,
+.wrong-tile .tile-native-input:disabled {
   color: var(--accent-rose);
+  -webkit-text-fill-color: var(--accent-rose);
+  opacity: 1;
 }
 
 .quote-meta-author {
