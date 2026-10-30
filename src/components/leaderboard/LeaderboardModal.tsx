@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import type { DrillId } from '../../types';
-import type { OffsetsMode } from '../../services/storage';
+import React, { useState, useEffect, useMemo } from 'react';
+import type { DrillId, OffsetsMode, PublicProfile } from '../../types';
 import { loadDrillScore } from '../../services/storage';
-import { subscribeLeaderboard, type LeaderboardEntry } from '../../services/leaderboard';
+import { computeLeaderboardEntries } from '../../services/leaderboard';
+import { subscribeTeamProfiles } from '../../services/profileService';
 import { useAuth } from '../../context/useAuth';
+import { Modal } from '../common/Modal';
 
 export type LeaderboardBoardId =
   | 'offsetsLetterToNum'
@@ -26,7 +27,9 @@ const LEADERBOARD_TABS: readonly LeaderboardTabConfig[] = [
 ] as const;
 
 function resolveBoardId(drillOrMode?: DrillId | OffsetsMode): LeaderboardBoardId {
-  if (drillOrMode === 'numToLetter' || drillOrMode === 'offsetsNumToLetter') return 'offsetsNumToLetter';
+  if (drillOrMode === 'numToLetter' || drillOrMode === 'offsetsNumToLetter') {
+    return 'offsetsNumToLetter';
+  }
   if (drillOrMode === 'atbash') return 'atbash';
   if (drillOrMode === 'pigpen') return 'pigpen';
   if (drillOrMode === 'galactic') return 'galactic';
@@ -51,23 +54,16 @@ const LeaderboardModalContent: React.FC<LeaderboardModalContentProps> = ({
 }) => {
   const { user } = useAuth();
   const [board, setBoard] = useState<LeaderboardBoardId>(initialBoard);
-  const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
+  const [profiles, setProfiles] = useState<PublicProfile[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const handleBoardChange = (newBoard: LeaderboardBoardId) => {
-    if (newBoard === board) return;
-    setIsLoading(true);
-    setError(null);
-    setBoard(newBoard);
-  };
-
-  // Subscribe to real-time leaderboard data for the selected drill
+  // Subscribe once while the modal is open and derive each tab's standings via useMemo
   useEffect(() => {
-    const unsubscribe = subscribeLeaderboard(
-      board,
-      (newEntries) => {
-        setEntries(newEntries);
+    return subscribeTeamProfiles(
+      (nextProfiles) => {
+        setProfiles(nextProfiles);
+        setError(null);
         setIsLoading(false);
       },
       () => {
@@ -75,14 +71,15 @@ const LeaderboardModalContent: React.FC<LeaderboardModalContentProps> = ({
         setIsLoading(false);
       }
     );
+  }, []);
 
-    return () => {
-      unsubscribe();
-    };
-  }, [board]);
+  const entries = useMemo(
+    () => computeLeaderboardEntries(profiles, board),
+    [profiles, board]
+  );
 
   const localScore = loadDrillScore(board);
-  const userRankIndex = entries.findIndex(e => e.uid === user?.uid);
+  const userRankIndex = entries.findIndex((e) => e.uid === user?.uid);
   const userRank = userRankIndex !== -1 ? userRankIndex + 1 : null;
   const userEntry = userRankIndex !== -1 ? entries[userRankIndex] : null;
 
@@ -97,118 +94,119 @@ const LeaderboardModalContent: React.FC<LeaderboardModalContentProps> = ({
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div
-        className="modal-dialog card-panel leaderboard-modal-dialog"
-        onClick={e => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="leaderboard-modal-title"
-      >
-        <div className="modal-header">
-          <div className="leaderboard-title-group">
-            <h3 id="leaderboard-modal-title">🏆 Team Leaderboards</h3>
-          </div>
-          <button className="close-btn" onClick={onClose} aria-label="Close leaderboard">
-            ✕
-          </button>
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      ariaLabelledBy="leaderboard-modal-title"
+      dialogClassName="modal-dialog card-panel leaderboard-modal-dialog"
+    >
+      <div className="modal-header">
+        <div className="leaderboard-title-group">
+          <h3 id="leaderboard-modal-title">🏆 Team Leaderboards</h3>
+        </div>
+        <button className="close-btn" onClick={onClose} aria-label="Close leaderboard">
+          ✕
+        </button>
+      </div>
+
+      <div className="modal-body leaderboard-modal-body">
+        {/* Multi-drill Switcher Tabs */}
+        <div className="leaderboard-mode-tabs" role="tablist" aria-label="Select Leaderboard">
+          {LEADERBOARD_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={board === tab.id}
+              className={`leaderboard-tab ${board === tab.id ? 'active' : ''}`}
+              onClick={() => setBoard(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
 
-        <div className="modal-body leaderboard-modal-body">
-          {/* Multi-drill Switcher Tabs */}
-          <div className="leaderboard-mode-tabs" role="tablist" aria-label="Select Leaderboard">
-            {LEADERBOARD_TABS.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                role="tab"
-                aria-selected={board === tab.id}
-                className={`leaderboard-tab ${board === tab.id ? 'active' : ''}`}
-                onClick={() => handleBoardChange(tab.id)}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          {/* User's Personal Standing Card */}
-          <div className="leaderboard-my-card">
-            <div className="my-card-header">
-              <span className="my-card-label">Your Personal Best</span>
-              {userRank !== null ? (
-                <span className="my-card-rank">Rank #{userRank} of {entries.length}</span>
-              ) : (
-                <span className="my-card-rank-unranked">Play to Rank</span>
-              )}
-            </div>
-
-            <div className="my-card-stats">
-              <div className="my-card-stat-pill">
-                <span className="stat-label">60s Blitz</span>
-                <span className="stat-val">⚡ {displayMyScore}</span>
-              </div>
-              <div className="my-card-stat-pill">
-                <span className="stat-label">Best Streak</span>
-                <span className="stat-val">🔥 {displayMyStreak}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Leaderboard Table / Cards */}
-          <div className="leaderboard-list-container">
-            {isLoading ? (
-              <div className="leaderboard-loading">
-                <span className="spinner-dots">•••</span>
-                <p>Loading team standings...</p>
-              </div>
-            ) : error ? (
-              <div className="leaderboard-error">
-                <p>{error}</p>
-              </div>
-            ) : entries.length === 0 ? (
-              <div className="leaderboard-empty">
-                <span className="empty-icon">🎯</span>
-                <p>No records on this board yet!</p>
-                <small>Complete a 60-second speed run to claim 1st place.</small>
-              </div>
+        {/* User's Personal Standing Card */}
+        <div className="leaderboard-my-card">
+          <div className="my-card-header">
+            <span className="my-card-label">Your Personal Best</span>
+            {userRank !== null ? (
+              <span className="my-card-rank">
+                Rank #{userRank} of {entries.length}
+              </span>
             ) : (
-              <div className="leaderboard-list">
-                {entries.map((entry, index) => {
-                  const rank = index + 1;
-                  const isCurrentUser = Boolean(user && entry.uid === user.uid);
-
-                  return (
-                    <div
-                      key={entry.uid}
-                      className={`leaderboard-row ${isCurrentUser ? 'current-user-row' : ''} ${rank <= 3 ? `top-${rank}` : ''}`}
-                    >
-                      <div className="row-left">
-                        {getRankBadge(rank)}
-                        <span className="student-name">
-                          {entry.displayName}
-                          {isCurrentUser && <span className="you-tag">YOU</span>}
-                        </span>
-                      </div>
-
-                      <div className="row-right">
-                        <div className="score-badge" title="60-second blitz score">
-                          <span className="score-icon">⚡</span>
-                          <span className="score-number">{entry.score}</span>
-                        </div>
-                        <div className="streak-badge" title="Best consecutive streak">
-                          <span className="streak-icon">🔥</span>
-                          <span className="streak-number">{entry.bestStreak}</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <span className="my-card-rank-unranked">Play to Rank</span>
             )}
           </div>
+
+          <div className="my-card-stats">
+            <div className="my-card-stat-pill">
+              <span className="stat-label">60s Blitz</span>
+              <span className="stat-val">⚡ {displayMyScore}</span>
+            </div>
+            <div className="my-card-stat-pill">
+              <span className="stat-label">Best Streak</span>
+              <span className="stat-val">🔥 {displayMyStreak}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Leaderboard Table / Cards */}
+        <div className="leaderboard-list-container">
+          {isLoading ? (
+            <div className="leaderboard-loading">
+              <span className="spinner-dots">•••</span>
+              <p>Loading team standings...</p>
+            </div>
+          ) : error ? (
+            <div className="leaderboard-error">
+              <p>{error}</p>
+            </div>
+          ) : entries.length === 0 ? (
+            <div className="leaderboard-empty">
+              <span className="empty-icon">🎯</span>
+              <p>No records on this board yet!</p>
+              <small>Complete a 60-second speed run to claim 1st place.</small>
+            </div>
+          ) : (
+            <div className="leaderboard-list">
+              {entries.map((entry, index) => {
+                const rank = index + 1;
+                const isCurrentUser = Boolean(user && entry.uid === user.uid);
+
+                return (
+                  <div
+                    key={entry.uid}
+                    className={`leaderboard-row ${isCurrentUser ? 'current-user-row' : ''} ${
+                      rank <= 3 ? `top-${rank}` : ''
+                    }`}
+                  >
+                    <div className="row-left">
+                      {getRankBadge(rank)}
+                      <span className="student-name">
+                        {entry.displayName}
+                        {isCurrentUser && <span className="you-tag">YOU</span>}
+                      </span>
+                    </div>
+
+                    <div className="row-right">
+                      <div className="score-badge" title="60-second blitz score">
+                        <span className="score-icon">⚡</span>
+                        <span className="score-number">{entry.score}</span>
+                      </div>
+                      <div className="streak-badge" title="Best consecutive streak">
+                        <span className="streak-icon">🔥</span>
+                        <span className="streak-number">{entry.bestStreak}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 };
 

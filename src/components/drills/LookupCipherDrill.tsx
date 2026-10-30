@@ -1,18 +1,15 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { PigpenGlyph } from '../symbols/PigpenGlyph';
-import { GalacticGlyph } from '../symbols/GalacticGlyph';
-import { DrillHeader } from '../drill/DrillHeader';
-import { CollapsibleReference } from '../drill/CollapsibleReference';
-import { ReferenceSheet } from '../drill/ReferenceSheet';
-import { DrillActionRow } from '../drill/DrillActionRow';
-import { ResultBanner } from '../drill/ResultBanner';
-import { atbashChar, evaluateSolution, isLetter, findLetterIndex, groupIntoWords } from '../../utils/ciphers';
+import { DrillHeader } from './shared/DrillHeader';
+import { CollapsibleReference } from './shared/CollapsibleReference';
+import { ReferenceSheet } from './shared/ReferenceSheet';
+import { DrillActionRow } from './shared/DrillActionRow';
+import { ResultBanner } from './shared/ResultBanner';
+import { QuoteTileGrid } from './shared/QuoteTileGrid';
+import { evaluateSolution, isLetter } from '../../utils/ciphers';
 import { pickLookupQuote } from '../../data/quotes';
 import { getDrill, type LookupCipherType } from '../../data/drills';
-import { useKeepInView } from '../../hooks/useKeepInView';
 import { saveCompletedQuoteId, recordCipherPractice } from '../../services/storage';
-import type { Quote, EvaluationResult } from '../../types';
-import type { WorkoutStepContext } from './LetterOffsetDrill';
+import type { Quote, EvaluationResult, WorkoutStepContext } from '../../types';
 
 interface LookupCipherDrillProps {
   cipher: LookupCipherType;
@@ -22,30 +19,18 @@ interface LookupCipherDrillProps {
   workoutContext?: WorkoutStepContext;
 }
 
-function freshPuzzle(quote: Quote) {
-  const chars = quote.quote.toUpperCase().split('');
-  const firstLetter = chars.findIndex(isLetter);
-  return {
-    quote,
-    userInputs: chars.map(c => (isLetter(c) ? '' : c)),
-    activeIdx: firstLetter >= 0 ? firstLetter : 0,
-  };
-}
-
-const CipherGlyph: React.FC<{ cipher: LookupCipherType; char: string }> = ({ cipher, char }) => {
-  const upper = char.toUpperCase();
-  if (!isLetter(upper)) return <>{char}</>;
-  if (cipher === 'atbash') return <>{atbashChar(upper)}</>;
-  if (cipher === 'pigpen') return <PigpenGlyph letter={upper} size={22} />;
-  if (cipher === 'galactic') return <GalacticGlyph letter={upper} size={22} />;
-  return <>{upper}</>;
-};
-
-type PuzzleState = {
+interface PuzzleState {
   quote: Quote;
   userInputs: string[];
-  activeIdx: number;
-};
+}
+
+function freshPuzzle(quote: Quote): PuzzleState {
+  const chars = quote.quote.toUpperCase().split('');
+  return {
+    quote,
+    userInputs: chars.map((c) => (isLetter(c) ? '' : c)),
+  };
+}
 
 const EMPTY_USER_INPUTS: string[] = [];
 
@@ -72,47 +57,29 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
   const quote = puzzle?.quote;
   const quoteId = quote?.id;
   const userInputs = puzzle?.userInputs ?? EMPTY_USER_INPUTS;
-  const activeIdx = puzzle?.activeIdx ?? 0;
   const [result, setResult] = useState<EvaluationResult | null>(null);
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
-  const startTimeRef = useRef<number>(Date.now());
+  const startTimeRef = useRef<number>(0);
 
-  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
-  const scrollPanelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    startTimeRef.current = Date.now();
+  }, []);
 
-  // Inform parent of quote ID changes via ref to prevent stale closures/unwanted re-renders
   const onQuoteChangeRef = useRef(onQuoteChange);
-  onQuoteChangeRef.current = onQuoteChange;
+  useEffect(() => {
+    onQuoteChangeRef.current = onQuoteChange;
+  }, [onQuoteChange]);
+
   useEffect(() => {
     if (quoteId !== undefined) {
       onQuoteChangeRef.current?.(quoteId);
     }
   }, [quoteId]);
 
-  // Derived quote data
   const chars = useMemo(() => (quote ? quote.quote.toUpperCase().split('') : []), [quote]);
-  const words = useMemo(() => groupIntoWords(chars), [chars]);
   const totalLetters = useMemo(() => chars.filter(isLetter).length, [chars]);
-  const filledLetters = userInputs.filter((c, idx) => isLetter(chars[idx]) && c !== '').length;
+  const filledLetters = userInputs.filter((c, idx) => isLetter(chars[idx] ?? '') && c !== '').length;
   const isAllFilled = totalLetters > 0 && filledLetters === totalLetters;
-
-  // Focus tile helper
-  const focusTile = useCallback((index: number) => {
-    if (isSubmitted) return;
-    setPuzzle(prev => (prev ? { ...prev, activeIdx: index } : null));
-    inputRefs.current[index]?.focus({ preventScroll: true });
-  }, [isSubmitted]);
-
-  // Refocus first active tile whenever quote changes
-  useEffect(() => {
-    if (puzzle && !isSubmitted) {
-      inputRefs.current[puzzle.activeIdx]?.focus({ preventScroll: true });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only refocus when quote changes
-  }, [quote?.id, isSubmitted]);
-
-  // Keep focused character tile visible horizontally and vertically
-  useKeepInView(scrollPanelRef, () => inputRefs.current[activeIdx], activeIdx);
 
   const loadNewQuote = useCallback(() => {
     const nextQ = pickLookupQuote();
@@ -151,54 +118,9 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     recordCipherPractice(cipher);
   }, [cipher, quote, userInputs, isSubmitted, isAllFilled]);
 
-  // When submitted, blur all input tiles so no cursor blinks
-  useEffect(() => {
-    if (isSubmitted) {
-      inputRefs.current.forEach(el => el?.blur());
-    }
-  }, [isSubmitted]);
-
-  const handleTileChange = (index: number, val: string) => {
-    if (!puzzle || isSubmitted) return;
-
-    const lastChar = val.slice(-1).toUpperCase();
-    const updated = [...userInputs];
-
-    if (isLetter(lastChar)) {
-      updated[index] = lastChar;
-      setPuzzle(prev => (prev ? { ...prev, userInputs: updated } : null));
-      const nextIdx = findLetterIndex(chars, index, 1);
-      focusTile(nextIdx);
-    } else if (val === '') {
-      updated[index] = '';
-      setPuzzle(prev => (prev ? { ...prev, userInputs: updated } : null));
-    }
-  };
-
-  const handleTileKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!puzzle || isSubmitted) return;
-    if (e.key === 'Backspace') {
-      if (!userInputs[index]) {
-        e.preventDefault();
-        const prevIdx = findLetterIndex(chars, index, -1);
-        const updated = [...userInputs];
-        updated[prevIdx] = '';
-        setPuzzle(prev => (prev ? { ...prev, userInputs: updated } : null));
-        focusTile(prevIdx);
-      }
-    } else if (e.key === 'ArrowLeft') {
-      e.preventDefault();
-      focusTile(findLetterIndex(chars, index, -1));
-    } else if (e.key === 'ArrowRight') {
-      e.preventDefault();
-      focusTile(findLetterIndex(chars, index, 1));
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      if (isAllFilled && !isSubmitted) {
-        handleSubmit();
-      }
-    }
-  };
+  const handleChangeUserInputs = useCallback((nextInputs: string[]) => {
+    setPuzzle((prev) => (prev ? { ...prev, userInputs: nextInputs } : null));
+  }, []);
 
   if (notFoundId !== undefined && !puzzle) {
     return (
@@ -237,7 +159,6 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
 
   return (
     <div className="drill-container">
-      {/* 1. Header */}
       <DrillHeader
         title={
           workoutContext
@@ -260,7 +181,6 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
         }
       />
 
-      {/* 2. Collapsible Reference Table */}
       <CollapsibleReference
         className="sticky-ref-container reference-sheet"
         showLabel="Show Reference Table"
@@ -268,65 +188,16 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
         <ReferenceSheet cipher={cipher} />
       </CollapsibleReference>
 
-      {/* 3. Horizontal Scroll Viewport for Cipher Lines */}
-      <div className="cipher-scroll-panel" ref={scrollPanelRef}>
-        <div className="quote-content-canvas">
-          <div className="quote-display-grid">
-            {words.map((word, wIdx) => (
-              <div key={wIdx} className="word-cluster">
-                {word.map(({ char, index }) => {
-                  const isAlpha = isLetter(char);
-                  const isActive = !isSubmitted && activeIdx === index;
-                  const userVal = userInputs[index] || '';
-                  const isCorrect = isSubmitted && userVal === char;
-                  const isWrong = isSubmitted && isAlpha && userVal !== '' && userVal !== char;
+      <QuoteTileGrid
+        cipher={cipher}
+        quote={quote}
+        userInputs={userInputs}
+        onChangeUserInputs={handleChangeUserInputs}
+        disabled={isSubmitted}
+        showEvaluation={isSubmitted}
+        onEnterSubmit={handleSubmit}
+      />
 
-                  return (
-                    <div
-                      key={index}
-                      className={`char-tile ${isActive ? 'active-tile' : ''} ${isCorrect ? 'correct-tile' : ''} ${isWrong ? 'wrong-tile' : ''}`}
-                      onClick={() => isAlpha && !isSubmitted && focusTile(index)}
-                    >
-                      <div className="tile-cipher">
-                        <CipherGlyph cipher={cipher} char={char} />
-                      </div>
-                      {isAlpha ? (
-                        <input
-                          ref={el => {
-                            inputRefs.current[index] = el;
-                          }}
-                          type="text"
-                          inputMode="text"
-                          autoCapitalize="characters"
-                          autoCorrect="off"
-                          autoComplete="off"
-                          spellCheck="false"
-                          enterKeyHint="done"
-                          className="tile-native-input"
-                          value={userVal}
-                          disabled={isSubmitted}
-                          onChange={e => handleTileChange(index, e.target.value)}
-                          onKeyDown={e => handleTileKeyDown(index, e)}
-                          onFocus={() => !isSubmitted && setPuzzle(prev => (prev ? { ...prev, activeIdx: index } : null))}
-                          maxLength={2}
-                        />
-                      ) : (
-                        <div className="tile-punct">{char}</div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-
-          <div className="quote-meta-author">
-            — {quote.author}
-          </div>
-        </div>
-      </div>
-
-      {/* 4. Action Row */}
       <DrillActionRow
         info={
           <>
@@ -361,7 +232,6 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
         )}
       </DrillActionRow>
 
-      {/* 5. Result Banner */}
       {result && <ResultBanner result={result} />}
     </div>
   );

@@ -1,10 +1,6 @@
-import type { Unsubscribe } from 'firebase/firestore';
-import { offsetsModeToDrillId, type OffsetsMode } from './storage';
-import type { DrillId } from '../types';
-import {
-  subscribeTeamProfiles,
-  upsertPublicProfileScore,
-} from './profileService';
+import { offsetsModeToDrillId } from './storage';
+import type { DrillId, OffsetsMode, PublicProfile } from '../types';
+import { upsertPublicProfileScore } from './profileService';
 
 export interface LeaderboardEntry {
   uid: string;
@@ -19,42 +15,36 @@ function toDrillId(drill: DrillId | OffsetsMode): DrillId {
 }
 
 /**
- * Subscribes to real-time high scores for the specified drill,
- * derived directly from the team's public profiles.
+ * Pure selector that derives sorted leaderboard standings for a given drill
+ * from the team's public profiles snapshot.
  */
-export function subscribeLeaderboard(
-  drill: DrillId | OffsetsMode,
-  onUpdate: (entries: LeaderboardEntry[]) => void,
-  onError?: (err: Error) => void
-): Unsubscribe {
+export function computeLeaderboardEntries(
+  profiles: PublicProfile[],
+  drill: DrillId | OffsetsMode
+): LeaderboardEntry[] {
   const drillId = toDrillId(drill);
 
-  return subscribeTeamProfiles(
-    (profiles) => {
-      const entries: LeaderboardEntry[] = profiles
-        .map((p) => {
-          const modeScore = p.drillScores?.[drillId];
-          return {
-            uid: p.uid,
-            displayName: p.displayName || 'Decoder',
-            score: modeScore?.best60s || 0,
-            bestStreak: modeScore?.bestStreak || 0,
-            updatedAt: p.updatedAt,
-          };
-        })
-        .filter((e) => e.score > 0 || e.bestStreak > 0);
+  const entries: LeaderboardEntry[] = profiles
+    .map((p) => {
+      const modeScore = p.drillScores?.[drillId];
+      return {
+        uid: p.uid,
+        displayName: p.displayName || 'Decoder',
+        score: modeScore?.best60s || 0,
+        bestStreak: modeScore?.bestStreak || 0,
+        updatedAt: p.updatedAt,
+      };
+    })
+    .filter((e) => e.score > 0 || e.bestStreak > 0);
 
-      // Sort descending by score, tiebreak by streak, then by name
-      entries.sort((a, b) => {
-        if (b.score !== a.score) return b.score - a.score;
-        if (b.bestStreak !== a.bestStreak) return b.bestStreak - a.bestStreak;
-        return a.displayName.localeCompare(b.displayName);
-      });
+  // Sort descending by score, tiebreak by streak, then by name
+  entries.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    if (b.bestStreak !== a.bestStreak) return b.bestStreak - a.bestStreak;
+    return a.displayName.localeCompare(b.displayName);
+  });
 
-      onUpdate(entries);
-    },
-    onError
-  );
+  return entries;
 }
 
 /**

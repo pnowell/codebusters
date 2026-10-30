@@ -1,5 +1,5 @@
 import React from 'react';
-import type { EvaluationResult } from '../../types';
+import type { EvaluationResult } from '../../../types';
 
 interface Props {
   result: EvaluationResult;

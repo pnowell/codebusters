@@ -3,6 +3,7 @@ import type { TestPacket, TestEvaluationResult, QuestionResult } from '../../typ
 import { getDrill } from '../../data/drills';
 import { getQuoteById } from '../../data/quotes';
 import { groupIntoWords, isLetter } from '../../utils/ciphers';
+import { formatDuration } from '../../utils/format';
 import { getDisplayNamesForUids } from '../../services/profileService';
 
 interface TestResultsViewProps {
@@ -193,12 +194,6 @@ export const TestResultsView: React.FC<TestResultsViewProps> = ({
     (results.totalScore / (results.maxPossibleScore || 1)) * 100
   );
 
-  const formatTime = (secs: number) => {
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return `${m}m ${s < 10 ? '0' : ''}${s}s`;
-  };
-
   const fullCount = results.questions.filter((q) => q.scoreTier === 'full').length;
   const halfCount = results.questions.filter((q) => q.scoreTier === 'half').length;
   const noneCount = results.questions.filter((q) => q.scoreTier === 'none').length;
@@ -240,8 +235,8 @@ export const TestResultsView: React.FC<TestResultsViewProps> = ({
 
           <div className="results-stat-box time-stat-box">
             <span className="stat-label">TIME SPENT</span>
-            <span className="stat-value">{formatTime(results.timeSpentSeconds)}</span>
-            <span className="stat-max">Limit: {formatTime(testPacket.timeLimitSeconds)}</span>
+            <span className="stat-value">{formatDuration(results.timeSpentSeconds)}</span>
+            <span className="stat-max">Limit: {formatDuration(testPacket.timeLimitSeconds)}</span>
           </div>
 
           <div className="results-stat-box breakdown-stat-box">

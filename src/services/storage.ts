@@ -1,4 +1,12 @@
-import type { UserSettings, DrillId, DrillScore, LetterProgress, DrillProgress } from '../types';
+import type {
+  UserSettings,
+  DrillId,
+  DrillScore,
+  LetterProgress,
+  DrillProgress,
+  OffsetsMode,
+} from '../types';
+export type { OffsetsMode };
 import {
   DEFAULT_UNLOCKED,
   isCipherType,
@@ -115,8 +123,6 @@ export function saveCompletedQuoteIds(ids: number[]): void {
     // Ignore
   }
 }
-
-export type OffsetsMode = 'letterToNum' | 'numToLetter';
 
 export function offsetsModeToDrillId(mode: OffsetsMode): DrillId {
   return mode === 'letterToNum' ? 'offsetsLetterToNum' : 'offsetsNumToLetter';

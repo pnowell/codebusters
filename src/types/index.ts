@@ -159,3 +159,32 @@ export interface TestAttempt {
   workspaces: Record<number, QuestionWorkspace>;
   results?: TestEvaluationResult;
 }
+
+export type OffsetsMode = 'letterToNum' | 'numToLetter';
+
+export interface WorkoutStepResult {
+  cipherId: CipherType;
+  title: string;
+  timeSeconds?: number;
+  accuracy?: number;
+  author?: string;
+  offsets60s?: number;
+  offsetsMode?: OffsetsMode;
+}
+
+export interface WorkoutSummaryData {
+  round: number;
+  totalTimeSeconds: number;
+  results: WorkoutStepResult[];
+}
+
+export interface WorkoutStepContext {
+  round: number;
+  stepIndex: number;
+  totalSteps: number;
+  offsetsMode?: OffsetsMode;
+  nextCipherTitle?: string;
+  isLastStep: boolean;
+  onAdvance: (stepResult?: Partial<WorkoutStepResult>) => void;
+}
+

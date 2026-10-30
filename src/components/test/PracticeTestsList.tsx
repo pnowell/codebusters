@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { TestPacket, TestAttempt } from '../../types';
-import { getLocalTestAttempt } from '../../services/testService';
+import { getLocalTestAttempt, resolveFreshestAttempt } from '../../services/testService';
 
 interface PracticeTestsListProps {
   tests: TestPacket[];
@@ -50,29 +50,10 @@ export const PracticeTestsList: React.FC<PracticeTestsListProps> = ({
           </div>
         ) : (
           tests.map((test) => {
-            // Resolve attempt: check memory/cloud attempts map or localStorage backup
-            const cloudAttempt = attempts[test.testId];
-            const localAttempt = getLocalTestAttempt(test.testId);
-
-            let resolvedAttempt: TestAttempt | null = null;
-            if (localAttempt && cloudAttempt) {
-              const localIsComplete =
-                localAttempt.status === 'submitted' || localAttempt.status === 'expired';
-              const cloudIsComplete =
-                cloudAttempt.status === 'submitted' || cloudAttempt.status === 'expired';
-
-              if (localIsComplete && !cloudIsComplete && (localAttempt.startedAt || 0) >= (cloudAttempt.startedAt || 0)) {
-                resolvedAttempt = localAttempt;
-              } else if (cloudIsComplete && !localIsComplete && (cloudAttempt.startedAt || 0) >= (localAttempt.startedAt || 0)) {
-                resolvedAttempt = cloudAttempt;
-              } else {
-                const localTime = Math.max(localAttempt.submittedAt || 0, localAttempt.startedAt || 0);
-                const cloudTime = Math.max(cloudAttempt.submittedAt || 0, cloudAttempt.startedAt || 0);
-                resolvedAttempt = localTime >= cloudTime ? localAttempt : cloudAttempt;
-              }
-            } else {
-              resolvedAttempt = localAttempt || cloudAttempt || null;
-            }
+            const resolvedAttempt = resolveFreshestAttempt(
+              attempts[test.testId],
+              getLocalTestAttempt(test.testId)
+            );
 
             const isTimeRemaining = resolvedAttempt?.startedAt
               ? now < (resolvedAttempt.startedAt + test.timeLimitSeconds * 1000)

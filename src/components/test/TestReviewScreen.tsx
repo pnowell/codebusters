@@ -1,8 +1,7 @@
 import React from 'react';
 import type { TestPacket, QuestionWorkspace } from '../../types';
-import { getQuoteById } from '../../data/quotes';
 import { getDrill } from '../../data/drills';
-import { isLetter } from '../../utils/ciphers';
+import { getQuestionProgress } from '../../utils/testProgress';
 
 interface TestReviewScreenProps {
   testPacket: TestPacket;
@@ -19,24 +18,7 @@ export const TestReviewScreen: React.FC<TestReviewScreenProps> = ({
 }) => {
   // Compute status for each question
   const questionStatuses = testPacket.questions.map((q, idx) => {
-    const quote = getQuoteById(q.quoteId);
-    const targetAlphaCount = quote ? quote.quote.toUpperCase().split('').filter(isLetter).length : 0;
-    const ws = workspaces[idx];
-    const filledCount = ws
-      ? ws.userInputs.filter((c, cIdx) => {
-          if (!quote) return false;
-          const originalChar = quote.quote.toUpperCase()[cIdx];
-          return isLetter(originalChar) && c !== '';
-        }).length
-      : 0;
-
-    let status: 'complete' | 'in_progress' | 'untouched' = 'untouched';
-    if (filledCount === targetAlphaCount && targetAlphaCount > 0) {
-      status = 'complete';
-    } else if (filledCount > 0) {
-      status = 'in_progress';
-    }
-
+    const { filledCount, targetAlphaCount, status } = getQuestionProgress(q, workspaces[idx]);
     const drillInfo = getDrill(q.cipher);
     const cipherTitle = drillInfo ? drillInfo.shortTitle : q.cipher;
 

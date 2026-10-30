@@ -1,13 +1,14 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import type { TestPacket } from '../src/types';
 
 // Load .env.local manually
 const envPath = path.resolve(process.cwd(), '.env.local');
 const envContent = fs.readFileSync(envPath, 'utf8');
 const env: Record<string, string> = {};
-envContent.split('\n').forEach(line => {
+envContent.split('\n').forEach((line) => {
   const [k, ...v] = line.split('=');
   if (k && v.length) env[k.trim()] = v.join('=').trim();
 });
@@ -25,7 +26,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-const practiceTest1 = {
+const practiceTest1: TestPacket = {
   testId: 'invitational-practice-1',
   title: 'Invitational Practice Test #1',
   description:
@@ -74,7 +75,7 @@ const practiceTest1 = {
   ],
 };
 
-const practiceTest2 = {
+const practiceTest2: TestPacket = {
   testId: 'invitational-practice-2',
   title: 'Invitational Practice Test #2',
   description:

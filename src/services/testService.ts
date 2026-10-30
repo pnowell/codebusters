@@ -100,31 +100,50 @@ export function subscribeAvailableTests(
   );
 }
 
+/**
+ * Resolves the freshest attempt between two candidate records (e.g. Firestore vs. localStorage).
+ * Prefers strictly newer runs (by startedAt), completed attempts over in-progress ones for the
+ * same run, and the candidate with the most recent submission/start timestamp.
+ */
+export function resolveFreshestAttempt(
+  cloudAttempt?: TestAttempt | null,
+  localAttempt?: TestAttempt | null
+): TestAttempt | null {
+  if (!cloudAttempt && !localAttempt) return null;
+  if (!cloudAttempt) return localAttempt ?? null;
+  if (!localAttempt) return cloudAttempt;
+
+  const localIsComplete =
+    localAttempt.status === 'submitted' || localAttempt.status === 'expired';
+  const cloudIsComplete =
+    cloudAttempt.status === 'submitted' || cloudAttempt.status === 'expired';
+
+  const localStart = localAttempt.startedAt || 0;
+  const cloudStart = cloudAttempt.startedAt || 0;
+
+  if (localIsComplete && !cloudIsComplete && localStart >= cloudStart) {
+    return localAttempt;
+  }
+  if (cloudIsComplete && !localIsComplete && cloudStart >= localStart) {
+    return cloudAttempt;
+  }
+
+  if (localStart !== cloudStart) {
+    return localStart > cloudStart ? localAttempt : cloudAttempt;
+  }
+
+  const localTime = Math.max(localAttempt.submittedAt || 0, localStart);
+  const cloudTime = Math.max(cloudAttempt.submittedAt || 0, cloudStart);
+  return localTime >= cloudTime ? localAttempt : cloudAttempt;
+}
+
 function mergeAttemptIntoMap(map: Record<string, TestAttempt>, data: TestAttempt) {
   const testId = data.testId;
   if (!testId) return;
 
-  const existing = map[testId];
-  if (!existing) {
-    map[testId] = data;
-    return;
-  }
-
-  const dataStart = data.startedAt || 0;
-  const existingStart = existing.startedAt || 0;
-
-  if (dataStart > existingStart) {
-    map[testId] = data;
-  } else if (dataStart < existingStart) {
-    return;
-  } else {
-    const isCurrentSubmitted = data.status === 'submitted' || data.status === 'expired';
-    const isExistingSubmitted = existing.status === 'submitted' || existing.status === 'expired';
-    if (isCurrentSubmitted && !isExistingSubmitted) {
-      map[testId] = data;
-    } else if ((data.submittedAt || 0) >= (existing.submittedAt || 0)) {
-      map[testId] = data;
-    }
+  const resolved = resolveFreshestAttempt(map[testId], data);
+  if (resolved) {
+    map[testId] = resolved;
   }
 }
 

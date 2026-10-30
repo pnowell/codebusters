@@ -1,32 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import type { CipherType, UserSettings, TestPacket, TestAttempt, TestEvaluationResult } from './types';
-import { LetterOffsetDrill, type WorkoutStepContext } from './components/drills/LetterOffsetDrill';
-import { LookupCipherDrill } from './components/drills/LookupCipherDrill';
+import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import type {
+  CipherType,
+  UserSettings,
+  TestPacket,
+  TestAttempt,
+  TestEvaluationResult,
+} from './types';
+import { LetterOffsetDrill } from './components/drills/LetterOffsetDrill';
 import { SymbolDrill } from './components/drills/SymbolDrill';
+import { MainMenu } from './components/menu/MainMenu';
 import { OptionsModal } from './components/options/OptionsModal';
 import { LeaderboardModal } from './components/leaderboard/LeaderboardModal';
-import { TestRunner } from './components/test/TestRunner';
 import { TestBriefingModal } from './components/test/TestBriefingModal';
 import { PracticeTestsList } from './components/test/PracticeTestsList';
-import { TestResultsView } from './components/test/TestResultsView';
-import {
-  WorkoutSummaryModal,
-  type WorkoutSummaryData,
-  type WorkoutStepResult,
-} from './components/workout/WorkoutSummaryModal';
-import {
-  COMING_SOON_DRILLS,
-  isLookupCipher,
-  getDrill,
-} from './data/drills';
+import { WorkoutSummaryModal } from './components/workout/WorkoutSummaryModal';
+import { NotAllowedModal } from './components/auth/NotAllowedModal';
+import { isLookupCipher } from './data/drills';
 import {
   loadSettings,
   saveSettings,
   withoutSyncDispatch,
-  getNextWorkoutCiphers,
-  getWorkoutOffsetsMode,
-  saveLastWarmupOffsetsMode,
-  type OffsetsMode,
 } from './services/storage';
 import {
   subscribeAvailableTests,
@@ -34,14 +27,54 @@ import {
   fetchTestById,
   getLocalTestAttempt,
   clearLocalTestAttempt,
+  resolveFreshestAttempt,
 } from './services/testService';
 import { subscribeToSyncUpdates } from './services/sync';
-import { UserAuthBadge } from './components/auth/UserAuthBadge';
-import { NotAllowedModal } from './components/auth/NotAllowedModal';
-import { parseUrlRoute, buildRouteUrl, parseUnlockedParam, type DrillSection } from './utils/routing';
-import { useVisualViewportHeight } from './hooks/useVisualViewportHeight';
-import { useAuth } from './context/useAuth';
 import { subscribeTeamProfiles } from './services/profileService';
+import {
+  parseUrlRoute,
+  buildRouteUrl,
+  parseUnlockedParam,
+  type DrillSection,
+} from './utils/routing';
+import { useVisualViewportHeight } from './hooks/useVisualViewportHeight';
+import { useWorkoutCircuit } from './hooks/useWorkoutCircuit';
+import { useAuth } from './context/useAuth';
+
+const LookupCipherDrill = lazy(() =>
+  import('./components/drills/LookupCipherDrill').then((m) => ({
+    default: m.LookupCipherDrill,
+  }))
+);
+
+const TestRunner = lazy(() =>
+  import('./components/test/TestRunner').then((m) => ({
+    default: m.TestRunner,
+  }))
+);
+
+const TestResultsView = lazy(() =>
+  import('./components/test/TestResultsView').then((m) => ({
+    default: m.TestResultsView,
+  }))
+);
+
+type ActiveScreen =
+  | { kind: 'menu' }
+  | { kind: 'drill'; drill: CipherType; section: DrillSection; quoteId?: number }
+  | { kind: 'testsList' }
+  | { kind: 'testRunner'; testPacket: TestPacket; initialAttempt: TestAttempt | null }
+  | {
+      kind: 'testResults';
+      testPacket: TestPacket;
+      results: TestEvaluationResult;
+      attempt?: TestAttempt;
+    };
+
+interface BriefingState {
+  testPacket: TestPacket;
+  existingAttempt: TestAttempt | null;
+}
 
 function initSettings(): UserSettings {
   const loaded = loadSettings();
@@ -54,46 +87,88 @@ function initSettings(): UserSettings {
   return loaded;
 }
 
-interface WorkoutSession {
-  round: number;
-  steps: CipherType[];
-  currentStepIndex: number;
-  results: WorkoutStepResult[];
-  startTime: number;
-  offsetsMode: OffsetsMode;
+function initScreen(): ActiveScreen {
+  const route = parseUrlRoute();
+  if (route.drill) {
+    return {
+      kind: 'drill',
+      drill: route.drill,
+      section: route.section || 'memorize',
+      quoteId: route.quoteId,
+    };
+  }
+  if (route.testsList) {
+    return { kind: 'testsList' };
+  }
+  return { kind: 'menu' };
 }
 
 export const App: React.FC = () => {
   const { user, isAllowed } = useAuth();
   const [settings, setSettings] = useState<UserSettings>(initSettings);
+  const [screen, setScreen] = useState<ActiveScreen>(initScreen);
 
-  const [activeDrill, setActiveDrill] = useState<CipherType | null>(() => parseUrlRoute().drill);
-  const [activeSection, setActiveSection] = useState<DrillSection>(() => parseUrlRoute().section || 'memorize');
-  const [activeQuoteId, setActiveQuoteId] = useState<number | undefined>(() => parseUrlRoute().quoteId);
   const [isOptionsOpen, setIsOptionsOpen] = useState<boolean>(false);
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState<boolean>(false);
 
-  // Practice Test states
+  // Practice Test catalog & briefing modal state
   const [availableTests, setAvailableTests] = useState<TestPacket[]>([]);
   const [studentAttempts, setStudentAttempts] = useState<Record<string, TestAttempt>>({});
   const [isTestsLoading, setIsTestsLoading] = useState<boolean>(true);
-  const [isTestsListOpen, setIsTestsListOpen] = useState<boolean>(() => parseUrlRoute().testsList ?? false);
-  const [selectedTest, setSelectedTest] = useState<TestPacket | null>(null);
-  const [activeTestSession, setActiveTestSession] = useState<TestPacket | null>(null);
-  const [isTestBriefingOpen, setIsTestBriefingOpen] = useState<boolean>(false);
-  const [existingAttempt, setExistingAttempt] = useState<TestAttempt | null>(null);
-  const [selectedCompletedTest, setSelectedCompletedTest] = useState<{
-    testPacket: TestPacket;
-    results: TestEvaluationResult;
-    attempt?: TestAttempt;
-  } | null>(null);
-
-  // Workout Circuit Session & Summary States
-  const [workoutSession, setWorkoutSession] = useState<WorkoutSession | null>(null);
-  const [workoutSummary, setWorkoutSummary] = useState<WorkoutSummaryData | null>(null);
+  const [briefingState, setBriefingState] = useState<BriefingState | null>(null);
 
   // Pin outer window and track visual viewport height above mobile virtual keyboard
   useVisualViewportHeight();
+
+  const navigateToDrill = useCallback(
+    (
+      drill: CipherType,
+      section: DrillSection = 'memorize',
+      quoteId?: number,
+      replaceHistory = false
+    ) => {
+      setScreen({ kind: 'drill', drill, section, quoteId });
+      const newUrl = buildRouteUrl({ drill, section, quoteId });
+      if (replaceHistory) {
+        window.history.replaceState({ drill, section, quoteId }, '', newUrl);
+      } else {
+        window.history.pushState({ drill, section, quoteId }, '', newUrl);
+      }
+    },
+    []
+  );
+
+  const navigateToMenuCore = useCallback(() => {
+    if (
+      window.history.state &&
+      (window.history.state.drill ||
+        window.history.state.testId ||
+        window.history.state.testsList)
+    ) {
+      window.history.back();
+    } else {
+      setScreen({ kind: 'menu' });
+      const newUrl = buildRouteUrl({ drill: null });
+      window.history.pushState({ drill: null }, '', newUrl);
+    }
+  }, []);
+
+  const {
+    workoutContext,
+    workoutSummary,
+    startWorkout,
+    cancelWorkout,
+    dismissSummary,
+  } = useWorkoutCircuit({
+    unlockedCiphers: settings.unlockedCiphers,
+    onNavigateToDrill: navigateToDrill,
+    onExitToMenu: navigateToMenuCore,
+  });
+
+  const navigateToMenu = useCallback(() => {
+    cancelWorkout();
+    navigateToMenuCore();
+  }, [cancelWorkout, navigateToMenuCore]);
 
   // Keep local state in sync when cloud sync updates localStorage
   useEffect(() => {
@@ -160,20 +235,27 @@ export const App: React.FC = () => {
     const matched = availableTests.find((t) => t.testId === route.testId);
     if (matched) {
       queueMicrotask(() => {
-        setSelectedTest(matched);
-        setActiveTestSession(matched);
-        setExistingAttempt(getLocalTestAttempt(matched.testId));
+        setScreen({
+          kind: 'testRunner',
+          testPacket: matched,
+          initialAttempt: resolveFreshestAttempt(
+            studentAttempts[matched.testId],
+            getLocalTestAttempt(matched.testId)
+          ),
+        });
       });
     } else {
       fetchTestById(route.testId).then((fetched) => {
         if (fetched) {
-          setSelectedTest(fetched);
-          setActiveTestSession(fetched);
-          setExistingAttempt(getLocalTestAttempt(fetched.testId));
+          setScreen({
+            kind: 'testRunner',
+            testPacket: fetched,
+            initialAttempt: getLocalTestAttempt(fetched.testId),
+          });
         }
       });
     }
-  }, [isAllowed, availableTests]);
+  }, [isAllowed, availableTests, studentAttempts]);
 
   // Deep-link direct test results review if ?results=testId is provided
   useEffect(() => {
@@ -181,19 +263,30 @@ export const App: React.FC = () => {
     if (!route.resultsTestId || !isAllowed) return;
 
     const test = availableTests.find((t) => t.testId === route.resultsTestId);
-    const cloudAtt = studentAttempts[route.resultsTestId];
-    const localAtt = getLocalTestAttempt(route.resultsTestId);
-    const attempt = (cloudAtt?.results ? cloudAtt : null) || (localAtt?.results ? localAtt : null) || cloudAtt || localAtt;
+    const attempt = resolveFreshestAttempt(
+      studentAttempts[route.resultsTestId],
+      getLocalTestAttempt(route.resultsTestId)
+    );
     if (test && attempt?.results) {
       queueMicrotask(() => {
-        setSelectedCompletedTest({ testPacket: test, results: attempt.results!, attempt });
+        setScreen({
+          kind: 'testResults',
+          testPacket: test,
+          results: attempt.results!,
+          attempt,
+        });
       });
     } else if (route.resultsTestId) {
       fetchTestById(route.resultsTestId).then((fetched) => {
         if (fetched) {
           const localAtt = getLocalTestAttempt(fetched.testId);
           if (localAtt?.results) {
-            setSelectedCompletedTest({ testPacket: fetched, results: localAtt.results, attempt: localAtt });
+            setScreen({
+              kind: 'testResults',
+              testPacket: fetched,
+              results: localAtt.results,
+              attempt: localAtt,
+            });
           }
         }
       });
@@ -207,197 +300,187 @@ export const App: React.FC = () => {
         setIsOptionsOpen(false);
         setIsLeaderboardOpen(false);
       }
+
       const route = parseUrlRoute();
-      setActiveDrill(route.drill);
-      setActiveSection(route.section || 'memorize');
-      setActiveQuoteId(route.quoteId);
-      setIsTestsListOpen(Boolean(route.testsList));
-      if (!route.resultsTestId) {
-        setSelectedCompletedTest(null);
-      } else {
-        const test = availableTests.find((t) => t.testId === route.resultsTestId);
-        const cloudAtt = studentAttempts[route.resultsTestId];
-        const localAtt = getLocalTestAttempt(route.resultsTestId);
-        const attempt = (cloudAtt?.results ? cloudAtt : null) || (localAtt?.results ? localAtt : null) || cloudAtt || localAtt;
-        if (test && attempt?.results) {
-          setSelectedCompletedTest({ testPacket: test, results: attempt.results, attempt });
-        }
-      }
       if (!route.drill) {
-        setWorkoutSession(null);
+        cancelWorkout();
       }
+
       if (!route.testId) {
-        setActiveTestSession(null);
         availableTests.forEach((t) => {
           const local = getLocalTestAttempt(t.testId);
           if (local) {
             setStudentAttempts((prev) => ({
               ...prev,
-              [t.testId]: local,
+              [t.testId]: resolveFreshestAttempt(prev[t.testId], local) ?? local,
             }));
           }
         });
+      }
+
+      if (route.drill) {
+        setScreen({
+          kind: 'drill',
+          drill: route.drill,
+          section: route.section || 'memorize',
+          quoteId: route.quoteId,
+        });
+      } else if (route.testId) {
+        const matched = availableTests.find((t) => t.testId === route.testId);
+        if (matched) {
+          setScreen({
+            kind: 'testRunner',
+            testPacket: matched,
+            initialAttempt: resolveFreshestAttempt(
+              studentAttempts[matched.testId],
+              getLocalTestAttempt(matched.testId)
+            ),
+          });
+        }
+      } else if (route.resultsTestId) {
+        const test = availableTests.find((t) => t.testId === route.resultsTestId);
+        const attempt = resolveFreshestAttempt(
+          studentAttempts[route.resultsTestId],
+          getLocalTestAttempt(route.resultsTestId)
+        );
+        if (test && attempt?.results) {
+          setScreen({
+            kind: 'testResults',
+            testPacket: test,
+            results: attempt.results,
+            attempt,
+          });
+        } else {
+          setScreen({ kind: 'testsList' });
+        }
+      } else if (route.testsList) {
+        setScreen({ kind: 'testsList' });
+      } else {
+        setScreen({ kind: 'menu' });
       }
     };
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [availableTests, studentAttempts]);
+  }, [availableTests, cancelWorkout, studentAttempts]);
 
-  // Handle deep-link history: if user lands directly on a drill from a link,
-  // seed the history stack with the menu first so browser back goes to menu instead of closing app
+  // Seed history stack with menu when landing directly on a drill deep link
   useEffect(() => {
     const route = parseUrlRoute();
     if (route.drill && (!window.history.state || !('drill' in window.history.state))) {
       window.history.replaceState({ drill: null }, '', window.location.pathname);
       const drillUrl = `${window.location.pathname}${window.location.search}`;
-      window.history.pushState({ drill: route.drill, section: route.section, quoteId: route.quoteId }, '', drillUrl);
+      window.history.pushState(
+        { drill: route.drill, section: route.section, quoteId: route.quoteId },
+        '',
+        drillUrl
+      );
     }
   }, []);
 
-  const navigateToDrill = (
-    drill: CipherType,
-    section: DrillSection = 'memorize',
-    quoteId?: number,
-    replaceHistory = false
-  ) => {
-    setActiveTestSession(null);
-    setIsTestsListOpen(false);
-    setSelectedCompletedTest(null);
-    setActiveDrill(drill);
-    setActiveSection(section);
-    setActiveQuoteId(quoteId);
-    const newUrl = buildRouteUrl({ drill, section, quoteId });
-    if (replaceHistory) {
-      window.history.replaceState({ drill, section, quoteId }, '', newUrl);
-    } else {
-      window.history.pushState({ drill, section, quoteId }, '', newUrl);
-    }
-  };
-
-  const navigateToMenu = () => {
-    setWorkoutSession(null);
-    setActiveTestSession(null);
-    setIsTestsListOpen(false);
-    setSelectedCompletedTest(null);
-    if (window.history.state && (window.history.state.drill || window.history.state.testId || window.history.state.testsList)) {
-      window.history.back();
-    } else {
-      setActiveDrill(null);
-      setActiveSection('memorize');
-      setActiveQuoteId(undefined);
-      const newUrl = buildRouteUrl({ drill: null });
-      window.history.pushState({ drill: null }, '', newUrl);
-    }
-  };
-
   const handleOpenTestsList = () => {
-    setIsTestsListOpen(true);
-    setSelectedCompletedTest(null);
+    setScreen({ kind: 'testsList' });
     const newUrl = buildRouteUrl({ drill: null, testsList: true });
     window.history.pushState({ testsList: true }, '', newUrl);
   };
 
   const handleBackFromTestsList = () => {
-    setSelectedCompletedTest(null);
     if (window.history.state && window.history.state.testsList) {
       window.history.back();
     } else {
-      setIsTestsListOpen(false);
+      setScreen({ kind: 'menu' });
       const newUrl = buildRouteUrl({ drill: null });
       window.history.pushState({ drill: null }, '', newUrl);
     }
   };
 
   const handleSelectTest = (test: TestPacket, attempt: TestAttempt | null) => {
-    const local = getLocalTestAttempt(test.testId);
-    let freshest = attempt;
-    const localIsComplete = local?.status === 'submitted' || local?.status === 'expired';
-    const attemptIsComplete = attempt?.status === 'submitted' || attempt?.status === 'expired';
-
-    if (local && !attempt) {
-      freshest = local;
-    } else if (local && attempt) {
-      if (localIsComplete && !attemptIsComplete && (local.startedAt || 0) >= (attempt.startedAt || 0)) {
-        freshest = local;
-      } else if (attemptIsComplete && !localIsComplete && (attempt.startedAt || 0) >= (local.startedAt || 0)) {
-        freshest = attempt;
-      } else {
-        const localTime = Math.max(local.submittedAt || 0, local.startedAt || 0);
-        const attemptTime = Math.max(attempt.submittedAt || 0, attempt.startedAt || 0);
-        freshest = localTime >= attemptTime ? local : attempt;
-      }
-    }
-    if (freshest && (freshest.status === 'submitted' || freshest.status === 'expired') && freshest.results) {
-      setSelectedCompletedTest({ testPacket: test, results: freshest.results, attempt: freshest });
+    const freshest = resolveFreshestAttempt(attempt, getLocalTestAttempt(test.testId));
+    if (
+      freshest &&
+      (freshest.status === 'submitted' || freshest.status === 'expired') &&
+      freshest.results
+    ) {
+      setScreen({
+        kind: 'testResults',
+        testPacket: test,
+        results: freshest.results,
+        attempt: freshest,
+      });
       const newUrl = buildRouteUrl({ drill: null, testsList: true, resultsTestId: test.testId });
       window.history.pushState({ testsList: true, resultsTestId: test.testId }, '', newUrl);
     } else {
-      setSelectedTest(test);
-      setExistingAttempt(freshest);
-      setIsTestBriefingOpen(true);
+      setBriefingState({ testPacket: test, existingAttempt: freshest });
     }
   };
 
   const handleBackFromTestResults = () => {
-    setSelectedCompletedTest(null);
     if (window.history.state && window.history.state.resultsTestId) {
       window.history.back();
     } else {
+      setScreen({ kind: 'testsList' });
       const newUrl = buildRouteUrl({ drill: null, testsList: true });
       window.history.pushState({ testsList: true }, '', newUrl);
     }
   };
 
   const handleBeginTest = () => {
-    if (!selectedTest) return;
-    setIsTestBriefingOpen(false);
-    clearLocalTestAttempt(selectedTest.testId);
-    setExistingAttempt(null);
-    setActiveTestSession(selectedTest);
-    setActiveDrill(null);
-    setWorkoutSession(null);
-    const newUrl = buildRouteUrl({ drill: null, testId: selectedTest.testId });
-    window.history.pushState({ testId: selectedTest.testId }, '', newUrl);
+    if (!briefingState) return;
+    const { testPacket } = briefingState;
+    setBriefingState(null);
+    clearLocalTestAttempt(testPacket.testId);
+    cancelWorkout();
+    setScreen({ kind: 'testRunner', testPacket, initialAttempt: null });
+    const newUrl = buildRouteUrl({ drill: null, testId: testPacket.testId });
+    window.history.pushState({ testId: testPacket.testId }, '', newUrl);
   };
 
   const handleResumeTest = () => {
-    if (!selectedTest) return;
-    setIsTestBriefingOpen(false);
-    setActiveTestSession(selectedTest);
-    setActiveDrill(null);
-    setWorkoutSession(null);
-    const newUrl = buildRouteUrl({ drill: null, testId: selectedTest.testId });
-    window.history.pushState({ testId: selectedTest.testId }, '', newUrl);
+    if (!briefingState) return;
+    const { testPacket, existingAttempt } = briefingState;
+    setBriefingState(null);
+    cancelWorkout();
+    setScreen({ kind: 'testRunner', testPacket, initialAttempt: existingAttempt });
+    const newUrl = buildRouteUrl({ drill: null, testId: testPacket.testId });
+    window.history.pushState({ testId: testPacket.testId }, '', newUrl);
   };
 
   const handleExitTest = () => {
-    setActiveTestSession(null);
-    if (selectedTest) {
-      const local = getLocalTestAttempt(selectedTest.testId);
-      setExistingAttempt(local);
+    if (screen.kind === 'testRunner') {
+      const testId = screen.testPacket.testId;
+      const local = getLocalTestAttempt(testId);
       if (local) {
         setStudentAttempts((prev) => ({
           ...prev,
-          [selectedTest.testId]: local,
+          [testId]: resolveFreshestAttempt(prev[testId], local) ?? local,
         }));
       }
     }
     if (window.history.state && window.history.state.testId) {
       window.history.back();
     } else {
+      setScreen({ kind: 'testsList' });
       const newUrl = buildRouteUrl({ drill: null, testsList: true });
       window.history.pushState({ testsList: true }, '', newUrl);
     }
   };
 
-  const handleQuoteChange = (newQuoteId: number) => {
-    setActiveQuoteId(newQuoteId);
-    if (activeDrill) {
-      const newUrl = buildRouteUrl({ drill: activeDrill, section: activeSection, quoteId: newQuoteId });
-      window.history.replaceState({ drill: activeDrill, section: activeSection, quoteId: newQuoteId }, '', newUrl);
-    }
-  };
+  const handleQuoteChange = useCallback((newQuoteId: number) => {
+    setScreen((prev) => {
+      if (prev.kind !== 'drill') return prev;
+      const newUrl = buildRouteUrl({
+        drill: prev.drill,
+        section: prev.section,
+        quoteId: newQuoteId,
+      });
+      window.history.replaceState(
+        { drill: prev.drill, section: prev.section, quoteId: newQuoteId },
+        '',
+        newUrl
+      );
+      return { ...prev, quoteId: newQuoteId };
+    });
+  }, []);
 
   const openOptions = () => {
     window.history.pushState({ modal: 'options' }, '', window.location.href);
@@ -430,162 +513,73 @@ export const App: React.FC = () => {
     saveSettings(newSettings);
   };
 
-  // Launch General Practice Workout Circuit
-  const startWorkout = (round: number, excludeCiphers: CipherType[] = []) => {
-    const nextCiphers = getNextWorkoutCiphers(settings.unlockedCiphers, excludeCiphers);
-    const steps: CipherType[] = ['offsets', ...nextCiphers];
-    const offsetsMode = getWorkoutOffsetsMode(round);
-    setWorkoutSummary(null);
-    setWorkoutSession({
-      round,
-      steps,
-      currentStepIndex: 0,
-      results: [],
-      startTime: Date.now(),
-      offsetsMode,
-    });
-    navigateToDrill('offsets');
-  };
-
-  const handleAdvanceWorkout = (stepResult?: Partial<WorkoutStepResult>) => {
-    if (!workoutSession) return;
-
-    const currentStepIndex = workoutSession.currentStepIndex;
-    const currentCipher = workoutSession.steps[currentStepIndex];
-    const currentTitle = currentCipher === 'offsets' ? 'Letter Offsets' : getDrill(currentCipher).name;
-
-    if (currentStepIndex === 0 && stepResult?.offsetsMode) {
-      saveLastWarmupOffsetsMode(stepResult.offsetsMode);
-    }
-
-    const recordedResult: WorkoutStepResult = {
-      cipherId: currentCipher,
-      title: currentTitle,
-      ...stepResult,
-    };
-
-    const updatedResults = [...workoutSession.results, recordedResult];
-    const nextStepIndex = currentStepIndex + 1;
-
-    if (nextStepIndex < workoutSession.steps.length) {
-      const nextCipher = workoutSession.steps[nextStepIndex];
-      setWorkoutSession({
-        ...workoutSession,
-        currentStepIndex: nextStepIndex,
-        results: updatedResults,
-      });
-      navigateToDrill(nextCipher, 'cipher', undefined, true);
-    } else {
-      // Complete round
-      const totalTimeSeconds = Math.round((Date.now() - workoutSession.startTime) / 1000);
-      setWorkoutSummary({
-        round: workoutSession.round,
-        totalTimeSeconds,
-        results: updatedResults,
-      });
-      setWorkoutSession(null);
-      navigateToMenu();
-    }
-  };
-
-  const workoutContext: WorkoutStepContext | undefined = workoutSession
-    ? {
-        round: workoutSession.round,
-        stepIndex: workoutSession.currentStepIndex,
-        totalSteps: workoutSession.steps.length,
-        offsetsMode: workoutSession.offsetsMode,
-        nextCipherTitle:
-          workoutSession.currentStepIndex + 1 < workoutSession.steps.length
-            ? getDrill(workoutSession.steps[workoutSession.currentStepIndex + 1]).name
-            : undefined,
-        isLastStep: workoutSession.currentStepIndex === workoutSession.steps.length - 1,
-        onAdvance: handleAdvanceWorkout,
-      }
-    : undefined;
+  const suspenseFallback = (
+    <div className="drill-loading-state">Loading cipher workspace...</div>
+  );
 
   return (
     <div className="app-container">
-      {/* Main Header only visible on the main menu */}
-      {!activeDrill && !activeTestSession && !selectedCompletedTest && !isTestsListOpen && (
-        <header className="main-header">
-          <div className="brand-text">
-            <h1>DaVinci Decoders</h1>
-            <div className="subtitle">Science Olympiad Division A Trainer</div>
-          </div>
-
-          <div className="header-user-actions">
-            <UserAuthBadge displayName={settings.studentName} onOpenOptions={openOptions} />
-            {isAllowed && (
-              <button
-                type="button"
-                className="btn-simple btn-icon-square"
-                onClick={openLeaderboard}
-                title="Team Leaderboard"
-                aria-label="Team Leaderboard"
-              >
-                <span className="btn-icon">🏆</span>
-              </button>
-            )}
-            <button
-              type="button"
-              className="btn-simple btn-icon-square"
-              onClick={openOptions}
-              title="Classroom Settings"
-              aria-label="Classroom Settings"
-            >
-              <span className="btn-icon">⚙️</span>
-            </button>
-          </div>
-        </header>
-      )}
-
-      {/* Active Practice Test Runner */}
-      {activeTestSession && (
-        <TestRunner
-          testPacket={activeTestSession}
-          studentUids={[user?.uid || 'student']}
-          initialAttempt={existingAttempt}
-          onExitToMenu={handleExitTest}
+      {screen.kind === 'menu' && (
+        <MainMenu
+          studentName={settings.studentName}
+          isAllowed={isAllowed}
+          onStartWorkout={() => startWorkout(1)}
+          onOpenTestsList={handleOpenTestsList}
+          onOpenLeaderboard={openLeaderboard}
+          onOpenOptions={openOptions}
+          onSelectDrill={(drill, section) => navigateToDrill(drill, section)}
         />
       )}
 
-      {/* Active Drill View */}
-      {activeDrill === 'offsets' && !activeTestSession && (
+      {screen.kind === 'testRunner' && (
+        <Suspense fallback={suspenseFallback}>
+          <TestRunner
+            testPacket={screen.testPacket}
+            studentUids={[user?.uid || 'student']}
+            initialAttempt={screen.initialAttempt}
+            onExitToMenu={handleExitTest}
+          />
+        </Suspense>
+      )}
+
+      {screen.kind === 'drill' && screen.drill === 'offsets' && (
         <LetterOffsetDrill onBack={navigateToMenu} workoutContext={workoutContext} />
       )}
 
-      {activeDrill && isLookupCipher(activeDrill) && !activeTestSession && (
-        activeSection === 'cipher' || workoutContext ? (
-          <LookupCipherDrill
-            key={`${activeDrill}:${activeQuoteId ?? 'random'}`}
-            cipher={activeDrill}
-            initialQuoteId={activeQuoteId}
-            onQuoteChange={handleQuoteChange}
-            onBack={navigateToMenu}
-            workoutContext={workoutContext}
-          />
+      {screen.kind === 'drill' &&
+        isLookupCipher(screen.drill) &&
+        (screen.section === 'cipher' || workoutContext ? (
+          <Suspense fallback={suspenseFallback}>
+            <LookupCipherDrill
+              key={`${screen.drill}:${screen.quoteId ?? 'random'}`}
+              cipher={screen.drill}
+              initialQuoteId={screen.quoteId}
+              onQuoteChange={handleQuoteChange}
+              onBack={navigateToMenu}
+              workoutContext={workoutContext}
+            />
+          </Suspense>
         ) : (
           <SymbolDrill
-            key={activeDrill}
-            cipher={activeDrill}
+            key={screen.drill}
+            cipher={screen.drill}
             onBack={navigateToMenu}
           />
-        )
+        ))}
+
+      {screen.kind === 'testResults' && (
+        <Suspense fallback={suspenseFallback}>
+          <TestResultsView
+            testPacket={screen.testPacket}
+            results={screen.results}
+            studentUids={screen.attempt?.studentUids}
+            teamName={screen.attempt?.teamName}
+            onBack={handleBackFromTestResults}
+          />
+        </Suspense>
       )}
 
-      {/* Practice Test Results Page View */}
-      {!activeDrill && !activeTestSession && selectedCompletedTest && (
-        <TestResultsView
-          testPacket={selectedCompletedTest.testPacket}
-          results={selectedCompletedTest.results}
-          studentUids={selectedCompletedTest.attempt?.studentUids}
-          teamName={selectedCompletedTest.attempt?.teamName}
-          onBack={handleBackFromTestResults}
-        />
-      )}
-
-      {/* Practice Tests List View */}
-      {!activeDrill && !activeTestSession && !selectedCompletedTest && isTestsListOpen && (
+      {screen.kind === 'testsList' && (
         <PracticeTestsList
           tests={availableTests}
           attempts={studentAttempts}
@@ -595,105 +589,6 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* Simplified Main Menu Dashboard */}
-      {!activeDrill && !activeTestSession && !selectedCompletedTest && !isTestsListOpen && (
-        <main className="menu-container">
-          {/* Featured Practice Actions */}
-          <div className="menu-featured-actions">
-            <button className="menu-action-btn" onClick={() => startWorkout(1)}>
-              ⚡ General Practice
-            </button>
-            {isAllowed && (
-              <button
-                className="menu-action-btn"
-                onClick={handleOpenTestsList}
-              >
-                📝 Practice Tests
-              </button>
-            )}
-          </div>
-
-          {/* Section: Drills */}
-          <div className="menu-divider">
-            <span>Drills</span>
-          </div>
-
-          <div className="menu-buttons-list">
-            <button
-              type="button"
-              className="menu-drill-btn"
-              onClick={() => navigateToDrill('offsets', 'memorize')}
-            >
-              Letter Offsets
-            </button>
-            <button
-              type="button"
-              className="menu-drill-btn"
-              onClick={() => navigateToDrill('atbash', 'memorize')}
-            >
-              Atbash
-            </button>
-            <button
-              type="button"
-              className="menu-drill-btn"
-              onClick={() => navigateToDrill('pigpen', 'memorize')}
-            >
-              Pigpen
-            </button>
-            <button
-              type="button"
-              className="menu-drill-btn"
-              onClick={() => navigateToDrill('galactic', 'memorize')}
-            >
-              Standard Galactic Alphabet
-            </button>
-          </div>
-
-          {/* Section: Ciphers */}
-          <div className="menu-divider">
-            <span>Ciphers</span>
-          </div>
-
-          <div className="menu-buttons-list">
-            <button
-              type="button"
-              className="menu-drill-btn"
-              onClick={() => navigateToDrill('atbash', 'cipher')}
-            >
-              Atbash
-            </button>
-            <button
-              type="button"
-              className="menu-drill-btn"
-              onClick={() => navigateToDrill('pigpen', 'cipher')}
-            >
-              Pigpen
-            </button>
-            <button
-              type="button"
-              className="menu-drill-btn"
-              onClick={() => navigateToDrill('galactic', 'cipher')}
-            >
-              Standard Galactic Alphabet
-            </button>
-          </div>
-
-          {/* Section: Coming Soon */}
-          <div className="menu-divider coming-soon-divider">
-            <span>Coming Soon</span>
-          </div>
-
-          <div className="menu-buttons-list disabled-list">
-            {COMING_SOON_DRILLS.map(d => (
-              <button key={d.id} className="menu-drill-btn btn-disabled" disabled>
-                {d.name}
-              </button>
-            ))}
-          </div>
-        </main>
-      )}
-
-      {/* Settings Modal */}
       {isOptionsOpen && (
         <OptionsModal
           isOpen={true}
@@ -703,7 +598,6 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* Team Leaderboard Modal */}
       {isAllowed && (
         <LeaderboardModal
           isOpen={isLeaderboardOpen}
@@ -711,32 +605,28 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* Workout Summary Modal */}
-      {workoutSummary && (
-        <WorkoutSummaryModal
-          summary={workoutSummary}
-          onStartNextRound={() => {
-            const previouslyPracticed = workoutSummary.results
-              .filter(r => r.cipherId !== 'offsets')
-              .map(r => r.cipherId);
-            startWorkout(workoutSummary.round + 1, previouslyPracticed);
-          }}
-          onExitToMenu={() => setWorkoutSummary(null)}
-        />
-      )}
+      <WorkoutSummaryModal
+        summary={workoutSummary}
+        onStartNextRound={() => {
+          if (!workoutSummary) return;
+          const previouslyPracticed = workoutSummary.results
+            .filter((r) => r.cipherId !== 'offsets')
+            .map((r) => r.cipherId);
+          startWorkout(workoutSummary.round + 1, previouslyPracticed);
+        }}
+        onExitToMenu={dismissSummary}
+      />
 
-      {/* Practice Test Briefing Modal */}
-      {isTestBriefingOpen && selectedTest && (
+      {briefingState && (
         <TestBriefingModal
-          testPacket={selectedTest}
-          existingAttempt={existingAttempt}
+          testPacket={briefingState.testPacket}
+          existingAttempt={briefingState.existingAttempt}
           onBegin={handleBeginTest}
           onResume={handleResumeTest}
-          onClose={() => setIsTestBriefingOpen(false)}
+          onClose={() => setBriefingState(null)}
         />
       )}
 
-      {/* Roster Access Modal */}
       <NotAllowedModal />
     </div>
   );
