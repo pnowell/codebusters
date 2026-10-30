@@ -335,17 +335,6 @@
   border: 1px solid rgba(244, 63, 94, 0.55);
 }
 
-.mastery-badge.is-anchor::after {
-  content: '';
-  position: absolute;
-  bottom: 2px;
-  left: 20%;
-  right: 20%;
-  height: 2px;
-  background: var(--accent-blue);
-  border-radius: 1px;
-}
-
 .mastery-badge.is-current {
   box-shadow: 0 0 0 2px var(--accent-blue);
   font-weight: 900;

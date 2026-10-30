@@ -17,7 +17,6 @@ interface AlphabetMasteryModalProps {
 const ALL_OFFSETS = Array.from({ length: 26 }, (_, i) => i);
 const ROW_1_OFFSETS = ALL_OFFSETS.slice(0, 13); // A to M
 const ROW_2_OFFSETS = ALL_OFFSETS.slice(13);     // N to Z
-const ANCHOR_OFFSETS = [2, 5, 8, 11, 14, 17, 20, 23] as const;
 
 export const AlphabetMasteryModal: React.FC<AlphabetMasteryModalProps> = ({
   isOpen,
@@ -51,7 +50,6 @@ export const AlphabetMasteryModal: React.FC<AlphabetMasteryModalProps> = ({
   const renderBadge = (offset: number) => {
     const letter = offsetToLetter(offset);
     const p = progress[letter];
-    const isAnchor = (ANCHOR_OFFSETS as readonly number[]).includes(offset);
     const isCurrent = currentLetter !== undefined ? currentLetter === letter : currentOffset === offset;
 
     let statusClass = 'status-unseen';
@@ -73,13 +71,12 @@ export const AlphabetMasteryModal: React.FC<AlphabetMasteryModalProps> = ({
     const classes = [
       'mastery-badge',
       statusClass,
-      isAnchor ? 'is-anchor' : '',
       isCurrent ? 'is-current' : '',
     ]
       .filter(Boolean)
       .join(' ');
 
-    const badgeTitle = `${letter} (${offset}): ${statusLabel}${isAnchor ? ' • Anchor' : ''}`;
+    const badgeTitle = `${letter} (${offset}): ${statusLabel}`;
 
     return (
       <div key={letter} className={classes} title={badgeTitle}>

@@ -60,9 +60,7 @@ export type DrillId =
   | 'pigpen'
   | 'galactic'
   | 'knights'
-  | 'tap'
-  | 'letterAddition'
-  | 'letterSubtraction';
+  | 'tap';
 
 export interface DrillScore {
   best60s: number;

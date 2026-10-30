@@ -184,7 +184,6 @@ export async function mergeAndInitializeCloudUser(
   }
 
   // 4. Drill Progress: Merge per-card stats per drill
-  // Note: Letter arithmetic drills (letterAddition / letterSubtraction) do not track card-by-card progress
   const cloudDrillProgress = normalizeCloudDrillProgress(cloudData);
   const mergedProgress = mergeAllDrillProgress(localDrillProgress, cloudDrillProgress);
 
