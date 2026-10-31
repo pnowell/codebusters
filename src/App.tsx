@@ -543,15 +543,19 @@ export const App: React.FC = () => {
       )}
 
       {screen.kind === 'drill' && screen.drill === 'offsets' && (
-        <LetterOffsetDrill onBack={navigateToMenu} workoutContext={workoutContext} />
+        <LetterOffsetDrill
+          key={workoutContext ? `workout-${workoutContext.round}-${workoutContext.stepIndex}` : 'standalone'}
+          onBack={navigateToMenu}
+          workoutContext={workoutContext}
+        />
       )}
 
       {screen.kind === 'drill' &&
         isLookupCipher(screen.drill) &&
-        (screen.section === 'cipher' || workoutContext ? (
+        (screen.section === 'cipher' ? (
           <Suspense fallback={suspenseFallback}>
             <LookupCipherDrill
-              key={`${screen.drill}:${screen.quoteId ?? 'random'}`}
+              key={`${screen.drill}:${screen.quoteId ?? 'random'}:${workoutContext ? `${workoutContext.round}-${workoutContext.stepIndex}` : 'standalone'}`}
               cipher={screen.drill}
               initialQuoteId={screen.quoteId}
               onQuoteChange={handleQuoteChange}
@@ -561,9 +565,10 @@ export const App: React.FC = () => {
           </Suspense>
         ) : (
           <SymbolDrill
-            key={screen.drill}
+            key={`${screen.drill}:${workoutContext ? `${workoutContext.round}-${workoutContext.stepIndex}` : 'standalone'}`}
             cipher={screen.drill}
             onBack={navigateToMenu}
+            workoutContext={workoutContext}
           />
         ))}
 
@@ -609,10 +614,7 @@ export const App: React.FC = () => {
         summary={workoutSummary}
         onStartNextRound={() => {
           if (!workoutSummary) return;
-          const previouslyPracticed = workoutSummary.results
-            .filter((r) => r.cipherId !== 'offsets')
-            .map((r) => r.cipherId);
-          startWorkout(workoutSummary.round + 1, previouslyPracticed);
+          startWorkout(workoutSummary.round + 1);
         }}
         onExitToMenu={dismissSummary}
       />

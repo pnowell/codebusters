@@ -9,6 +9,10 @@ import {
   saveAllDrillProgress,
   loadAllDrillScores,
   saveDrillScore,
+  loadAllDrillHistory,
+  saveAllDrillHistory,
+  sanitizeDrillHistoryRecord,
+  MAX_RECENT_DRILL_SESSIONS,
   loadCipherPracticeHistory,
   saveCipherPracticeHistory,
   registerSyncDispatcher,
@@ -16,8 +20,17 @@ import {
   sanitizeProgressDict,
   type DrillProgressRecord,
   type DrillScoresRecord,
+  type DrillHistoryRecord,
 } from './storage';
-import type { UserProfile, UserSettings, PublicProfile, DrillId, DrillScore, DrillProgress } from '../types';
+import type {
+  UserProfile,
+  UserSettings,
+  PublicProfile,
+  DrillId,
+  DrillScore,
+  DrillProgress,
+  DrillSessionSample,
+} from '../types';
 import { upsertPublicProfile, normalizePublicProfile } from './profileService';
 import { updateLeaderboardScore } from './leaderboard';
 
@@ -57,6 +70,51 @@ function mergeAllDrillProgress(
   for (const key of allKeys) {
     merged[key] = mergeLetterStats(localAll[key] || {}, cloudAll[key] || {});
   }
+  return merged;
+}
+
+function mergeAllDrillHistory(
+  localAll: DrillHistoryRecord,
+  cloudAll: DrillHistoryRecord
+): DrillHistoryRecord {
+  const allKeys = new Set([...Object.keys(localAll), ...Object.keys(cloudAll)]) as Set<DrillId>;
+  const merged: DrillHistoryRecord = {};
+
+  for (const key of allKeys) {
+    const localEntry = localAll[key] || { recentSessions: [], lastPracticed: 0 };
+    const cloudEntry = cloudAll[key] || { recentSessions: [], lastPracticed: 0 };
+
+    const byTimestamp = new Map<number, DrillSessionSample>();
+    for (const s of cloudEntry.recentSessions) {
+      byTimestamp.set(s.timestamp, s);
+    }
+    for (const s of localEntry.recentSessions) {
+      const existing = byTimestamp.get(s.timestamp);
+      if (!existing || s.score60s > existing.score60s) {
+        byTimestamp.set(s.timestamp, s);
+      }
+    }
+
+    const combinedSessions = Array.from(byTimestamp.values())
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .slice(-MAX_RECENT_DRILL_SESSIONS);
+
+    const latestSessionTs =
+      combinedSessions.length > 0 ? combinedSessions[combinedSessions.length - 1].timestamp : 0;
+    const lastPracticed = Math.max(
+      localEntry.lastPracticed,
+      cloudEntry.lastPracticed,
+      latestSessionTs
+    );
+
+    if (lastPracticed > 0 || combinedSessions.length > 0) {
+      merged[key] = {
+        recentSessions: combinedSessions,
+        lastPracticed,
+      };
+    }
+  }
+
   return merged;
 }
 
@@ -100,6 +158,9 @@ registerSyncDispatcher((type, data) => {
       }
       break;
     }
+    case 'drillHistory':
+      pushCloudUpdate({ drillHistory: data as DrillHistoryRecord });
+      break;
     case 'practiceHistory':
       pushCloudUpdate({ practiceHistory: data as Record<string, { count: number; lastPracticed: number }> });
       break;
@@ -155,6 +216,7 @@ export async function mergeAndInitializeCloudUser(
   const localCompleted = loadCompletedQuoteIds();
   const localDrillProgress = loadAllDrillProgress();
   const localDrillScores = loadAllDrillScores();
+  const localDrillHistory = loadAllDrillHistory();
   const localPracticeHistory = loadCipherPracticeHistory();
 
   // Smart Merge:
@@ -187,7 +249,11 @@ export async function mergeAndInitializeCloudUser(
   const cloudDrillProgress = normalizeCloudDrillProgress(cloudData);
   const mergedProgress = mergeAllDrillProgress(localDrillProgress, cloudDrillProgress);
 
-  // 5. Practice History: Combine counts
+  // 5. Drill History: Merge rolling recent 60s sessions & lastPracticed timestamps
+  const cloudDrillHistory = sanitizeDrillHistoryRecord(cloudData.drillHistory);
+  const mergedDrillHistory = mergeAllDrillHistory(localDrillHistory, cloudDrillHistory);
+
+  // 6. Practice History: Combine counts
   const cloudHistory = cloudData.practiceHistory ?? {};
   const mergedHistory: Record<string, { count: number; lastPracticed: number }> = { ...cloudHistory };
   for (const [cipher, stat] of Object.entries(localPracticeHistory)) {
@@ -202,7 +268,7 @@ export async function mergeAndInitializeCloudUser(
     }
   }
 
-  // 6. Name: Profile customized name or local name
+  // 7. Name: Profile customized name or local name
   const finalName =
     profileData.displayName ||
     (localSettings.studentName !== 'Decoder' ? localSettings.studentName : (defaultName || 'Decoder'));
@@ -218,6 +284,7 @@ export async function mergeAndInitializeCloudUser(
     saveCompletedQuoteIds(mergedCompleted);
     saveCipherPracticeHistory(mergedHistory);
     saveAllDrillProgress(mergedProgress);
+    saveAllDrillHistory(mergedDrillHistory);
     for (const [id, score] of Object.entries(mergedDrillScores)) {
       if (score) {
         saveDrillScore(id as DrillId, score);
@@ -234,6 +301,7 @@ export async function mergeAndInitializeCloudUser(
       unlockedCiphers: mergedUnlocked,
       completedQuotes: mergedCompleted,
       drillProgress: mergedProgress,
+      drillHistory: mergedDrillHistory,
       practiceHistory: mergedHistory,
       lastActiveAt: serverTimestamp(),
     },
@@ -302,6 +370,15 @@ export function startCloudSync(uid: string): void {
         }
       }
 
+      if (data.drillHistory) {
+        const remoteHistory = sanitizeDrillHistoryRecord(data.drillHistory);
+        const currentHistory = loadAllDrillHistory();
+        const mergedHistory = mergeAllDrillHistory(currentHistory, remoteHistory);
+        if (JSON.stringify(currentHistory) !== JSON.stringify(mergedHistory)) {
+          saveAllDrillHistory(mergedHistory);
+          hasChanged = true;
+        }
+      }
 
       if (data.completedQuotes && Array.isArray(data.completedQuotes)) {
         const current = loadCompletedQuoteIds();

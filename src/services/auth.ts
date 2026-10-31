@@ -22,30 +22,42 @@ export interface AuthResult {
  */
 const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 
+type AllowlistLookupResult =
+  | { status: 'allowed'; allowedUser: AllowedUser }
+  | { status: 'denied' }
+  | { status: 'error' };
+
 /**
  * Looks up an email in the Firestore `/allowed_users/{normalizedEmail}` collection
  */
-async function checkAllowlist(email: string): Promise<AllowedUser | null> {
-  if (!db) return null;
+async function checkAllowlist(email: string): Promise<AllowlistLookupResult> {
+  if (!db) return { status: 'error' };
   const normalized = normalizeEmail(email);
   try {
     const docRef = doc(db, 'allowed_users', normalized);
     const snap = await getDoc(docRef);
-    if (!snap.exists()) return null;
+    if (!snap.exists()) return { status: 'denied' };
 
     const data = snap.data();
-    if (data.active === false) return null;
+    if (data.active === false) return { status: 'denied' };
 
     return {
-      email: normalized,
-      displayName: data.displayName || 'Decoder',
-      role: data.role === 'teacher' ? 'teacher' : 'student',
-      addedAt: data.addedAt,
-      active: true,
+      status: 'allowed',
+      allowedUser: {
+        email: normalized,
+        displayName: data.displayName || 'Decoder',
+        role: data.role === 'teacher' ? 'teacher' : 'student',
+        addedAt: data.addedAt,
+        active: true,
+      },
     };
   } catch (err) {
-    console.error('[Auth] Error querying allowlist:', err);
-    return null;
+    const code =
+      err && typeof err === 'object' && 'code' in err && typeof err.code === 'string'
+        ? err.code
+        : 'unknown';
+    console.error('[Auth] Error querying allowlist:', code);
+    return { status: 'error' };
   }
 }
 
@@ -70,8 +82,8 @@ export async function signInWithGoogle(): Promise<AuthResult> {
       return { allowed: false, error: 'Google account does not have an associated email.' };
     }
 
-    const allowed = await checkAllowlist(user.email);
-    if (!allowed) {
+    const lookup = await checkAllowlist(user.email);
+    if (lookup.status === 'denied') {
       const email = user.email;
       await signOut(auth);
       return {
@@ -80,14 +92,45 @@ export async function signInWithGoogle(): Promise<AuthResult> {
         error: 'ACCOUNT_NOT_ON_ALLOWLIST',
       };
     }
+    if (lookup.status === 'error') {
+      return {
+        allowed: false,
+        error: 'firestore/unavailable (Could not reach Firestore to verify roster — check your internet/DNS connection)',
+      };
+    }
 
     return {
       allowed: true,
       user,
-      allowedUser: allowed,
+      allowedUser: lookup.allowedUser,
     };
   } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
+    const errObj = err && typeof err === 'object' ? (err as Record<string, unknown>) : null;
+    const code = typeof errObj?.code === 'string' ? errObj.code : '';
+    if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+      return { allowed: false };
+    }
+
+    let detail = '';
+    const customData =
+      errObj?.customData && typeof errObj.customData === 'object'
+        ? (errObj.customData as Record<string, unknown>)
+        : null;
+    const target =
+      customData?.target && typeof customData.target === 'object'
+        ? (customData.target as { tagName?: string; src?: string })
+        : null;
+    if (target?.tagName === 'SCRIPT' && target.src) {
+      const cleanSrc = target.src.split('?')[0];
+      detail = `SCRIPT_BLOCKED:${cleanSrc}`;
+    } else if (typeof errObj?.message === 'string' && !errObj.message.endsWith(`(${code}).`)) {
+      detail = errObj.message;
+    } else if (customData?.originalError) {
+      detail = String(customData.originalError);
+    }
+
+    const errorMsg = detail ? `${code || 'auth/error'} (${detail})` : code || String(err);
+    console.warn('[Auth] Google sign-in error:', errorMsg);
     return {
       allowed: false,
       error: errorMsg,
@@ -121,14 +164,19 @@ export function subscribeToAuthState(
       return;
     }
 
-    const allowed = await checkAllowlist(user.email);
-    if (!allowed) {
-      // If user was signed in but removed from allowlist, log out
+    const lookup = await checkAllowlist(user.email);
+    if (lookup.status === 'denied') {
+      // User was genuinely removed from allowlist: sign out
       await signOut(auth!);
       callback(null, null);
       return;
     }
+    if (lookup.status === 'error') {
+      // Fail closed while offline without wiping the persisted Firebase Auth session
+      callback(null, null);
+      return;
+    }
 
-    callback(user, allowed);
+    callback(user, lookup.allowedUser);
   });
 }

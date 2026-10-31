@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { atbashChar } from '../../utils/ciphers';
+import type { WorkoutStepContext } from '../../types';
 import { useSpacedDeck } from '../../hooks/useSpacedDeck';
 import { useVelocityTracker } from '../../hooks/useVelocityTracker';
 import { useFloatingGhosts } from '../../hooks/useFloatingGhosts';
+import { useWarmupTimer } from '../../hooks/useWarmupTimer';
 import { DrillHeader } from './shared/DrillHeader';
 import { DrillActionRow } from './shared/DrillActionRow';
+import { WarmupHeaderRight } from './shared/WarmupHeaderRight';
 import { CollapsibleReference } from './shared/CollapsibleReference';
 import { ReferenceSheet } from './shared/ReferenceSheet';
 import { AlphabetMasteryModal } from './shared/AlphabetMasteryModal';
@@ -19,6 +22,7 @@ export type SymbolCipherType = 'atbash' | 'pigpen' | 'galactic';
 interface SymbolDrillProps {
   cipher: SymbolCipherType;
   onBack: () => void;
+  workoutContext?: WorkoutStepContext;
 }
 
 const CIPHER_INFO = {
@@ -42,9 +46,10 @@ const CIPHER_INFO = {
   },
 } as const;
 
-export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack }) => {
+export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workoutContext }) => {
   const { isAllowed } = useAuth();
   const info = CIPHER_INFO[cipher];
+  const { elapsedWarmup, skipWarmup } = useWarmupTimer(Boolean(workoutContext));
 
   const {
     progress,
@@ -59,12 +64,14 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack }) => {
   const {
     scores,
     current60s,
+    sessionBest60s,
     streak,
     newRecordAlert,
     heat,
     barPercent,
     recordHit,
     recordMiss,
+    flushSession,
   } = useVelocityTracker(cipher);
 
   const { ghosts, spawnGhost, removeGhost } = useFloatingGhosts();
@@ -175,6 +182,7 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack }) => {
   // Global typing listener: single keypress immediately answers
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (document.querySelector('[role="dialog"]')) return;
       if (e.target instanceof HTMLInputElement && e.target !== answerInputRef.current) return;
       if (e.target instanceof HTMLTextAreaElement) return;
@@ -201,18 +209,29 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack }) => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const streakBadge = (
-    <div
-      className="streak-badge-compact"
-      title={`Current streak: ${streak} | Best: ${scores.bestStreak}`}
-    >
-      🔥 <strong>{streak}</strong> <small>({scores.bestStreak})</small>
-    </div>
+  const handleAdvanceWarmup = useCallback(() => {
+    flushSession(true);
+    workoutContext?.onAdvance({
+      warmup60s: sessionBest60s,
+    });
+  }, [flushSession, sessionBest60s, workoutContext]);
+
+  const headerRight = (
+    <WarmupHeaderRight
+      streak={streak}
+      bestStreak={scores.bestStreak}
+      workoutContext={workoutContext}
+      elapsedWarmup={elapsedWarmup}
+      onSkipWarmup={skipWarmup}
+      onAdvanceWarmup={handleAdvanceWarmup}
+    />
   );
+
+  const headerTitle = workoutContext ? `Warm-up: ${info.shortTitle}` : info.title;
 
   return (
     <div className="drill-container symbol-drill-container">
-      <DrillHeader title={info.title} onBack={onBack} right={streakBadge} />
+      <DrillHeader title={headerTitle} onBack={onBack} right={headerRight} />
 
       <div className="offsets-subbar" style={{ justifyContent: 'flex-end' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>

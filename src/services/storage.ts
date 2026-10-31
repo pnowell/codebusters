@@ -2,6 +2,8 @@ import type {
   UserSettings,
   DrillId,
   DrillScore,
+  DrillHistoryEntry,
+  DrillSessionSample,
   LetterProgress,
   DrillProgress,
   OffsetsMode,
@@ -10,9 +12,6 @@ export type { OffsetsMode };
 import {
   DEFAULT_UNLOCKED,
   isCipherType,
-  IMPLEMENTED_DRILLS,
-  getCipherBucket,
-  type CipherType,
 } from '../data/drills';
 
 const KEYS = {
@@ -20,19 +19,26 @@ const KEYS = {
   completedQuotes: 'davinci_completed_quotes',
   drillProgress: 'davinci_drill_progress',
   drillScores: 'davinci_drill_scores',
+  drillHistory: 'davinci_drill_history',
   practiceHistory: 'davinci_cipher_practice_history',
-  lastWarmupOffsetsMode: 'davinci_last_warmup_offsets_mode',
 } as const;
+
+export const MAX_RECENT_DRILL_SESSIONS = 5;
 
 const DEFAULT_SETTINGS: UserSettings = {
   studentName: 'Decoder',
   unlockedCiphers: DEFAULT_UNLOCKED,
 };
 
-type SyncDispatcher = (
-  type: 'settings' | 'completedQuotes' | 'drillProgress' | 'drillScores' | 'practiceHistory',
-  data: unknown
-) => void;
+type SyncEventType =
+  | 'settings'
+  | 'completedQuotes'
+  | 'drillProgress'
+  | 'drillScores'
+  | 'drillHistory'
+  | 'practiceHistory';
+
+type SyncDispatcher = (type: SyncEventType, data: unknown) => void;
 
 let globalSyncDispatcher: SyncDispatcher | null = null;
 let isSyncSuppressed = false;
@@ -51,10 +57,7 @@ export function withoutSyncDispatch<T>(fn: () => T): T {
   }
 }
 
-function dispatchSync(
-  type: 'settings' | 'completedQuotes' | 'drillProgress' | 'drillScores' | 'practiceHistory',
-  data: unknown
-) {
+function dispatchSync(type: SyncEventType, data: unknown) {
   if (isSyncSuppressed) return;
   globalSyncDispatcher?.(type, data);
 }
@@ -130,6 +133,7 @@ export function offsetsModeToDrillId(mode: OffsetsMode): DrillId {
 
 export type DrillProgressRecord = Partial<Record<DrillId, DrillProgress>>;
 export type DrillScoresRecord = Partial<Record<DrillId, DrillScore>>;
+export type DrillHistoryRecord = Partial<Record<DrillId, DrillHistoryEntry>>;
 
 export function sanitizeProgressDict(raw: unknown): DrillProgress {
   if (!raw || typeof raw !== 'object') return {};
@@ -193,6 +197,142 @@ export function saveDrillScore(
 }
 
 // ---------------------------------------------------------------------------
+// Generalized Drill Activity & Recent 60s History
+// ---------------------------------------------------------------------------
+
+export function sanitizeDrillHistoryEntry(raw: unknown): DrillHistoryEntry {
+  if (!raw || typeof raw !== 'object') {
+    return { recentSessions: [], lastPracticed: 0 };
+  }
+  const obj = raw as Partial<DrillHistoryEntry>;
+  const sessions: DrillSessionSample[] = [];
+
+  if (Array.isArray(obj.recentSessions)) {
+    for (const s of obj.recentSessions) {
+      if (
+        s &&
+        typeof s === 'object' &&
+        typeof s.score60s === 'number' &&
+        Number.isFinite(s.score60s) &&
+        s.score60s >= 0 &&
+        typeof s.timestamp === 'number' &&
+        Number.isFinite(s.timestamp) &&
+        s.timestamp > 0
+      ) {
+        sessions.push({
+          score60s: Math.round(s.score60s),
+          timestamp: Math.round(s.timestamp),
+        });
+      }
+    }
+  }
+
+  sessions.sort((a, b) => a.timestamp - b.timestamp);
+  const trimmed = sessions.slice(-MAX_RECENT_DRILL_SESSIONS);
+  const latestSampleTs = trimmed.length > 0 ? trimmed[trimmed.length - 1].timestamp : 0;
+  const rawLast =
+    typeof obj.lastPracticed === 'number' && Number.isFinite(obj.lastPracticed)
+      ? Math.max(0, Math.round(obj.lastPracticed))
+      : 0;
+
+  return {
+    recentSessions: trimmed,
+    lastPracticed: Math.max(rawLast, latestSampleTs),
+  };
+}
+
+const VALID_DRILL_IDS: ReadonlySet<string> = new Set<DrillId>([
+  'offsetsLetterToNum',
+  'offsetsNumToLetter',
+  'atbash',
+  'pigpen',
+  'galactic',
+  'knights',
+  'tap',
+]);
+
+export function sanitizeDrillHistoryRecord(raw: unknown): DrillHistoryRecord {
+  if (!raw || typeof raw !== 'object') return {};
+  const clean: DrillHistoryRecord = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!VALID_DRILL_IDS.has(k)) continue;
+    const entry = sanitizeDrillHistoryEntry(v);
+    if (entry.lastPracticed > 0 || entry.recentSessions.length > 0) {
+      clean[k as DrillId] = entry;
+    }
+  }
+  return clean;
+}
+
+export function loadAllDrillHistory(): DrillHistoryRecord {
+  try {
+    const raw = localStorage.getItem(KEYS.drillHistory);
+    if (!raw) return {};
+    return sanitizeDrillHistoryRecord(JSON.parse(raw));
+  } catch {
+    return {};
+  }
+}
+
+export function saveAllDrillHistory(all: DrillHistoryRecord): void {
+  try {
+    const clean = sanitizeDrillHistoryRecord(all);
+    localStorage.setItem(KEYS.drillHistory, JSON.stringify(clean));
+    dispatchSync('drillHistory', clean);
+  } catch {
+    // Ignore
+  }
+}
+
+export function recordDrillSession(
+  drillId: DrillId,
+  session: {
+    sessionBest60s: number;
+    elapsedMs: number;
+    attempts: number;
+    forceActivity?: boolean;
+  }
+): void {
+  const { sessionBest60s, elapsedMs, attempts, forceActivity = false } = session;
+  if (!forceActivity && attempts < 5) {
+    return;
+  }
+
+  try {
+    const now = Date.now();
+    const all = loadAllDrillHistory();
+    const current = all[drillId] || { recentSessions: [], lastPracticed: 0 };
+    const currentMean =
+      current.recentSessions.length > 0
+        ? current.recentSessions.reduce((sum, s) => sum + s.score60s, 0) /
+          current.recentSessions.length
+        : 0;
+
+    const qualifiesFor60sWindow =
+      attempts >= 5 &&
+      (elapsedMs >= 50_000 ||
+        (current.recentSessions.length === 0 && elapsedMs >= 30_000) ||
+        sessionBest60s >= currentMean);
+
+    const updatedSessions = qualifiesFor60sWindow
+      ? [
+          ...current.recentSessions,
+          { score60s: Math.max(0, Math.round(sessionBest60s)), timestamp: now },
+        ].slice(-MAX_RECENT_DRILL_SESSIONS)
+      : current.recentSessions;
+
+    all[drillId] = {
+      recentSessions: updatedSessions,
+      lastPracticed: Math.max(current.lastPracticed, now),
+    };
+
+    saveAllDrillHistory(all);
+  } catch {
+    // Ignore
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Generalized Drill Progress
 // ---------------------------------------------------------------------------
 
@@ -244,12 +384,12 @@ export function resetDrillProgress(drillId: DrillId): void {
   saveDrillProgress(drillId, {});
 }
 
-interface CipherPracticeRecord {
+export interface CipherPracticeRecord {
   count: number;
   lastPracticed: number;
 }
 
-type CipherPracticeHistory = Record<string, CipherPracticeRecord>;
+export type CipherPracticeHistory = Record<string, CipherPracticeRecord>;
 
 export function loadCipherPracticeHistory(): CipherPracticeHistory {
   try {
@@ -285,92 +425,3 @@ export function saveCipherPracticeHistory(history: CipherPracticeHistory): void 
     // Ignore
   }
 }
-
-/**
- * Option A (Two-Bucket Workout Selection):
- * Returns up to 2 ciphers for a workout round.
- * If both 'speed' and 'analysis' buckets have unlocked/implemented ciphers,
- * picks 1 speed cipher (sprint) + 1 analysis cipher (challenge).
- * Otherwise picks the top 2 least-recently-practiced ciphers.
- */
-export function getNextWorkoutCiphers(
-  unlockedCiphers: CipherType[],
-  excludeCiphers: CipherType[] = []
-): CipherType[] {
-  // Only look at implemented drills that are not offsets and not in excludeCiphers
-  const pool = unlockedCiphers.filter(
-    id =>
-      id !== 'offsets' &&
-      IMPLEMENTED_DRILLS.some(d => d.id === id) &&
-      !excludeCiphers.includes(id)
-  );
-
-  if (pool.length === 0) {
-    // If exclusion left us empty, relax the exclusion
-    const relaxed = unlockedCiphers.filter(
-      id => id !== 'offsets' && IMPLEMENTED_DRILLS.some(d => d.id === id)
-    );
-    if (relaxed.length === 0) return [];
-    return getNextWorkoutCiphers(relaxed, []);
-  }
-
-  const history = loadCipherPracticeHistory();
-
-  // Sort by least practiced: lowest count first, then oldest lastPracticed timestamp
-  const sortByLeastPracticed = (list: CipherType[]) => {
-    return [...list].sort((a, b) => {
-      const recA = history[a] || { count: 0, lastPracticed: 0 };
-      const recB = history[b] || { count: 0, lastPracticed: 0 };
-      if (recA.count !== recB.count) return recA.count - recB.count;
-      return recA.lastPracticed - recB.lastPracticed;
-    });
-  };
-
-  const speedList = pool.filter(id => getCipherBucket(id) === 'speed');
-  const analysisList = pool.filter(id => getCipherBucket(id) === 'analysis');
-
-  // If both buckets are available: 1 speed sprint + 1 analysis challenge
-  if (speedList.length > 0 && analysisList.length > 0) {
-    const chosenSpeed = sortByLeastPracticed(speedList)[0];
-    const chosenAnalysis = sortByLeastPracticed(analysisList)[0];
-    return [chosenSpeed, chosenAnalysis];
-  }
-
-  // If only one bucket has ciphers (e.g. current stage with only speed ciphers):
-  const sorted = sortByLeastPracticed(pool);
-  return sorted.slice(0, 2);
-}
-
-function loadLastWarmupOffsetsMode(): OffsetsMode | null {
-  try {
-    const raw = localStorage.getItem(KEYS.lastWarmupOffsetsMode);
-    return raw === 'numToLetter' || raw === 'letterToNum' ? raw : null;
-  } catch {
-    return null;
-  }
-}
-
-export function saveLastWarmupOffsetsMode(mode: OffsetsMode): void {
-  try {
-    localStorage.setItem(KEYS.lastWarmupOffsetsMode, mode);
-  } catch {
-    // Ignore
-  }
-}
-
-/**
- * Returns the prescribed offsets mode for a workout round:
- * - Alternates each round within a workout session (Round 1 vs Round 2)
- * - Alternates starting mode across daily sessions (flips last session's warm-up mode)
- */
-export function getWorkoutOffsetsMode(round: number): OffsetsMode {
-  const lastMode = loadLastWarmupOffsetsMode();
-  // If first time ever, default round 1 to 'letterToNum'.
-  // Otherwise, alternate from the last practiced mode for round 1.
-  const round1Mode: OffsetsMode = lastMode === 'letterToNum' ? 'numToLetter' : 'letterToNum';
-
-  return round % 2 === 1
-    ? round1Mode
-    : (round1Mode === 'letterToNum' ? 'numToLetter' : 'letterToNum');
-}
-

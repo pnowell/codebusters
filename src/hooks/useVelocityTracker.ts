@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { loadDrillScore, saveDrillScore } from '../services/storage';
+import { loadDrillScore, recordDrillSession, saveDrillScore } from '../services/storage';
 import type { DrillId, DrillScore } from '../types';
 
 export interface HeatTierInfo {
@@ -27,14 +27,45 @@ export function useVelocityTracker(drillId: DrillId) {
   const correctTimestampsRef = useRef<number[]>([]);
   const lastCorrectTimeRef = useRef<number | null>(null);
   const recordAlertTimerRef = useRef<number | null>(null);
+  const mountedAtRef = useRef<number>(0);
+  const attemptsRef = useRef<number>(0);
+  const sessionBest60sRef = useRef<number>(0);
+  const flushedRef = useRef<boolean>(false);
+
+  const flushSession = useCallback(
+    (forceActivity = false) => {
+      if (flushedRef.current) return;
+      flushedRef.current = true;
+      const elapsedMs = mountedAtRef.current > 0 ? Date.now() - mountedAtRef.current : 0;
+      recordDrillSession(drillId, {
+        sessionBest60s: sessionBest60sRef.current,
+        elapsedMs,
+        attempts: attemptsRef.current,
+        forceActivity,
+      });
+    },
+    [drillId]
+  );
 
   useEffect(() => {
+    mountedAtRef.current = Date.now();
+    attemptsRef.current = 0;
+    sessionBest60sRef.current = 0;
+    flushedRef.current = false;
+
+    const handlePageHide = () => {
+      flushSession(false);
+    };
+    window.addEventListener('pagehide', handlePageHide);
+
     return () => {
+      window.removeEventListener('pagehide', handlePageHide);
+      flushSession(false);
       if (recordAlertTimerRef.current !== null) {
         window.clearTimeout(recordAlertTimerRef.current);
       }
     };
-  }, []);
+  }, [flushSession]);
 
   // Live 150ms interval: Prune 60s timestamps and smoothly decay cadence after 3.5s hold
   useEffect(() => {
@@ -64,6 +95,7 @@ export function useVelocityTracker(drillId: DrillId) {
 
   const recordHit = useCallback(() => {
     const now = Date.now();
+    attemptsRef.current += 1;
     const newStreak = streak + 1;
     setStreak(newStreak);
 
@@ -71,6 +103,7 @@ export function useVelocityTracker(drillId: DrillId) {
     correctTimestampsRef.current.push(now);
     const updated60s = correctTimestampsRef.current.filter((t) => now - t <= 60000).length;
     setCurrent60s(updated60s);
+    sessionBest60sRef.current = Math.max(sessionBest60sRef.current, updated60s);
     setSessionBest60s((prev) => Math.max(prev, updated60s));
 
     // High Score checks
@@ -106,6 +139,7 @@ export function useVelocityTracker(drillId: DrillId) {
   }, [drillId, scores.best60s, scores.bestStreak, streak]);
 
   const recordMiss = useCallback(() => {
+    attemptsRef.current += 1;
     setStreak(0);
   }, []);
 
@@ -123,5 +157,6 @@ export function useVelocityTracker(drillId: DrillId) {
     barPercent,
     recordHit,
     recordMiss,
+    flushSession,
   };
 }

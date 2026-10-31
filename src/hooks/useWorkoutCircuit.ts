@@ -1,10 +1,9 @@
 import { useState, useCallback, useMemo } from 'react';
 import { getDrill } from '../data/drills';
 import {
-  getNextWorkoutCiphers,
-  getWorkoutOffsetsMode,
-  saveLastWarmupOffsetsMode,
-} from '../services/storage';
+  pickWeightedWarmupDrill,
+  pickWeightedWorkoutCiphers,
+} from '../utils/workoutWeights';
 import type { DrillSection } from '../utils/routing';
 import type {
   CipherType,
@@ -20,7 +19,7 @@ interface WorkoutSession {
   currentStepIndex: number;
   results: WorkoutStepResult[];
   startTime: number;
-  offsetsMode: OffsetsMode;
+  offsetsMode?: OffsetsMode;
 }
 
 interface UseWorkoutCircuitOptions {
@@ -43,10 +42,10 @@ export function useWorkoutCircuit({
   const [workoutSummary, setWorkoutSummary] = useState<WorkoutSummaryData | null>(null);
 
   const startWorkout = useCallback(
-    (round: number, excludeCiphers: CipherType[] = []) => {
-      const nextCiphers = getNextWorkoutCiphers(unlockedCiphers, excludeCiphers);
-      const steps: CipherType[] = ['offsets', ...nextCiphers];
-      const offsetsMode = getWorkoutOffsetsMode(round);
+    (round: number) => {
+      const warmup = pickWeightedWarmupDrill(unlockedCiphers);
+      const nextCiphers = pickWeightedWorkoutCiphers(unlockedCiphers);
+      const steps: CipherType[] = [warmup.cipher, ...nextCiphers];
       setWorkoutSummary(null);
       setWorkoutSession({
         round,
@@ -54,9 +53,9 @@ export function useWorkoutCircuit({
         currentStepIndex: 0,
         results: [],
         startTime: Date.now(),
-        offsetsMode,
+        offsetsMode: warmup.offsetsMode,
       });
-      onNavigateToDrill('offsets', 'memorize');
+      onNavigateToDrill(warmup.cipher, 'memorize');
     },
     [unlockedCiphers, onNavigateToDrill]
   );
@@ -70,13 +69,10 @@ export function useWorkoutCircuit({
       const currentTitle =
         currentCipher === 'offsets' ? 'Letter Offsets' : getDrill(currentCipher).name;
 
-      if (currentStepIndex === 0 && stepResult?.offsetsMode) {
-        saveLastWarmupOffsetsMode(stepResult.offsetsMode);
-      }
-
       const recordedResult: WorkoutStepResult = {
         cipherId: currentCipher,
         title: currentTitle,
+        isWarmup: currentStepIndex === 0,
         ...stepResult,
       };
 

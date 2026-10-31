@@ -115,7 +115,7 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
         <div className="form-group">
           <label>Ciphers included in General Practice:</label>
           <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.45rem' }}>
-            Letter Offsets is always included as the warm-up step.
+            Letter Offsets is always included in the warm-up rotation.
           </div>
           <div className="cipher-checkbox-list">
             {IMPLEMENTED_DRILLS.filter((c) => c.id !== 'offsets').map((c) => {

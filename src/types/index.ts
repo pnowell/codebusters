@@ -67,6 +67,16 @@ export interface DrillScore {
   bestStreak: number;
 }
 
+export interface DrillSessionSample {
+  score60s: number;
+  timestamp: number;
+}
+
+export interface DrillHistoryEntry {
+  recentSessions: DrillSessionSample[];
+  lastPracticed: number;
+}
+
 export interface LetterProgress {
   streak: number;
   attempts: number;
@@ -80,6 +90,7 @@ export interface UserProfile {
   email: string;
   unlockedCiphers: CipherType[];
   drillProgress?: Partial<Record<DrillId, DrillProgress>>;
+  drillHistory?: Partial<Record<DrillId, DrillHistoryEntry>>;
   completedQuotes?: number[];
   practiceHistory?: Record<string, { count: number; lastPracticed: number }>;
   lastActiveAt?: unknown;
@@ -163,10 +174,11 @@ export type OffsetsMode = 'letterToNum' | 'numToLetter';
 export interface WorkoutStepResult {
   cipherId: CipherType;
   title: string;
+  isWarmup?: boolean;
   timeSeconds?: number;
   accuracy?: number;
   author?: string;
-  offsets60s?: number;
+  warmup60s?: number;
   offsetsMode?: OffsetsMode;
 }
 

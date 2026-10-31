@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { offsetsModeToDrillId } from '../../services/storage';
-import { formatClock } from '../../utils/format';
 import type { OffsetsMode, WorkoutStepContext } from '../../types';
 import { useSpacedDeck } from '../../hooks/useSpacedDeck';
 import { useVelocityTracker } from '../../hooks/useVelocityTracker';
 import { useFloatingGhosts } from '../../hooks/useFloatingGhosts';
+import { useWarmupTimer } from '../../hooks/useWarmupTimer';
 import { DrillHeader } from './shared/DrillHeader';
 import { DrillActionRow } from './shared/DrillActionRow';
+import { WarmupHeaderRight } from './shared/WarmupHeaderRight';
 import { AlphabetMasteryModal } from './shared/AlphabetMasteryModal';
 import { SpeedometerBar } from './shared/SpeedometerBar';
 import { FloatingGhosts } from './shared/FloatingGhosts';
@@ -70,6 +71,7 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
     barPercent,
     recordHit,
     recordMiss,
+    flushSession,
   } = useVelocityTracker(drillId);
 
   const { ghosts, spawnGhost, removeGhost } = useFloatingGhosts();
@@ -105,81 +107,141 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
     focusAnswerInput();
   };
 
-  const confirmAnswer = useCallback(() => {
-    if (wrongTimerRef.current !== null) return;
+  const skipWrongFeedback = useCallback((): boolean => {
+    if (wrongTimerRef.current === null) return false;
+    window.clearTimeout(wrongTimerRef.current);
+    wrongTimerRef.current = null;
+    setWrongFeedback(null);
+    setInputVal('');
+    advanceCard();
+    focusAnswerInput();
+    return true;
+  }, [advanceCard, focusAnswerInput]);
 
-    const trimmed = inputVal.trim().toUpperCase();
-    if (!trimmed) return;
+  const submitAnswerValue = useCallback(
+    (rawVal: string) => {
+      if (wrongTimerRef.current !== null) return;
 
-    const isCorrect =
-      promptType === 'letter'
-        ? parseInt(trimmed, 10) === currentOffset
-        : trimmed === currentLetter;
+      const trimmed = rawVal.trim().toUpperCase();
+      if (!trimmed) return;
+      if (promptType === 'number' && !/^[A-Z]$/.test(trimmed)) return;
 
-    onRecordAnswer(isCorrect);
+      const isCorrect =
+        promptType === 'letter'
+          ? parseInt(trimmed, 10) === currentOffset
+          : trimmed === currentLetter;
 
-    if (isCorrect) {
-      recordHit();
-      recordAttempt(true, true);
-      spawnGhost(`${currentLetter} = ${currentOffset} ✓`);
-      setInputVal('');
-      setWrongFeedback(null);
-      focusAnswerInput();
-    } else {
-      setWrongFeedback(promptType === 'letter' ? `${currentOffset}` : currentLetter);
-      recordMiss();
-      recordAttempt(false, false);
+      onRecordAnswer(isCorrect);
 
-      wrongTimerRef.current = window.setTimeout(() => {
-        wrongTimerRef.current = null;
-        setWrongFeedback(null);
+      if (isCorrect) {
+        recordHit();
+        recordAttempt(true, true);
+        spawnGhost(`${currentLetter} = ${currentOffset} ✓`);
         setInputVal('');
-        advanceCard();
+        setWrongFeedback(null);
         focusAnswerInput();
-      }, 1200);
-    }
-  }, [
-    advanceCard,
-    currentLetter,
-    currentOffset,
-    focusAnswerInput,
-    inputVal,
-    onRecordAnswer,
-    promptType,
-    recordAttempt,
-    recordHit,
-    recordMiss,
-    spawnGhost,
-  ]);
+      } else {
+        setWrongFeedback(promptType === 'letter' ? `${currentOffset}` : currentLetter);
+        recordMiss();
+        recordAttempt(false, false);
 
-  const latestRef = useRef({ confirmAnswer, promptType });
+        wrongTimerRef.current = window.setTimeout(() => {
+          wrongTimerRef.current = null;
+          setWrongFeedback(null);
+          setInputVal('');
+          advanceCard();
+          focusAnswerInput();
+        }, 1200);
+      }
+    },
+    [
+      advanceCard,
+      currentLetter,
+      currentOffset,
+      focusAnswerInput,
+      onRecordAnswer,
+      promptType,
+      recordAttempt,
+      recordHit,
+      recordMiss,
+      spawnGhost,
+    ]
+  );
+
+  const confirmAnswer = useCallback(() => {
+    submitAnswerValue(inputVal);
+  }, [inputVal, submitAnswerValue]);
+
+  const latestRef = useRef({
+    confirmAnswer,
+    submitAnswerValue,
+    skipWrongFeedback,
+    promptType,
+    wrongFeedback,
+  });
   useEffect(() => {
-    latestRef.current = { confirmAnswer, promptType };
-  }, [confirmAnswer, promptType]);
+    latestRef.current = {
+      confirmAnswer,
+      submitAnswerValue,
+      skipWrongFeedback,
+      promptType,
+      wrongFeedback,
+    };
+  }, [confirmAnswer, promptType, skipWrongFeedback, submitAnswerValue, wrongFeedback]);
 
   // Global typing listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (document.querySelector('[role="dialog"]')) return;
-      if (document.activeElement === answerInputRef.current) return;
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.target instanceof HTMLInputElement && e.target !== answerInputRef.current) return;
+      if (e.target instanceof HTMLTextAreaElement) return;
 
-      const { confirmAnswer: handleConfirm, promptType: currentPromptType } = latestRef.current;
+      const {
+        confirmAnswer: handleConfirm,
+        submitAnswerValue: handleSubmitVal,
+        skipWrongFeedback: handleSkipWrong,
+        promptType: currentPromptType,
+        wrongFeedback: isWrong,
+      } = latestRef.current;
+
+      if (currentPromptType === 'number') {
+        if (isWrong !== null) {
+          if (['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Tab'].includes(e.key)) {
+            return;
+          }
+          e.preventDefault();
+          handleSkipWrong();
+          return;
+        }
+
+        if (/^[a-zA-Z]$/.test(e.key)) {
+          e.preventDefault();
+          const ch = e.key.toUpperCase();
+          setInputVal(ch);
+          handleSubmitVal(ch);
+        } else if (e.key === 'Backspace') {
+          e.preventDefault();
+          setInputVal('');
+        }
+        return;
+      }
+
+      // Letter -> # mode: let focused native input handle digit entry & Enter
+      if (document.activeElement === answerInputRef.current) return;
 
       if (e.key === 'Enter') {
         e.preventDefault();
-        handleConfirm();
-      } else if (e.key === 'Backspace') {
+        if (!handleSkipWrong()) {
+          handleConfirm();
+        }
+      } else if (isWrong === null && e.key === 'Backspace') {
         e.preventDefault();
         setInputVal((prev) => prev.slice(0, -1));
         answerInputRef.current?.focus();
-      } else if (currentPromptType === 'letter' && e.key >= '0' && e.key <= '9') {
+      } else if (isWrong === null && e.key >= '0' && e.key <= '9') {
         e.preventDefault();
         setInputVal((prev) => (prev.length < 2 ? prev + e.key : e.key));
-        answerInputRef.current?.focus();
-      } else if (currentPromptType === 'number' && /^[a-zA-Z]$/.test(e.key)) {
-        e.preventDefault();
-        setInputVal(e.key.toUpperCase());
         answerInputRef.current?.focus();
       }
     };
@@ -188,44 +250,23 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const streakBadge = (
-    <div
-      className="streak-badge-compact"
-      title={`Current streak: ${streak} | Best: ${scores.bestStreak}`}
-    >
-      🔥 <strong>{streak}</strong> <small>({scores.bestStreak})</small>
-    </div>
-  );
+  const handleAdvanceWarmup = useCallback(() => {
+    flushSession(true);
+    workoutContext?.onAdvance({
+      warmup60s: sessionBest60s,
+      offsetsMode: mode,
+    });
+  }, [flushSession, mode, sessionBest60s, workoutContext]);
 
-  const headerRight = workoutContext ? (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-      {streakBadge}
-      {elapsedWarmup >= 120 ? (
-        <button
-          type="button"
-          className="btn-workout-next"
-          onClick={() =>
-            workoutContext.onAdvance({
-              offsets60s: sessionBest60s,
-              offsetsMode: mode,
-            })
-          }
-          title="Warm-up complete! Click to start next cipher"
-        >
-          Next: {workoutContext.nextCipherTitle || 'Next'} ➔
-        </button>
-      ) : (
-        <span
-          className="workout-warmup-timer"
-          onDoubleClick={onSkipWarmup}
-          title="Warm-up target: 2:00 (double-click to complete in testing)"
-        >
-          ⏱️ {formatClock(elapsedWarmup)} / 2:00
-        </span>
-      )}
-    </div>
-  ) : (
-    streakBadge
+  const headerRight = (
+    <WarmupHeaderRight
+      streak={streak}
+      bestStreak={scores.bestStreak}
+      workoutContext={workoutContext}
+      elapsedWarmup={elapsedWarmup}
+      onSkipWarmup={onSkipWarmup}
+      onAdvanceWarmup={handleAdvanceWarmup}
+    />
   );
 
   const modeLabel = mode === 'letterToNum' ? 'Letter → #' : '# → Letter';
@@ -317,21 +358,33 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
               autoComplete="off"
               spellCheck="false"
               enterKeyHint="done"
+              maxLength={promptType === 'number' ? 1 : 2}
               className="user-answer-native-input"
               value={inputVal}
               placeholder="?"
               onChange={(e) => {
                 const val = e.target.value.toUpperCase();
                 if (promptType === 'letter') {
+                  if (wrongTimerRef.current !== null) return;
                   setInputVal(val.replace(/[^0-9]/g, '').slice(0, 2));
                 } else {
-                  setInputVal(val.replace(/[^A-Z]/g, '').slice(-1));
+                  const ch = val.replace(/[^A-Z]/g, '').slice(-1);
+                  if (wrongTimerRef.current !== null) {
+                    skipWrongFeedback();
+                    return;
+                  }
+                  setInputVal(ch);
+                  if (ch) {
+                    submitAnswerValue(ch);
+                  }
                 }
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
-                  confirmAnswer();
+                  if (!skipWrongFeedback()) {
+                    confirmAnswer();
+                  }
                 }
               }}
             />
@@ -391,17 +444,9 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({
   workoutContext,
 }) => {
   const [mode, setMode] = useState<OffsetsMode>(workoutContext?.offsetsMode || 'letterToNum');
-  const [elapsedWarmup, setElapsedWarmup] = useState(0);
+  const { elapsedWarmup, skipWarmup } = useWarmupTimer(Boolean(workoutContext));
   const [totalQuestions, setTotalQuestions] = useState(0);
   const [correctQuestions, setCorrectQuestions] = useState(0);
-
-  useEffect(() => {
-    if (!workoutContext) return;
-    const interval = window.setInterval(() => {
-      setElapsedWarmup((s) => s + 1);
-    }, 1000);
-    return () => window.clearInterval(interval);
-  }, [workoutContext]);
 
   const handleRecordAnswer = useCallback((isCorrect: boolean) => {
     setTotalQuestions((prev) => prev + 1);
@@ -416,7 +461,7 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({
       mode={mode}
       onModeChange={setMode}
       elapsedWarmup={elapsedWarmup}
-      onSkipWarmup={() => setElapsedWarmup(120)}
+      onSkipWarmup={skipWarmup}
       totalQuestions={totalQuestions}
       correctQuestions={correctQuestions}
       onRecordAnswer={handleRecordAnswer}

@@ -35,21 +35,30 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
 
           <div className="summary-results-list">
             {summary.results.map((res, idx) => {
-              if (res.cipherId === 'offsets') {
+              if (res.isWarmup || res.cipherId === 'offsets') {
                 return (
                   <div key={idx} className="summary-result-row">
                     <div className="summary-row-left">
                       <span className="summary-row-badge">⏱️ Warm-up</span>
                       <span className="summary-row-name">
-                        Letter Offsets{' '}
-                        <small style={{ opacity: 0.75, fontWeight: 500 }}>
-                          ({res.offsetsMode === 'numToLetter' ? '# → Letter' : 'Letter → #'})
-                        </small>
+                        {res.cipherId === 'offsets' ? (
+                          <>
+                            Letter Offsets{' '}
+                            <small style={{ opacity: 0.75, fontWeight: 500 }}>
+                              ({res.offsetsMode === 'numToLetter' ? '# → Letter' : 'Letter → #'})
+                            </small>
+                          </>
+                        ) : (
+                          <>
+                            {res.title}{' '}
+                            <small style={{ opacity: 0.75, fontWeight: 500 }}>(Flashcards)</small>
+                          </>
+                        )}
                       </span>
                     </div>
                     <div className="summary-row-stats">
                       <span>
-                        60s Blitz: <strong>{res.offsets60s ?? 0}</strong>
+                        60s Blitz: <strong>{res.warmup60s ?? 0}</strong>
                       </span>
                     </div>
                   </div>
