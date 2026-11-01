@@ -6,13 +6,11 @@ import { useVelocityTracker } from '../../hooks/useVelocityTracker';
 import { useFloatingGhosts } from '../../hooks/useFloatingGhosts';
 import { useWarmupTimer } from '../../hooks/useWarmupTimer';
 import { DrillHeader } from './shared/DrillHeader';
-import { DrillActionRow } from './shared/DrillActionRow';
 import { WarmupHeaderRight } from './shared/WarmupHeaderRight';
 import { CollapsibleReference } from './shared/CollapsibleReference';
 import { ReferenceSheet } from './shared/ReferenceSheet';
 import { AlphabetMasteryModal } from './shared/AlphabetMasteryModal';
-import { SpeedometerBar } from './shared/SpeedometerBar';
-import { FloatingGhosts } from './shared/FloatingGhosts';
+import { FlashcardWorkspace } from './shared/FlashcardWorkspace';
 import { CipherGlyph } from './shared/CipherGlyph';
 import { LeaderboardModal } from '../leaderboard/LeaderboardModal';
 import { useAuth } from '../../context/useAuth';
@@ -29,19 +27,16 @@ const CIPHER_INFO = {
   atbash: {
     title: 'Atbash Cipher',
     shortTitle: 'Atbash',
-    prompt: 'What is the plaintext letter for Atbash:',
     sheetLabel: 'Atbash Table',
   },
   pigpen: {
     title: 'Pigpen / Masonic Cipher',
     shortTitle: 'Pigpen',
-    prompt: 'What is the plaintext letter for Pigpen:',
     sheetLabel: 'Pigpen Reference Table',
   },
   galactic: {
     title: 'Standard Galactic Alphabet',
     shortTitle: 'Galactic',
-    prompt: 'What is the plaintext letter for Galactic:',
     sheetLabel: 'Galactic Alphabet Table',
   },
 } as const;
@@ -186,10 +181,14 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
       if (document.querySelector('[role="dialog"]')) return;
       if (e.target instanceof HTMLInputElement && e.target !== answerInputRef.current) return;
       if (e.target instanceof HTMLTextAreaElement) return;
+      if (e.target instanceof HTMLButtonElement && (e.key === 'Enter' || e.key === ' ')) return;
 
       const { confirmAnswerWithChar: handleChar, wrongFeedback: isWrong } = latestRef.current;
 
       if (isWrong !== null) {
+        if (['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Tab'].includes(e.key)) {
+          return;
+        }
         e.preventDefault();
         handleChar('A');
         return;
@@ -218,43 +217,61 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
 
   const headerRight = (
     <WarmupHeaderRight
-      streak={streak}
-      bestStreak={scores.bestStreak}
       workoutContext={workoutContext}
       elapsedWarmup={elapsedWarmup}
       onSkipWarmup={skipWarmup}
       onAdvanceWarmup={handleAdvanceWarmup}
+      menuProps={{
+        streak,
+        bestStreak: scores.bestStreak,
+        current60s,
+        best60s: scores.best60s,
+        totalQuestions,
+        correctQuestions,
+        masteredCount,
+        onOpenMastery: () => setIsMasteryOpen(true),
+        onOpenLeaderboard: isAllowed ? () => setIsLeaderboardOpen(true) : undefined,
+        onCloseFocusRestore: focusAnswerInput,
+      }}
     />
   );
 
   const headerTitle = workoutContext ? `Warm-up: ${info.shortTitle}` : info.title;
 
+  const promptContent = (
+    <div className="symbol-glyph-box">
+      {cipher === 'atbash' ? (
+        <span
+          className="atbash-cipher-char"
+          aria-label={`Atbash ciphertext ${atbashChar(currentLetter)}`}
+        >
+          {atbashChar(currentLetter)}
+        </span>
+      ) : (
+        <CipherGlyph
+          cipher={cipher}
+          char={currentLetter}
+          size={68}
+          color="var(--accent-blue)"
+        />
+      )}
+    </div>
+  );
+
+  const wrongHintContent = wrongFeedback ? (
+    <>
+      Answer: <strong>{wrongFeedback}</strong>
+      {cipher === 'atbash' && (
+        <span className="answer-hint-pair">
+          · {atbashChar(wrongFeedback)} ↔ {wrongFeedback}
+        </span>
+      )}
+    </>
+  ) : undefined;
+
   return (
     <div className="drill-container symbol-drill-container">
       <DrillHeader title={headerTitle} onBack={onBack} right={headerRight} />
-
-      <div className="offsets-subbar" style={{ justifyContent: 'flex-end' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-          {isAllowed && (
-            <button
-              type="button"
-              className="leaderboard-chip-btn"
-              onClick={() => setIsLeaderboardOpen(true)}
-              title={`View Team Leaderboards for ${info.shortTitle}`}
-            >
-              🏆 Leaderboard
-            </button>
-          )}
-          <button
-            type="button"
-            className="mastery-chip-btn"
-            onClick={() => setIsMasteryOpen(true)}
-            title={`Click to view detailed Alphabet Mastery for ${info.shortTitle}`}
-          >
-            📊 {masteredCount}/26 Mastered
-          </button>
-        </div>
-      </div>
 
       <CollapsibleReference
         className="sticky-ref-container reference-sheet symbol-drill-ref-box"
@@ -263,118 +280,42 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
         <ReferenceSheet cipher={cipher} />
       </CollapsibleReference>
 
-      <SpeedometerBar
-        heat={heat}
-        current60s={current60s}
-        best60s={scores.best60s}
+      <FlashcardWorkspace
+        ghosts={ghosts}
+        onRemoveGhost={removeGhost}
+        heatTier={heat.tier}
         barPercent={barPercent}
         newRecordAlert={newRecordAlert}
+        best60s={scores.best60s}
+        isWrong={wrongFeedback !== null}
+        wrongHintContent={wrongHintContent}
+        promptContent={promptContent}
+        inputRef={answerInputRef}
+        inputVal={inputVal}
+        inputMode="text"
+        autoCapitalize="characters"
+        maxLength={1}
+        onInputChange={(e) => {
+          const char = e.target.value.replace(/[^A-Za-z]/g, '').slice(-1).toUpperCase();
+          setInputVal(char);
+          if (char) {
+            confirmAnswerWithChar(char);
+          }
+        }}
+        onInputKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            confirmAnswer();
+          }
+        }}
       />
-
-      <div className="offset-card-wrapper">
-        <FloatingGhosts ghosts={ghosts} onRemove={removeGhost} />
-
-        <div
-          className={`offset-card ${wrongFeedback ? 'feedback-wrong' : ''} ${
-            heat.tier === 'onfire'
-              ? 'card-onfire'
-              : heat.tier === 'overdrive'
-                ? 'card-overdrive'
-                : ''
-          }`}
-        >
-          <div className="prompt-label">{info.prompt}</div>
-
-          <div className="prompt-value symbol-prompt-value">
-            <div className="symbol-glyph-box">
-              {cipher === 'atbash' ? (
-                <span
-                  className="atbash-cipher-char"
-                  aria-label={`Atbash ciphertext ${atbashChar(currentLetter)}`}
-                >
-                  {atbashChar(currentLetter)}
-                </span>
-              ) : (
-                <CipherGlyph
-                  cipher={cipher}
-                  char={currentLetter}
-                  size={76}
-                  color="var(--accent-blue)"
-                />
-              )}
-            </div>
-          </div>
-
-          <div
-            className="user-answer-box-wrapper"
-            onClick={() => answerInputRef.current?.focus()}
-          >
-            <input
-              ref={answerInputRef}
-              type="text"
-              inputMode="text"
-              autoCapitalize="characters"
-              autoCorrect="off"
-              autoComplete="off"
-              spellCheck="false"
-              enterKeyHint="done"
-              className="user-answer-native-input"
-              value={inputVal}
-              placeholder="?"
-              maxLength={1}
-              onChange={(e) => {
-                const char = e.target.value.replace(/[^A-Za-z]/g, '').slice(-1).toUpperCase();
-                setInputVal(char);
-                if (char) {
-                  confirmAnswerWithChar(char);
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  confirmAnswer();
-                }
-              }}
-            />
-          </div>
-
-          {wrongFeedback && (
-            <div className="answer-hint">
-              Answer was: <strong>{wrongFeedback}</strong>
-              {cipher === 'atbash' && (
-                <small style={{ display: 'block', marginTop: '4px', opacity: 0.8 }}>
-                  ({atbashChar(wrongFeedback)} ↔ {wrongFeedback})
-                </small>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <DrillActionRow
-        info={
-          <>
-            Accuracy:{' '}
-            <strong>
-              {totalQuestions > 0 ? Math.round((correctQuestions / totalQuestions) * 100) : 100}%
-            </strong>{' '}
-            ({correctQuestions}/{totalQuestions})
-          </>
-        }
-      >
-        <button
-          type="button"
-          className="btn-submit"
-          onClick={confirmAnswer}
-          disabled={!inputVal || wrongFeedback !== null}
-        >
-          Submit Answer ⏎
-        </button>
-      </DrillActionRow>
 
       <AlphabetMasteryModal
         isOpen={isMasteryOpen}
-        onClose={() => setIsMasteryOpen(false)}
+        onClose={() => {
+          setIsMasteryOpen(false);
+          focusAnswerInput();
+        }}
         progress={progress}
         onResetProgress={handleResetProgress}
         currentLetter={currentLetter}
@@ -385,7 +326,10 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
       {isAllowed && (
         <LeaderboardModal
           isOpen={isLeaderboardOpen}
-          onClose={() => setIsLeaderboardOpen(false)}
+          onClose={() => {
+            setIsLeaderboardOpen(false);
+            focusAnswerInput();
+          }}
           initialDrill={cipher}
         />
       )}

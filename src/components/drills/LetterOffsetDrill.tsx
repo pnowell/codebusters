@@ -6,11 +6,9 @@ import { useVelocityTracker } from '../../hooks/useVelocityTracker';
 import { useFloatingGhosts } from '../../hooks/useFloatingGhosts';
 import { useWarmupTimer } from '../../hooks/useWarmupTimer';
 import { DrillHeader } from './shared/DrillHeader';
-import { DrillActionRow } from './shared/DrillActionRow';
 import { WarmupHeaderRight } from './shared/WarmupHeaderRight';
 import { AlphabetMasteryModal } from './shared/AlphabetMasteryModal';
-import { SpeedometerBar } from './shared/SpeedometerBar';
-import { FloatingGhosts } from './shared/FloatingGhosts';
+import { FlashcardWorkspace } from './shared/FlashcardWorkspace';
 import { LeaderboardModal } from '../leaderboard/LeaderboardModal';
 import { useAuth } from '../../context/useAuth';
 
@@ -196,6 +194,7 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
       if (document.querySelector('[role="dialog"]')) return;
       if (e.target instanceof HTMLInputElement && e.target !== answerInputRef.current) return;
       if (e.target instanceof HTMLTextAreaElement) return;
+      if (e.target instanceof HTMLButtonElement && (e.key === 'Enter' || e.key === ' ')) return;
 
       const {
         confirmAnswer: handleConfirm,
@@ -258,170 +257,108 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
     });
   }, [flushSession, mode, sessionBest60s, workoutContext]);
 
+  const modeLabel = mode === 'letterToNum' ? 'Letter → #' : '# → Letter';
+  const headerTitle = workoutContext ? `Warm-up: ${modeLabel}` : `Offsets: ${modeLabel}`;
+
   const headerRight = (
     <WarmupHeaderRight
-      streak={streak}
-      bestStreak={scores.bestStreak}
       workoutContext={workoutContext}
       elapsedWarmup={elapsedWarmup}
       onSkipWarmup={onSkipWarmup}
       onAdvanceWarmup={handleAdvanceWarmup}
+      menuProps={{
+        streak,
+        bestStreak: scores.bestStreak,
+        current60s,
+        best60s: scores.best60s,
+        totalQuestions,
+        correctQuestions,
+        masteredCount,
+        onOpenMastery: () => setIsModalOpen(true),
+        onOpenLeaderboard: isAllowed ? () => setIsLeaderboardOpen(true) : undefined,
+        modeOptions: MODES,
+        activeMode: mode,
+        onSelectMode: (newMode) => onModeChange(newMode as OffsetsMode),
+        onCloseFocusRestore: focusAnswerInput,
+      }}
     />
   );
-
-  const modeLabel = mode === 'letterToNum' ? 'Letter → #' : '# → Letter';
-  const headerTitle = workoutContext ? `Warm-up: ${modeLabel}` : 'Letter Offsets';
 
   return (
     <div className="drill-container">
       <DrillHeader title={headerTitle} onBack={onBack} right={headerRight} />
 
-      <div className="offsets-subbar">
-        <div className="mode-selector" style={{ margin: 0 }}>
-          {MODES.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              className={`mode-btn ${mode === m.id ? 'active' : ''}`}
-              onClick={(e) => {
-                e.currentTarget.blur();
-                if (m.id !== mode) onModeChange(m.id);
-              }}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-          {isAllowed && (
-            <button
-              type="button"
-              className="leaderboard-chip-btn"
-              onClick={() => setIsLeaderboardOpen(true)}
-              title="View Team Leaderboard for this mode"
-            >
-              🏆 Leaderboard
-            </button>
-          )}
-          <button
-            type="button"
-            className="mastery-chip-btn"
-            onClick={() => setIsModalOpen(true)}
-            title={`Click to view detailed Alphabet Mastery & letter streaks for ${modeLabel}`}
-          >
-            📊 {masteredCount}/26 Mastered
-          </button>
-        </div>
-      </div>
-
-      <SpeedometerBar
-        heat={heat}
-        current60s={current60s}
-        best60s={scores.best60s}
+      <FlashcardWorkspace
+        ghosts={ghosts}
+        onRemoveGhost={removeGhost}
+        heatTier={heat.tier}
         barPercent={barPercent}
         newRecordAlert={newRecordAlert}
-      />
-
-      <div className="offset-card-wrapper">
-        <FloatingGhosts ghosts={ghosts} onRemove={removeGhost} />
-
-        <div
-          className={`offset-card ${wrongFeedback ? 'feedback-wrong' : ''} ${
-            heat.tier === 'onfire'
-              ? 'card-onfire'
-              : heat.tier === 'overdrive'
-                ? 'card-overdrive'
-                : ''
-          }`}
-        >
-          <div className="prompt-label">
-            {promptType === 'letter'
-              ? 'What is the number offset for:'
-              : 'Which letter has offset:'}
-          </div>
-          <div className="prompt-value">
+        best60s={scores.best60s}
+        isWrong={wrongFeedback !== null}
+        wrongHintContent={
+          wrongFeedback ? (
+            <>
+              Answer: <strong>{wrongFeedback}</strong>
+            </>
+          ) : undefined
+        }
+        promptContent={
+          <span className="prompt-value">
             {promptType === 'letter' ? currentLetter : currentOffset}
-          </div>
-
-          <div
-            className="user-answer-box-wrapper"
-            onClick={() => answerInputRef.current?.focus()}
-          >
-            <input
-              ref={answerInputRef}
-              type="text"
-              inputMode={promptType === 'letter' ? 'numeric' : 'text'}
-              pattern={promptType === 'letter' ? '[0-9]*' : undefined}
-              autoCapitalize={promptType === 'number' ? 'characters' : 'off'}
-              autoCorrect="off"
-              autoComplete="off"
-              spellCheck="false"
-              enterKeyHint="done"
-              maxLength={promptType === 'number' ? 1 : 2}
-              className="user-answer-native-input"
-              value={inputVal}
-              placeholder="?"
-              onChange={(e) => {
-                const val = e.target.value.toUpperCase();
-                if (promptType === 'letter') {
-                  if (wrongTimerRef.current !== null) return;
-                  setInputVal(val.replace(/[^0-9]/g, '').slice(0, 2));
-                } else {
-                  const ch = val.replace(/[^A-Z]/g, '').slice(-1);
-                  if (wrongTimerRef.current !== null) {
-                    skipWrongFeedback();
-                    return;
-                  }
-                  setInputVal(ch);
-                  if (ch) {
-                    submitAnswerValue(ch);
-                  }
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
+          </span>
+        }
+        inputRef={answerInputRef}
+        inputVal={inputVal}
+        inputMode={promptType === 'letter' ? 'numeric' : 'text'}
+        pattern={promptType === 'letter' ? '[0-9]*' : undefined}
+        autoCapitalize={promptType === 'number' ? 'characters' : 'off'}
+        maxLength={promptType === 'number' ? 1 : 2}
+        onInputChange={(e) => {
+          const val = e.target.value.toUpperCase();
+          if (promptType === 'letter') {
+            if (wrongTimerRef.current !== null) return;
+            setInputVal(val.replace(/[^0-9]/g, '').slice(0, 2));
+          } else {
+            const ch = val.replace(/[^A-Z]/g, '').slice(-1);
+            if (wrongTimerRef.current !== null) {
+              skipWrongFeedback();
+              return;
+            }
+            setInputVal(ch);
+            if (ch) {
+              submitAnswerValue(ch);
+            }
+          }
+        }}
+        onInputKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            if (!skipWrongFeedback()) {
+              confirmAnswer();
+            }
+          }
+        }}
+        inlineSubmit={
+          promptType === 'letter'
+            ? {
+                onSubmit: () => {
                   if (!skipWrongFeedback()) {
                     confirmAnswer();
                   }
-                }
-              }}
-            />
-          </div>
-
-          {wrongFeedback && (
-            <div className="answer-hint">
-              Answer was: <strong>{wrongFeedback}</strong>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <DrillActionRow
-        info={
-          <>
-            Accuracy:{' '}
-            <strong>
-              {totalQuestions > 0 ? Math.round((correctQuestions / totalQuestions) * 100) : 100}%
-            </strong>{' '}
-            ({correctQuestions}/{totalQuestions})
-          </>
+                },
+                disabled: !inputVal && wrongFeedback === null,
+              }
+            : undefined
         }
-      >
-        <button
-          type="button"
-          className="btn-submit"
-          onClick={confirmAnswer}
-          disabled={!inputVal || wrongFeedback !== null}
-        >
-          Submit Answer ⏎
-        </button>
-      </DrillActionRow>
+      />
 
       <AlphabetMasteryModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => {
+          setIsModalOpen(false);
+          focusAnswerInput();
+        }}
         progress={progress}
         onResetProgress={handleResetProgress}
         currentOffset={currentOffset}
@@ -431,7 +368,10 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
       {isAllowed && (
         <LeaderboardModal
           isOpen={isLeaderboardOpen}
-          onClose={() => setIsLeaderboardOpen(false)}
+          onClose={() => {
+            setIsLeaderboardOpen(false);
+            focusAnswerInput();
+          }}
           initialMode={mode}
         />
       )}
