@@ -273,42 +273,46 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
     <div className="drill-container symbol-drill-container">
       <DrillHeader title={headerTitle} onBack={onBack} right={headerRight} />
 
-      <CollapsibleReference
-        className="sticky-ref-container reference-sheet symbol-drill-ref-box"
-        showLabel={`Show ${info.sheetLabel}`}
-      >
-        <ReferenceSheet cipher={cipher} />
-      </CollapsibleReference>
+      <div className="drill-stage-viewport">
+        <div className="drill-stage-group">
+          <CollapsibleReference
+            className="sticky-ref-container reference-sheet symbol-drill-ref-box"
+            showLabel={`Show ${info.sheetLabel}`}
+          >
+            <ReferenceSheet cipher={cipher} />
+          </CollapsibleReference>
 
-      <FlashcardWorkspace
-        ghosts={ghosts}
-        onRemoveGhost={removeGhost}
-        heatTier={heat.tier}
-        barPercent={barPercent}
-        newRecordAlert={newRecordAlert}
-        best60s={scores.best60s}
-        isWrong={wrongFeedback !== null}
-        wrongHintContent={wrongHintContent}
-        promptContent={promptContent}
-        inputRef={answerInputRef}
-        inputVal={inputVal}
-        inputMode="text"
-        autoCapitalize="characters"
-        maxLength={1}
-        onInputChange={(e) => {
-          const char = e.target.value.replace(/[^A-Za-z]/g, '').slice(-1).toUpperCase();
-          setInputVal(char);
-          if (char) {
-            confirmAnswerWithChar(char);
-          }
-        }}
-        onInputKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            confirmAnswer();
-          }
-        }}
-      />
+          <FlashcardWorkspace
+            ghosts={ghosts}
+            onRemoveGhost={removeGhost}
+            heatTier={heat.tier}
+            barPercent={barPercent}
+            newRecordAlert={newRecordAlert}
+            best60s={scores.best60s}
+            isWrong={wrongFeedback !== null}
+            wrongHintContent={wrongHintContent}
+            promptContent={promptContent}
+            inputRef={answerInputRef}
+            inputVal={inputVal}
+            inputMode="text"
+            autoCapitalize="characters"
+            maxLength={1}
+            onInputChange={(e) => {
+              const char = e.target.value.replace(/[^A-Za-z]/g, '').slice(-1).toUpperCase();
+              setInputVal(char);
+              if (char) {
+                confirmAnswerWithChar(char);
+              }
+            }}
+            onInputKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                confirmAnswer();
+              }
+            }}
+          />
+        </div>
+      </div>
 
       <AlphabetMasteryModal
         isOpen={isMasteryOpen}

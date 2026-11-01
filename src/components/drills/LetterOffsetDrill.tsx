@@ -290,70 +290,74 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
     <div className="drill-container">
       <DrillHeader title={headerTitle} onBack={onBack} right={headerRight} />
 
-      <FlashcardWorkspace
-        ghosts={ghosts}
-        onRemoveGhost={removeGhost}
-        heatTier={heat.tier}
-        barPercent={barPercent}
-        newRecordAlert={newRecordAlert}
-        best60s={scores.best60s}
-        isWrong={wrongFeedback !== null}
-        wrongHintContent={
-          wrongFeedback ? (
-            <>
-              Answer: <strong>{wrongFeedback}</strong>
-            </>
-          ) : undefined
-        }
-        promptContent={
-          <span className="prompt-value">
-            {promptType === 'letter' ? currentLetter : currentOffset}
-          </span>
-        }
-        inputRef={answerInputRef}
-        inputVal={inputVal}
-        inputMode={promptType === 'letter' ? 'numeric' : 'text'}
-        pattern={promptType === 'letter' ? '[0-9]*' : undefined}
-        autoCapitalize={promptType === 'number' ? 'characters' : 'off'}
-        maxLength={promptType === 'number' ? 1 : 2}
-        onInputChange={(e) => {
-          const val = e.target.value.toUpperCase();
-          if (promptType === 'letter') {
-            if (wrongTimerRef.current !== null) return;
-            setInputVal(val.replace(/[^0-9]/g, '').slice(0, 2));
-          } else {
-            const ch = val.replace(/[^A-Z]/g, '').slice(-1);
-            if (wrongTimerRef.current !== null) {
-              skipWrongFeedback();
-              return;
+      <div className="drill-stage-viewport">
+        <div className="drill-stage-group">
+          <FlashcardWorkspace
+            ghosts={ghosts}
+            onRemoveGhost={removeGhost}
+            heatTier={heat.tier}
+            barPercent={barPercent}
+            newRecordAlert={newRecordAlert}
+            best60s={scores.best60s}
+            isWrong={wrongFeedback !== null}
+            wrongHintContent={
+              wrongFeedback ? (
+                <>
+                  Answer: <strong>{wrongFeedback}</strong>
+                </>
+              ) : undefined
             }
-            setInputVal(ch);
-            if (ch) {
-              submitAnswerValue(ch);
+            promptContent={
+              <span className="prompt-value">
+                {promptType === 'letter' ? currentLetter : currentOffset}
+              </span>
             }
-          }
-        }}
-        onInputKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            if (!skipWrongFeedback()) {
-              confirmAnswer();
-            }
-          }
-        }}
-        inlineSubmit={
-          promptType === 'letter'
-            ? {
-                onSubmit: () => {
-                  if (!skipWrongFeedback()) {
-                    confirmAnswer();
-                  }
-                },
-                disabled: !inputVal && wrongFeedback === null,
+            inputRef={answerInputRef}
+            inputVal={inputVal}
+            inputMode={promptType === 'letter' ? 'numeric' : 'text'}
+            pattern={promptType === 'letter' ? '[0-9]*' : undefined}
+            autoCapitalize={promptType === 'number' ? 'characters' : 'off'}
+            maxLength={promptType === 'number' ? 1 : 2}
+            onInputChange={(e) => {
+              const val = e.target.value.toUpperCase();
+              if (promptType === 'letter') {
+                if (wrongTimerRef.current !== null) return;
+                setInputVal(val.replace(/[^0-9]/g, '').slice(0, 2));
+              } else {
+                const ch = val.replace(/[^A-Z]/g, '').slice(-1);
+                if (wrongTimerRef.current !== null) {
+                  skipWrongFeedback();
+                  return;
+                }
+                setInputVal(ch);
+                if (ch) {
+                  submitAnswerValue(ch);
+                }
               }
-            : undefined
-        }
-      />
+            }}
+            onInputKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                if (!skipWrongFeedback()) {
+                  confirmAnswer();
+                }
+              }
+            }}
+            inlineSubmit={
+              promptType === 'letter'
+                ? {
+                    onSubmit: () => {
+                      if (!skipWrongFeedback()) {
+                        confirmAnswer();
+                      }
+                    },
+                    disabled: !inputVal && wrongFeedback === null,
+                  }
+                : undefined
+            }
+          />
+        </div>
+      </div>
 
       <AlphabetMasteryModal
         isOpen={isModalOpen}

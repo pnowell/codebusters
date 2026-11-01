@@ -52,74 +52,76 @@ export const FlashcardWorkspace: React.FC<FlashcardWorkspaceProps> = ({
     : 0;
 
   return (
-    <div className="offset-card-wrapper">
+    <div className="workspace-anchor">
       <FloatingGhosts ghosts={ghosts} onRemove={onRemoveGhost} />
 
-      <div
-        className={`offset-card workspace-tier-${heatTier} ${isWrong ? 'feedback-wrong' : ''}`}
-      >
-        <div className="workspace-pace-track" aria-hidden="true">
-          <div
-            className="workspace-pace-fill"
-            style={{ width: `${clampedPercent}%` }}
-          />
-        </div>
-
-        <div className="workspace-horizontal-row">
-          <div className="workspace-prompt-side">{promptContent}</div>
-
-          <div className="workspace-divider" aria-hidden="true">
-            →
-          </div>
-
-          <div className="workspace-input-side">
+      <div className="offset-card-wrapper">
+        <div
+          className={`offset-card workspace-tier-${heatTier} ${isWrong ? 'feedback-wrong' : ''}`}
+        >
+          <div className="workspace-pace-track" aria-hidden="true">
             <div
-              className="user-answer-box-wrapper"
-              onClick={() => inputRef.current?.focus()}
-            >
-              <input
-                ref={inputRef}
-                type="text"
-                inputMode={inputMode}
-                pattern={pattern}
-                autoCapitalize={autoCapitalize}
-                autoCorrect="off"
-                autoComplete="off"
-                spellCheck="false"
-                enterKeyHint="done"
-                maxLength={maxLength}
-                className="user-answer-native-input"
-                value={inputVal}
-                placeholder="?"
-                onChange={onInputChange}
-                onKeyDown={onInputKeyDown}
-              />
-            </div>
-
-            {inlineSubmit && (
-              <button
-                type="button"
-                className="btn-inline-submit"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={inlineSubmit.onSubmit}
-                disabled={inlineSubmit.disabled}
-                title="Submit Answer (Enter)"
-                aria-label="Submit Answer"
-              >
-                ⏎
-              </button>
-            )}
+              className="workspace-pace-fill"
+              style={{ width: `${clampedPercent}%` }}
+            />
           </div>
-        </div>
 
-        <div className="workspace-hint-slot" aria-live="polite">
-          {isWrong && wrongHintContent ? (
-            <div className="answer-hint">{wrongHintContent}</div>
-          ) : newRecordAlert ? (
-            <div className="workspace-new-best-pill" role="status">
-              ★ NEW 60s BEST: {best60s}
+          <div className="workspace-horizontal-row">
+            <div className="workspace-prompt-side">{promptContent}</div>
+
+            <div className="workspace-divider" aria-hidden="true">
+              →
             </div>
-          ) : null}
+
+            <div className="workspace-input-side">
+              <div
+                className="user-answer-box-wrapper"
+                onClick={() => inputRef.current?.focus()}
+              >
+                <input
+                  ref={inputRef}
+                  type="text"
+                  inputMode={inputMode}
+                  pattern={pattern}
+                  autoCapitalize={autoCapitalize}
+                  autoCorrect="off"
+                  autoComplete="off"
+                  spellCheck="false"
+                  enterKeyHint="done"
+                  maxLength={maxLength}
+                  className="user-answer-native-input"
+                  value={inputVal}
+                  placeholder="?"
+                  onChange={onInputChange}
+                  onKeyDown={onInputKeyDown}
+                />
+              </div>
+
+              {inlineSubmit && (
+                <button
+                  type="button"
+                  className="btn-inline-submit"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={inlineSubmit.onSubmit}
+                  disabled={inlineSubmit.disabled}
+                  title="Submit Answer (Enter)"
+                  aria-label="Submit Answer"
+                >
+                  ⏎
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="workspace-hint-slot" aria-live="polite">
+            {isWrong && wrongHintContent ? (
+              <div className="answer-hint">{wrongHintContent}</div>
+            ) : newRecordAlert ? (
+              <div className="workspace-new-best-pill" role="status">
+                ★ NEW 60s BEST: {best60s}
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
