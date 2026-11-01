@@ -13,6 +13,8 @@ import { LeaderboardModal } from '../leaderboard/LeaderboardModal';
 import { useAuth } from '../../context/useAuth';
 
 interface LetterOffsetDrillProps {
+  initialMode?: OffsetsMode;
+  onModeChange?: (mode: OffsetsMode) => void;
   onBack: () => void;
   workoutContext?: WorkoutStepContext;
 }
@@ -380,13 +382,27 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
 };
 
 export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({
+  initialMode,
+  onModeChange,
   onBack,
   workoutContext,
 }) => {
-  const [mode, setMode] = useState<OffsetsMode>(workoutContext?.offsetsMode || 'letterToNum');
+  const [mode, setMode] = useState<OffsetsMode>(
+    workoutContext?.offsetsMode ?? initialMode ?? 'letterToNum'
+  );
   const { elapsedWarmup, skipWarmup } = useWarmupTimer(Boolean(workoutContext));
   const [totalQuestions, setTotalQuestions] = useState(0);
   const [correctQuestions, setCorrectQuestions] = useState(0);
+
+  const handleModeChange = useCallback(
+    (newMode: OffsetsMode) => {
+      setMode(newMode);
+      if (!workoutContext) {
+        onModeChange?.(newMode);
+      }
+    },
+    [onModeChange, workoutContext]
+  );
 
   const handleRecordAnswer = useCallback((isCorrect: boolean) => {
     setTotalQuestions((prev) => prev + 1);
@@ -399,7 +415,7 @@ export const LetterOffsetDrill: React.FC<LetterOffsetDrillProps> = ({
     <OffsetsSession
       key={mode}
       mode={mode}
-      onModeChange={setMode}
+      onModeChange={handleModeChange}
       elapsedWarmup={elapsedWarmup}
       onSkipWarmup={skipWarmup}
       totalQuestions={totalQuestions}

@@ -1,20 +1,27 @@
 import { isCipherType, type CipherType } from '../data/drills';
+import type { OffsetsMode } from '../types';
 
 export type DrillSection = 'memorize' | 'cipher';
 
 export interface Route {
   drill: CipherType | null;
   section?: DrillSection;
+  offsetsMode?: OffsetsMode;
   quoteId?: number;
   testId?: string;
   testsList?: boolean;
   resultsTestId?: string;
 }
 
+function isOffsetsMode(val: string | null): val is OffsetsMode {
+  return val === 'letterToNum' || val === 'numToLetter';
+}
+
 export function parseUrlRoute(search = window.location.search): Route {
   const p = new URLSearchParams(search);
   const cipherParam = p.get('cipher');
   const drillParam = p.get('drill');
+  const modeParam = p.get('mode');
   const q = p.get('q');
   const test = p.get('test');
   const tests = p.get('tests');
@@ -35,6 +42,7 @@ export function parseUrlRoute(search = window.location.search): Route {
   return {
     drill,
     section,
+    offsetsMode: drill === 'offsets' && isOffsetsMode(modeParam) ? modeParam : undefined,
     quoteId: Number.isNaN(quoteId) ? undefined : quoteId,
     testId: test || undefined,
     testsList: tests === 'true' || tests === '1' || Boolean(results),
@@ -42,7 +50,7 @@ export function parseUrlRoute(search = window.location.search): Route {
   };
 }
 
-/** Returns a URL for the current path with drill/cipher/q/test/tests/results set (or removed), preserving other params like ?unlocked. */
+/** Returns a URL for the current path with drill/cipher/mode/q/test/tests/results set (or removed), preserving other params like ?unlocked. */
 export function buildRouteUrl(route: Route): string {
   const p = new URLSearchParams(window.location.search);
   if (route.drill) {
@@ -57,6 +65,9 @@ export function buildRouteUrl(route: Route): string {
     p.delete('drill');
     p.delete('cipher');
   }
+
+  if (route.drill === 'offsets' && route.offsetsMode) p.set('mode', route.offsetsMode);
+  else p.delete('mode');
 
   if (route.drill && route.quoteId !== undefined) p.set('q', String(route.quoteId));
   else p.delete('q');

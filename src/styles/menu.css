@@ -112,3 +112,33 @@
 .menu-drill-btn:active:not(:disabled) {
   transform: translateY(0);
 }
+
+.menu-drill-group {
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 0.5rem 0.6rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.menu-drill-group-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 0 0.35rem;
+  letter-spacing: 0.015em;
+}
+
+.menu-drill-group-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem;
+}
+
+.menu-drill-subbtn {
+  text-align: center;
+  padding: 0.8rem 0.75rem;
+  border-radius: 8px;
+}

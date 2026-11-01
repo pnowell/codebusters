@@ -1,5 +1,6 @@
 import React from 'react';
 import { COMING_SOON_DRILLS, type CipherType } from '../../data/drills';
+import type { OffsetsMode } from '../../types';
 import type { DrillSection } from '../../utils/routing';
 import { UserAuthBadge } from '../auth/UserAuthBadge';
 
@@ -10,7 +11,7 @@ interface MainMenuProps {
   onOpenTestsList: () => void;
   onOpenLeaderboard: () => void;
   onOpenOptions: () => void;
-  onSelectDrill: (drill: CipherType, section: DrillSection) => void;
+  onSelectDrill: (drill: CipherType, section: DrillSection, offsetsMode?: OffsetsMode) => void;
 }
 
 export const MainMenu: React.FC<MainMenuProps> = ({
@@ -73,13 +74,29 @@ export const MainMenu: React.FC<MainMenuProps> = ({
       </div>
 
       <div className="menu-buttons-list">
-        <button
-          type="button"
-          className="menu-drill-btn"
-          onClick={() => onSelectDrill('offsets', 'memorize')}
-        >
-          Letter Offsets
-        </button>
+        <div className="menu-drill-group" role="group" aria-labelledby="menu-offsets-group-label">
+          <div id="menu-offsets-group-label" className="menu-drill-group-label">
+            Letter Offsets
+          </div>
+          <div className="menu-drill-group-row">
+            <button
+              type="button"
+              className="menu-drill-btn menu-drill-subbtn"
+              onClick={() => onSelectDrill('offsets', 'memorize', 'letterToNum')}
+              aria-label="Letter Offsets: Letter to Number"
+            >
+              Letter → #
+            </button>
+            <button
+              type="button"
+              className="menu-drill-btn menu-drill-subbtn"
+              onClick={() => onSelectDrill('offsets', 'memorize', 'numToLetter')}
+              aria-label="Letter Offsets: Number to Letter"
+            >
+              # → Letter
+            </button>
+          </div>
+        </div>
         <button
           type="button"
           className="menu-drill-btn"

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import type {
   CipherType,
+  OffsetsMode,
   UserSettings,
   TestPacket,
   TestAttempt,
@@ -61,7 +62,13 @@ const TestResultsView = lazy(() =>
 
 type ActiveScreen =
   | { kind: 'menu' }
-  | { kind: 'drill'; drill: CipherType; section: DrillSection; quoteId?: number }
+  | {
+      kind: 'drill';
+      drill: CipherType;
+      section: DrillSection;
+      offsetsMode?: OffsetsMode;
+      quoteId?: number;
+    }
   | { kind: 'testsList' }
   | { kind: 'testRunner'; testPacket: TestPacket; initialAttempt: TestAttempt | null }
   | {
@@ -94,6 +101,7 @@ function initScreen(): ActiveScreen {
       kind: 'drill',
       drill: route.drill,
       section: route.section || 'memorize',
+      offsetsMode: route.offsetsMode,
       quoteId: route.quoteId,
     };
   }
@@ -125,14 +133,15 @@ export const App: React.FC = () => {
       drill: CipherType,
       section: DrillSection = 'memorize',
       quoteId?: number,
-      replaceHistory = false
+      replaceHistory = false,
+      offsetsMode?: OffsetsMode
     ) => {
-      setScreen({ kind: 'drill', drill, section, quoteId });
-      const newUrl = buildRouteUrl({ drill, section, quoteId });
+      setScreen({ kind: 'drill', drill, section, offsetsMode, quoteId });
+      const newUrl = buildRouteUrl({ drill, section, offsetsMode, quoteId });
       if (replaceHistory) {
-        window.history.replaceState({ drill, section, quoteId }, '', newUrl);
+        window.history.replaceState({ drill, section, offsetsMode, quoteId }, '', newUrl);
       } else {
-        window.history.pushState({ drill, section, quoteId }, '', newUrl);
+        window.history.pushState({ drill, section, offsetsMode, quoteId }, '', newUrl);
       }
     },
     []
@@ -323,6 +332,7 @@ export const App: React.FC = () => {
           kind: 'drill',
           drill: route.drill,
           section: route.section || 'memorize',
+          offsetsMode: route.offsetsMode,
           quoteId: route.quoteId,
         });
       } else if (route.testId) {
@@ -371,7 +381,12 @@ export const App: React.FC = () => {
       window.history.replaceState({ drill: null }, '', window.location.pathname);
       const drillUrl = `${window.location.pathname}${window.location.search}`;
       window.history.pushState(
-        { drill: route.drill, section: route.section, quoteId: route.quoteId },
+        {
+          drill: route.drill,
+          section: route.section,
+          offsetsMode: route.offsetsMode,
+          quoteId: route.quoteId,
+        },
         '',
         drillUrl
       );
@@ -471,14 +486,37 @@ export const App: React.FC = () => {
       const newUrl = buildRouteUrl({
         drill: prev.drill,
         section: prev.section,
+        offsetsMode: prev.offsetsMode,
         quoteId: newQuoteId,
       });
       window.history.replaceState(
-        { drill: prev.drill, section: prev.section, quoteId: newQuoteId },
+        {
+          drill: prev.drill,
+          section: prev.section,
+          offsetsMode: prev.offsetsMode,
+          quoteId: newQuoteId,
+        },
         '',
         newUrl
       );
       return { ...prev, quoteId: newQuoteId };
+    });
+  }, []);
+
+  const handleOffsetsModeChange = useCallback((newMode: OffsetsMode) => {
+    setScreen((prev) => {
+      if (prev.kind !== 'drill' || prev.drill !== 'offsets') return prev;
+      const newUrl = buildRouteUrl({
+        drill: prev.drill,
+        section: prev.section,
+        offsetsMode: newMode,
+      });
+      window.history.replaceState(
+        { drill: prev.drill, section: prev.section, offsetsMode: newMode },
+        '',
+        newUrl
+      );
+      return { ...prev, offsetsMode: newMode };
     });
   }, []);
 
@@ -527,7 +565,9 @@ export const App: React.FC = () => {
           onOpenTestsList={handleOpenTestsList}
           onOpenLeaderboard={openLeaderboard}
           onOpenOptions={openOptions}
-          onSelectDrill={(drill, section) => navigateToDrill(drill, section)}
+          onSelectDrill={(drill, section, offsetsMode) =>
+            navigateToDrill(drill, section, undefined, false, offsetsMode)
+          }
         />
       )}
 
@@ -545,6 +585,8 @@ export const App: React.FC = () => {
       {screen.kind === 'drill' && screen.drill === 'offsets' && (
         <LetterOffsetDrill
           key={workoutContext ? `workout-${workoutContext.round}-${workoutContext.stepIndex}` : 'standalone'}
+          initialMode={screen.offsetsMode}
+          onModeChange={handleOffsetsModeChange}
           onBack={navigateToMenu}
           workoutContext={workoutContext}
         />
