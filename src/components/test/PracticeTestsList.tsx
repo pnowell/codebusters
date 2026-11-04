@@ -36,11 +36,44 @@ export const PracticeTestsList: React.FC<PracticeTestsListProps> = ({
     const unsubProfiles = subscribeTeamProfiles(() => {
       setProfilesVersion((v) => v + 1);
     });
+    const handlePopState = (e: PopStateEvent) => {
+      if (
+        e.state?.modal === 'cohortConfig' &&
+        typeof e.state.configTestId === 'string'
+      ) {
+        setConfiguringTestId(e.state.configTestId);
+      } else {
+        setConfiguringTestId(null);
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
     return () => {
       clearInterval(timer);
       unsubProfiles();
+      window.removeEventListener('popstate', handlePopState);
     };
   }, []);
+
+  const openConfigureModal = (testId: string) => {
+    window.history.pushState(
+      {
+        ...(window.history.state || { testsList: true }),
+        modal: 'cohortConfig',
+        configTestId: testId,
+      },
+      '',
+      window.location.href
+    );
+    setConfiguringTestId(testId);
+  };
+
+  const closeConfigureModal = () => {
+    if (window.history.state?.modal === 'cohortConfig') {
+      window.history.back();
+    } else {
+      setConfiguringTestId(null);
+    }
+  };
 
   const configuringTest = configuringTestId
     ? tests.find((t) => t.testId === configuringTestId) ?? null
@@ -139,7 +172,7 @@ export const PracticeTestsList: React.FC<PracticeTestsListProps> = ({
                         className="btn-simple btn-configure-test"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setConfiguringTestId(test.testId);
+                          openConfigureModal(test.testId);
                         }}
                         title="Configure visibility and student teams"
                       >
@@ -211,7 +244,7 @@ export const PracticeTestsList: React.FC<PracticeTestsListProps> = ({
       {configuringTest && (
         <TestCohortModal
           testPacket={configuringTest}
-          onClose={() => setConfiguringTestId(null)}
+          onClose={closeConfigureModal}
         />
       )}
     </div>

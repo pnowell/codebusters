@@ -904,6 +904,28 @@ async function cmdKey(slotArg, keyName) {
   });
 }
 
+async function cmdHistoryStep(targetArg = 'a', delta = -1) {
+  const slots = resolveSlots(targetArg);
+  const label = delta < 0 ? 'Back' : 'Forward';
+  for (const slot of slots) {
+    await withPageSession(slot, async (session) => {
+      const { currentIndex, entries } = await session.send('Page.getNavigationHistory');
+      const targetEntry = entries?.[currentIndex + delta];
+      if (!targetEntry) {
+        console.log(
+          `[${slot.label}] Cannot navigate ${label} (currentIndex=${currentIndex}, total=${entries?.length ?? 0})`
+        );
+        return;
+      }
+      await session.send('Page.navigateToHistoryEntry', { entryId: targetEntry.id });
+      await sleep(350);
+      console.log(`[${slot.label}] Browser ${label} -> ${targetEntry.url}`);
+      const snap = await session.evaluate(DOM_INSPECT_SNIPPET);
+      printSnapshot(slot, snap, true);
+    });
+  }
+}
+
 async function cmdGoto(targetArg, rawUrl) {
   const slots = resolveSlots(targetArg);
   const url = normalizeLocalAppUrl(rawUrl || '/');
@@ -1000,6 +1022,8 @@ Commands:
   focus-tile <a|b> <alphaIndex>  Focus the N-th alphabetic tile in QuoteTileGrid
   type <a|b> <letters>           Type letters via native CDP key events
   key <a|b> <keyName>            Send special key (Backspace, ArrowLeft, ArrowRight, Enter, Escape)
+  back [a|b|both]                Click browser Back button
+  forward [a|b|both]             Click browser Forward button
   goto <a|b|both> <pathOrUrl>    Navigate to http://localhost:5173/...
   viewport <a|b|both> <preset>   Set viewport (desktop | mobile | WxH | reset)
   screenshot [a|b|both] [name]   Save PNG screenshot(s) under ../qa/screenshots/
@@ -1060,6 +1084,12 @@ async function main() {
       break;
     case 'key':
       await cmdKey(args[0], args[1]);
+      break;
+    case 'back':
+      await cmdHistoryStep(args[0] || 'a', -1);
+      break;
+    case 'forward':
+      await cmdHistoryStep(args[0] || 'a', 1);
       break;
     case 'goto':
       await cmdGoto(args[0], args[1]);

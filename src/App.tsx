@@ -279,6 +279,13 @@ export const App: React.FC = () => {
         });
       } else {
         // Route through the briefing / unanimous lobby modal if not yet started
+        const listUrl = buildRouteUrl({ drill: null, testsList: true });
+        window.history.replaceState({ testsList: true }, '', listUrl);
+        window.history.pushState(
+          { testsList: true, modal: 'briefing', briefingTestId: test.testId },
+          '',
+          listUrl
+        );
         setScreen({ kind: 'testsList' });
         setBriefingState({ testPacket: test, existingAttempt: attempt });
       }
@@ -356,9 +363,21 @@ export const App: React.FC = () => {
   // Listen to browser Back / Forward buttons
   useEffect(() => {
     const handlePopState = (e: PopStateEvent) => {
-      if (!e.state || (e.state.modal !== 'options' && e.state.modal !== 'leaderboard')) {
-        setIsOptionsOpen(false);
-        setIsLeaderboardOpen(false);
+      setIsOptionsOpen(e.state?.modal === 'options');
+      setIsLeaderboardOpen(e.state?.modal === 'leaderboard');
+
+      if (e.state?.modal === 'briefing' && typeof e.state.briefingTestId === 'string') {
+        const matched = availableTests.find(
+          (t) => t.testId === e.state.briefingTestId
+        );
+        if (matched) {
+          const attempt = resolveAttemptForTest(matched, currentUid, studentAttempts);
+          setBriefingState({ testPacket: matched, existingAttempt: attempt });
+        } else {
+          setBriefingState(null);
+        }
+      } else {
+        setBriefingState(null);
       }
 
       const route = parseUrlRoute();
@@ -414,12 +433,12 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [availableTests, cancelWorkout, currentUid, studentAttempts]);
 
-  // Seed history stack with menu when landing directly on a drill deep link
+  // Seed history stack with menu when landing directly on a drill or tests list deep link
   useEffect(() => {
     const route = parseUrlRoute();
+    const currentUrl = `${window.location.pathname}${window.location.search}`;
     if (route.drill && (!window.history.state || !('drill' in window.history.state))) {
-      window.history.replaceState({ drill: null }, '', window.location.pathname);
-      const drillUrl = `${window.location.pathname}${window.location.search}`;
+      window.history.replaceState({ drill: null }, '', buildRouteUrl({ drill: null }));
       window.history.pushState(
         {
           drill: route.drill,
@@ -428,8 +447,15 @@ export const App: React.FC = () => {
           quoteId: route.quoteId,
         },
         '',
-        drillUrl
+        currentUrl
       );
+    } else if (
+      route.testsList &&
+      !route.resultsTestId &&
+      (!window.history.state || !('testsList' in window.history.state))
+    ) {
+      window.history.replaceState({ drill: null }, '', buildRouteUrl({ drill: null }));
+      window.history.pushState({ testsList: true }, '', currentUrl);
     }
   }, []);
 
@@ -474,9 +500,26 @@ export const App: React.FC = () => {
         newUrl
       );
     } else {
+      window.history.pushState(
+        {
+          ...(window.history.state || { testsList: true }),
+          modal: 'briefing',
+          briefingTestId: test.testId,
+        },
+        '',
+        window.location.href
+      );
       setBriefingState({ testPacket: test, existingAttempt: freshest });
     }
   };
+
+  const closeBriefing = useCallback(() => {
+    if (window.history.state?.modal === 'briefing') {
+      window.history.back();
+    } else {
+      setBriefingState(null);
+    }
+  }, []);
 
   const handleBackFromTestResults = () => {
     if (window.history.state && window.history.state.resultsTestId) {
@@ -495,7 +538,11 @@ export const App: React.FC = () => {
     cancelWorkout();
     setScreen({ kind: 'testRunner', testPacket, initialAttempt: attempt });
     const newUrl = buildRouteUrl({ drill: null, testId: testPacket.testId });
-    window.history.pushState({ testId: testPacket.testId }, '', newUrl);
+    if (window.history.state?.modal === 'briefing') {
+      window.history.replaceState({ testId: testPacket.testId }, '', newUrl);
+    } else {
+      window.history.pushState({ testId: testPacket.testId }, '', newUrl);
+    }
   };
 
   const handleViewResultsFromBriefing = (attempt: TestAttempt) => {
@@ -513,11 +560,19 @@ export const App: React.FC = () => {
       testsList: true,
       resultsTestId: testPacket.testId,
     });
-    window.history.pushState(
-      { testsList: true, resultsTestId: testPacket.testId },
-      '',
-      newUrl
-    );
+    if (window.history.state?.modal === 'briefing') {
+      window.history.replaceState(
+        { testsList: true, resultsTestId: testPacket.testId },
+        '',
+        newUrl
+      );
+    } else {
+      window.history.pushState(
+        { testsList: true, resultsTestId: testPacket.testId },
+        '',
+        newUrl
+      );
+    }
   };
 
   const handleExitTest = () => {
@@ -571,7 +626,11 @@ export const App: React.FC = () => {
   }, []);
 
   const openOptions = () => {
-    window.history.pushState({ modal: 'options' }, '', window.location.href);
+    window.history.pushState(
+      { ...(window.history.state || {}), modal: 'options' },
+      '',
+      window.location.href
+    );
     setIsOptionsOpen(true);
   };
 
@@ -584,7 +643,11 @@ export const App: React.FC = () => {
   };
 
   const openLeaderboard = () => {
-    window.history.pushState({ modal: 'leaderboard' }, '', window.location.href);
+    window.history.pushState(
+      { ...(window.history.state || {}), modal: 'leaderboard' },
+      '',
+      window.location.href
+    );
     setIsLeaderboardOpen(true);
   };
 
@@ -720,7 +783,7 @@ export const App: React.FC = () => {
           existingAttempt={briefingState.existingAttempt}
           onLaunchAttempt={handleLaunchAttempt}
           onViewResults={handleViewResultsFromBriefing}
-          onClose={() => setBriefingState(null)}
+          onClose={closeBriefing}
         />
       )}
 

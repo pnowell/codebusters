@@ -45,6 +45,22 @@ export const TestBriefingModal: React.FC<TestBriefingModalProps> = ({
 
   const hasLaunchedRef = useRef<boolean>(false);
   const isLobbyReadyRef = useRef<boolean>(false);
+  const isClosingRef = useRef<boolean>(false);
+  const cleanupContextRef = useRef({ testPacket, currentUid });
+
+  useEffect(() => {
+    cleanupContextRef.current = { testPacket, currentUid };
+  }, [testPacket, currentUid]);
+
+  useEffect(() => {
+    return () => {
+      if (isLobbyReadyRef.current && !hasLaunchedRef.current) {
+        isLobbyReadyRef.current = false;
+        const { testPacket: pkt, currentUid: uid } = cleanupContextRef.current;
+        void setLobbyReadyState(pkt, uid, false);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const clockInterval = setInterval(() => setNow(Date.now()), 1000);
@@ -111,6 +127,8 @@ export const TestBriefingModal: React.FC<TestBriefingModalProps> = ({
       : 0;
 
   const handleCancelClose = () => {
+    if (isClosingRef.current) return;
+    isClosingRef.current = true;
     if (isLobbyReadyRef.current && !hasLaunchedRef.current) {
       isLobbyReadyRef.current = false;
       void setLobbyReadyState(testPacket, currentUid, false);
