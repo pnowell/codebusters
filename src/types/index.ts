@@ -113,6 +113,12 @@ export interface TestQuestion {
   params?: TestCipherParams;
 }
 
+export interface TestCohort {
+  id: string;
+  name?: string;
+  studentUids: string[];
+}
+
 export interface TestPacket {
   testId: string;
   title: string;
@@ -121,12 +127,15 @@ export interface TestPacket {
   active: boolean;
   createdAt?: unknown;
   questions: TestQuestion[];
+  cohorts?: TestCohort[];
 }
 
 export interface QuestionWorkspace {
   userInputs: string[];
+  inputs?: Record<string, string>;
   completed: boolean;
   lastEditedAt: number;
+  lastEditedBy?: string;
 }
 
 export interface QuestionResult {
@@ -157,14 +166,25 @@ export interface PublicProfile {
   updatedAt?: unknown;
 }
 
+export type TestAttemptStatus = 'lobby' | 'in_progress' | 'submitted' | 'expired';
+
+export interface MemberPresence {
+  activeQIndex: number;
+  updatedAt: number;
+}
+
 export interface TestAttempt {
   attemptId: string;
   testId: string;
+  cohortId?: string;
   studentUids: string[];
+  readyUids?: string[];
+  submitReadyUids?: string[];
+  presence?: Record<string, MemberPresence>;
   teamName?: string;
   startedAt: number;
   submittedAt?: number;
-  status: 'in_progress' | 'submitted' | 'expired';
+  status: TestAttemptStatus;
   workspaces: Record<number, QuestionWorkspace>;
   results?: TestEvaluationResult;
 }

@@ -1,0 +1,85 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email != null;
+    }
+
+    function normalizedEmail() {
+      return request.auth.token.email.lower();
+    }
+
+    function allowlistPath() {
+      return /databases/$(database)/documents/allowed_users/$(normalizedEmail());
+    }
+
+    function isAllowedUser() {
+      return isSignedIn()
+        && exists(allowlistPath())
+        && get(allowlistPath()).data.active != false;
+    }
+
+    function isTeacher() {
+      return isAllowedUser()
+        && get(allowlistPath()).data.role == 'teacher';
+    }
+
+    // Roster allowlist keyed by normalized lowercase email
+    match /allowed_users/{email} {
+      allow get: if (isSignedIn() && normalizedEmail() == email) || isTeacher();
+      allow list, write: if isTeacher();
+    }
+
+    // Private per-student / per-teacher drill history and settings
+    match /users/{uid} {
+      allow read, write: if isAllowedUser() && request.auth.uid == uid;
+    }
+
+    // Team public profiles (displayName, role, leaderboard high scores)
+    match /profiles/{uid} {
+      allow read: if isAllowedUser();
+      allow create, update: if isAllowedUser() && request.auth.uid == uid;
+      allow delete: if isTeacher();
+    }
+
+    // Practice test packets (students see active tests; teachers see all & configure cohorts)
+    match /tests/{testId} {
+      allow read: if isTeacher() || (isAllowedUser() && resource.data.active == true);
+      allow write: if isTeacher();
+    }
+
+    // Collaborative & solo test attempts
+    match /test_attempts/{attemptId} {
+      // Allow single-doc get when resource == null so transactions and lobby listeners
+      // can observe deterministic attempt IDs prior to creation.
+      allow get: if isAllowedUser() && (
+        resource == null
+        || request.auth.uid in resource.data.studentUids
+        || isTeacher()
+      );
+
+      allow list: if isAllowedUser() && (
+        request.auth.uid in resource.data.studentUids
+        || isTeacher()
+      );
+
+      allow create: if isAllowedUser()
+        && request.resource.data.studentUids is list
+        && request.resource.data.studentUids.size() >= 1
+        && request.auth.uid in request.resource.data.studentUids;
+
+      allow update: if isAllowedUser()
+        && (request.auth.uid in resource.data.studentUids || isTeacher())
+        && request.resource.data.testId == resource.data.testId
+        && request.resource.data.studentUids == resource.data.studentUids;
+
+      allow delete: if isTeacher();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -31,12 +31,29 @@ function formatNamesList(names: string[]): string {
   return `${names.slice(0, -1).join(', ')} & ${names[names.length - 1]}`;
 }
 
+const HONORIFIC_PREFIXES = new Set(['mr', 'mrs', 'ms', 'mx', 'dr', 'prof', 'coach']);
+
 /**
  * Gets a display name for a single UID from the in-memory cache
  */
-function getCachedDisplayName(uid: string, fallback: string = 'Decoder'): string {
+export function getDisplayNameForUid(uid: string, fallback: string = 'Decoder'): string {
   if (!uid) return fallback;
   return profilesCache.get(uid)?.displayName || fallback;
+}
+
+/**
+ * Gets a compact display name for tab badges (preserves honorifics like "Mr. Phil")
+ */
+export function getShortDisplayNameForUid(uid: string, fallback: string = 'Decoder'): string {
+  const full = getDisplayNameForUid(uid, fallback).trim();
+  const parts = full.split(/\s+/);
+  if (parts.length >= 2) {
+    const firstClean = parts[0].replace(/\./g, '').toLowerCase();
+    if (HONORIFIC_PREFIXES.has(firstClean)) {
+      return `${parts[0]} ${parts[1]}`;
+    }
+  }
+  return parts[0] || fallback;
 }
 
 /**
@@ -44,7 +61,7 @@ function getCachedDisplayName(uid: string, fallback: string = 'Decoder'): string
  */
 export function getDisplayNamesForUids(uids: string[] | undefined, fallback: string = 'Decoder'): string {
   if (!uids || uids.length === 0) return fallback;
-  const names = uids.map(uid => getCachedDisplayName(uid, fallback));
+  const names = uids.map(uid => getDisplayNameForUid(uid, fallback));
   return formatNamesList(names);
 }
 

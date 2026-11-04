@@ -1,10 +1,18 @@
-import React, { useState } from 'react';
-import type { TestPacket, TestAttempt } from '../../types';
-import { getLocalTestAttempt, resolveFreshestAttempt } from '../../services/testService';
+import React, { useEffect, useState } from 'react';
+import type { TestAttempt, TestPacket } from '../../types';
+import {
+  getDisplayNamesForUids,
+  subscribeTeamProfiles,
+} from '../../services/profileService';
+import { resolveAttemptForTest } from '../../services/testService';
+import { resolveUserCohort } from '../../utils/testSync';
+import { TestCohortModal } from './TestCohortModal';
 
 interface PracticeTestsListProps {
   tests: TestPacket[];
   attempts: Record<string, TestAttempt>;
+  currentUid?: string;
+  isTeacher?: boolean;
   isLoading?: boolean;
   onSelectTest: (test: TestPacket, attempt: TestAttempt | null) => void;
   onBack: () => void;
@@ -13,11 +21,30 @@ interface PracticeTestsListProps {
 export const PracticeTestsList: React.FC<PracticeTestsListProps> = ({
   tests,
   attempts,
+  currentUid,
+  isTeacher = false,
   isLoading = false,
   onSelectTest,
   onBack,
 }) => {
-  const [now] = useState(() => Date.now());
+  const [now, setNow] = useState(() => Date.now());
+  const [, setProfilesVersion] = useState(0);
+  const [configuringTestId, setConfiguringTestId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 5000);
+    const unsubProfiles = subscribeTeamProfiles(() => {
+      setProfilesVersion((v) => v + 1);
+    });
+    return () => {
+      clearInterval(timer);
+      unsubProfiles();
+    };
+  }, []);
+
+  const configuringTest = configuringTestId
+    ? tests.find((t) => t.testId === configuringTestId) ?? null
+    : null;
 
   return (
     <div className="practice-tests-view">
@@ -50,17 +77,26 @@ export const PracticeTestsList: React.FC<PracticeTestsListProps> = ({
           </div>
         ) : (
           tests.map((test) => {
-            const resolvedAttempt = resolveFreshestAttempt(
-              attempts[test.testId],
-              getLocalTestAttempt(test.testId)
+            const { memberUids, teamName, isCollaborative } = resolveUserCohort(
+              test,
+              currentUid
             );
+            const resolvedAttempt = resolveAttemptForTest(test, currentUid, attempts);
 
             const isTimeRemaining = resolvedAttempt?.startedAt
-              ? now < (resolvedAttempt.startedAt + test.timeLimitSeconds * 1000)
+              ? now < resolvedAttempt.startedAt + test.timeLimitSeconds * 1000
               : true;
             const isCompleted =
-              resolvedAttempt?.status === 'submitted' || resolvedAttempt?.status === 'expired';
-            const isInProgress = resolvedAttempt?.status === 'in_progress' && isTimeRemaining;
+              resolvedAttempt?.status === 'submitted' ||
+              resolvedAttempt?.status === 'expired';
+            const isInProgress =
+              resolvedAttempt?.status === 'in_progress' && isTimeRemaining;
+            const readyCount = resolvedAttempt?.readyUids?.length ?? 0;
+            const isLobbyWaiting =
+              !isCompleted &&
+              !isInProgress &&
+              resolvedAttempt?.status === 'lobby' &&
+              readyCount > 0;
             const results = resolvedAttempt?.results;
 
             const totalPoints = test.questions.reduce((sum, q) => sum + q.points, 0);
@@ -75,8 +111,8 @@ export const PracticeTestsList: React.FC<PracticeTestsListProps> = ({
               <div
                 key={test.testId}
                 className={`test-list-row ${isCompleted ? 'row-completed' : ''} ${
-                  isInProgress ? 'row-in-progress' : ''
-                }`}
+                  isInProgress || isLobbyWaiting ? 'row-in-progress' : ''
+                } ${!test.active ? 'row-inactive-draft' : ''}`}
                 onClick={() => onSelectTest(test, resolvedAttempt)}
                 role="button"
                 tabIndex={0}
@@ -87,37 +123,80 @@ export const PracticeTestsList: React.FC<PracticeTestsListProps> = ({
                   }
                 }}
               >
-                {/* Top Row: Title + Status Badge */}
+                {/* Top Row: Title + Teacher Config + Status Badge */}
                 <div className="test-row-top">
-                  <h3 className="test-row-title">{test.title}</h3>
-                  {isCompleted && results ? (
-                    <span className="test-row-score-badge">
-                      🏆 {results.totalScore} / {results.maxPossibleScore} pts ({scorePercentage}%)
-                    </span>
-                  ) : isInProgress ? (
-                    <span className="test-row-status-pill pill-in-progress">
-                      ⏱️ In Progress
-                    </span>
-                  ) : (
-                    <span className="test-row-status-pill pill-available">
-                      Available
-                    </span>
-                  )}
+                  <div className="test-row-title-wrap">
+                    <h3 className="test-row-title">{test.title}</h3>
+                    {!test.active && (
+                      <span className="test-row-draft-badge">🔒 Inactive</span>
+                    )}
+                  </div>
+
+                  <div className="test-row-top-right">
+                    {isTeacher && (
+                      <button
+                        type="button"
+                        className="btn-simple btn-configure-test"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfiguringTestId(test.testId);
+                        }}
+                        title="Configure visibility and student teams"
+                      >
+                        ⚙️ Configure
+                      </button>
+                    )}
+
+                    {isCompleted && results ? (
+                      <span className="test-row-score-badge">
+                        🏆 {results.totalScore} / {results.maxPossibleScore} pts (
+                        {scorePercentage}%)
+                      </span>
+                    ) : isInProgress ? (
+                      <span className="test-row-status-pill pill-in-progress">
+                        ⏱️ In Progress
+                      </span>
+                    ) : isLobbyWaiting ? (
+                      <span className="test-row-status-pill pill-in-progress">
+                        ⏳ {readyCount}/{memberUids.length} Ready
+                      </span>
+                    ) : (
+                      <span className="test-row-status-pill pill-available">
+                        Available
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Bottom Row: Metadata Chips + CTA text */}
                 <div className="test-row-bottom">
                   <div className="test-row-meta">
                     <span className="test-card-meta-item">⏱️ {minutes} Mins</span>
-                    <span className="test-card-meta-item">🧩 {test.questions.length} Questions</span>
+                    <span className="test-card-meta-item">
+                      🧩 {test.questions.length} Questions
+                    </span>
                     <span className="test-card-meta-item">⭐ {totalPoints} Pts</span>
+                    {isCollaborative && (
+                      <span className="test-card-meta-item meta-team-chip">
+                        👥 {teamName ? `${teamName}: ` : ''}
+                        {getDisplayNamesForUids(memberUids)}
+                      </span>
+                    )}
                   </div>
 
                   <div className="test-row-action-indicator">
                     {isCompleted ? (
                       <span className="action-text action-results">View Results ➔</span>
                     ) : isInProgress ? (
-                      <span className="action-text action-resume">Resume Test ➔</span>
+                      <span className="action-text action-resume">
+                        {isCollaborative ? 'Rejoin Test ➔' : 'Resume Test ➔'}
+                      </span>
+                    ) : isLobbyWaiting ? (
+                      <span className="action-text action-resume">
+                        Join Team ({readyCount}/{memberUids.length}) ➔
+                      </span>
+                    ) : isCollaborative ? (
+                      <span className="action-text action-start">Join Team ➔</span>
                     ) : (
                       <span className="action-text action-start">Start Test ➔</span>
                     )}
@@ -128,6 +207,13 @@ export const PracticeTestsList: React.FC<PracticeTestsListProps> = ({
           })
         )}
       </main>
+
+      {configuringTest && (
+        <TestCohortModal
+          testPacket={configuringTest}
+          onClose={() => setConfiguringTestId(null)}
+        />
+      )}
     </div>
   );
 };

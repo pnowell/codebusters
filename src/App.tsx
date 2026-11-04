@@ -26,9 +26,7 @@ import {
   subscribeAvailableTests,
   subscribeStudentAttempts,
   fetchTestById,
-  getLocalTestAttempt,
-  clearLocalTestAttempt,
-  resolveFreshestAttempt,
+  resolveAttemptForTest,
 } from './services/testService';
 import { subscribeToSyncUpdates } from './services/sync';
 import { subscribeTeamProfiles } from './services/profileService';
@@ -112,7 +110,10 @@ function initScreen(): ActiveScreen {
 }
 
 export const App: React.FC = () => {
-  const { user, isAllowed } = useAuth();
+  const { user, allowedUser, isAllowed } = useAuth();
+  const isTeacher = allowedUser?.role === 'teacher';
+  const currentUid = user?.uid || 'student';
+
   const [settings, setSettings] = useState<UserSettings>(initSettings);
   const [screen, setScreen] = useState<ActiveScreen>(initScreen);
 
@@ -123,6 +124,7 @@ export const App: React.FC = () => {
   const [availableTests, setAvailableTests] = useState<TestPacket[]>([]);
   const [studentAttempts, setStudentAttempts] = useState<Record<string, TestAttempt>>({});
   const [isTestsLoading, setIsTestsLoading] = useState<boolean>(true);
+  const [isAttemptsLoaded, setIsAttemptsLoaded] = useState<boolean>(false);
   const [briefingState, setBriefingState] = useState<BriefingState | null>(null);
 
   // Pin outer window and track visual viewport height above mobile virtual keyboard
@@ -186,7 +188,7 @@ export const App: React.FC = () => {
     });
   }, []);
 
-  // Subscribe to all available practice tests in Firestore when user is allowed
+  // Subscribe to practice tests in Firestore (teachers also see inactive drafts)
   useEffect(() => {
     if (!isAllowed) {
       queueMicrotask(() => {
@@ -196,11 +198,18 @@ export const App: React.FC = () => {
       return;
     }
 
-    return subscribeAvailableTests((tests) => {
-      setAvailableTests(tests);
-      setIsTestsLoading(false);
+    queueMicrotask(() => {
+      setIsTestsLoading(true);
     });
-  }, [isAllowed]);
+
+    return subscribeAvailableTests(
+      (tests) => {
+        setAvailableTests(tests);
+        setIsTestsLoading(false);
+      },
+      { includeInactive: isTeacher }
+    );
+  }, [isAllowed, isTeacher]);
 
   // Subscribe to Team Public Profiles (in-memory name lookup and high score sync)
   useEffect(() => {
@@ -222,85 +231,127 @@ export const App: React.FC = () => {
     });
   }, [isAllowed, user?.uid]);
 
-  // Subscribe to student's test attempts in Firestore
+  // Subscribe to student's / cohort's test attempts in Firestore
   useEffect(() => {
     if (!isAllowed || !user?.uid) {
       queueMicrotask(() => {
         setStudentAttempts({});
+        setIsAttemptsLoaded(Boolean(isAllowed));
       });
       return;
     }
 
     return subscribeStudentAttempts(user.uid, (attempts) => {
       setStudentAttempts(attempts);
+      setIsAttemptsLoaded(true);
     });
   }, [isAllowed, user?.uid]);
 
   // Deep-link direct test launch if ?test=testId is provided
   useEffect(() => {
     const route = parseUrlRoute();
-    if (!route.testId || !isAllowed) return;
+    if (!route.testId || !isAllowed || isTestsLoading || !isAttemptsLoaded) return;
+    if (
+      screen.kind === 'testRunner' ||
+      screen.kind === 'testResults' ||
+      briefingState
+    ) {
+      return;
+    }
+
+    const openResolvedTest = (test: TestPacket) => {
+      const attempt = resolveAttemptForTest(test, currentUid, studentAttempts);
+      if (attempt?.status === 'in_progress') {
+        setScreen({
+          kind: 'testRunner',
+          testPacket: test,
+          initialAttempt: attempt,
+        });
+      } else if (
+        (attempt?.status === 'submitted' || attempt?.status === 'expired') &&
+        attempt.results
+      ) {
+        setScreen({
+          kind: 'testResults',
+          testPacket: test,
+          results: attempt.results,
+          attempt,
+        });
+      } else {
+        // Route through the briefing / unanimous lobby modal if not yet started
+        setScreen({ kind: 'testsList' });
+        setBriefingState({ testPacket: test, existingAttempt: attempt });
+      }
+    };
 
     const matched = availableTests.find((t) => t.testId === route.testId);
     if (matched) {
       queueMicrotask(() => {
-        setScreen({
-          kind: 'testRunner',
-          testPacket: matched,
-          initialAttempt: resolveFreshestAttempt(
-            studentAttempts[matched.testId],
-            getLocalTestAttempt(matched.testId)
-          ),
-        });
+        openResolvedTest(matched);
       });
     } else {
       fetchTestById(route.testId).then((fetched) => {
         if (fetched) {
-          setScreen({
-            kind: 'testRunner',
-            testPacket: fetched,
-            initialAttempt: getLocalTestAttempt(fetched.testId),
-          });
+          openResolvedTest(fetched);
         }
       });
     }
-  }, [isAllowed, availableTests, studentAttempts]);
+  }, [
+    isAllowed,
+    isTestsLoading,
+    isAttemptsLoaded,
+    availableTests,
+    studentAttempts,
+    currentUid,
+    screen.kind,
+    briefingState,
+  ]);
 
   // Deep-link direct test results review if ?results=testId is provided
   useEffect(() => {
     const route = parseUrlRoute();
-    if (!route.resultsTestId || !isAllowed) return;
+    if (!route.resultsTestId || !isAllowed || isTestsLoading || !isAttemptsLoaded) {
+      return;
+    }
+    if (screen.kind === 'testResults') return;
 
     const test = availableTests.find((t) => t.testId === route.resultsTestId);
-    const attempt = resolveFreshestAttempt(
-      studentAttempts[route.resultsTestId],
-      getLocalTestAttempt(route.resultsTestId)
-    );
-    if (test && attempt?.results) {
-      queueMicrotask(() => {
-        setScreen({
-          kind: 'testResults',
-          testPacket: test,
-          results: attempt.results!,
-          attempt,
+    if (test) {
+      const attempt = resolveAttemptForTest(test, currentUid, studentAttempts);
+      if (attempt?.results) {
+        queueMicrotask(() => {
+          setScreen({
+            kind: 'testResults',
+            testPacket: test,
+            results: attempt.results!,
+            attempt,
+          });
         });
-      });
-    } else if (route.resultsTestId) {
+      }
+    } else {
       fetchTestById(route.resultsTestId).then((fetched) => {
         if (fetched) {
-          const localAtt = getLocalTestAttempt(fetched.testId);
-          if (localAtt?.results) {
+          const attempt = resolveAttemptForTest(fetched, currentUid, studentAttempts);
+          if (attempt?.results) {
             setScreen({
               kind: 'testResults',
               testPacket: fetched,
-              results: localAtt.results,
-              attempt: localAtt,
+              results: attempt.results,
+              attempt,
             });
           }
         }
       });
     }
-  }, [isAllowed, availableTests, studentAttempts]);
+  }, [
+    isAllowed,
+    isTestsLoading,
+    isAttemptsLoaded,
+    availableTests,
+    studentAttempts,
+    currentUid,
+    screen.kind,
+  ]);
 
   // Listen to browser Back / Forward buttons
   useEffect(() => {
@@ -315,18 +366,6 @@ export const App: React.FC = () => {
         cancelWorkout();
       }
 
-      if (!route.testId) {
-        availableTests.forEach((t) => {
-          const local = getLocalTestAttempt(t.testId);
-          if (local) {
-            setStudentAttempts((prev) => ({
-              ...prev,
-              [t.testId]: resolveFreshestAttempt(prev[t.testId], local) ?? local,
-            }));
-          }
-        });
-      }
-
       if (route.drill) {
         setScreen({
           kind: 'drill',
@@ -338,21 +377,22 @@ export const App: React.FC = () => {
       } else if (route.testId) {
         const matched = availableTests.find((t) => t.testId === route.testId);
         if (matched) {
-          setScreen({
-            kind: 'testRunner',
-            testPacket: matched,
-            initialAttempt: resolveFreshestAttempt(
-              studentAttempts[matched.testId],
-              getLocalTestAttempt(matched.testId)
-            ),
-          });
+          const attempt = resolveAttemptForTest(matched, currentUid, studentAttempts);
+          if (attempt?.status === 'in_progress') {
+            setScreen({
+              kind: 'testRunner',
+              testPacket: matched,
+              initialAttempt: attempt,
+            });
+          } else {
+            setScreen({ kind: 'testsList' });
+          }
         }
       } else if (route.resultsTestId) {
         const test = availableTests.find((t) => t.testId === route.resultsTestId);
-        const attempt = resolveFreshestAttempt(
-          studentAttempts[route.resultsTestId],
-          getLocalTestAttempt(route.resultsTestId)
-        );
+        const attempt = test
+          ? resolveAttemptForTest(test, currentUid, studentAttempts)
+          : null;
         if (test && attempt?.results) {
           setScreen({
             kind: 'testResults',
@@ -372,7 +412,7 @@ export const App: React.FC = () => {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [availableTests, cancelWorkout, studentAttempts]);
+  }, [availableTests, cancelWorkout, currentUid, studentAttempts]);
 
   // Seed history stack with menu when landing directly on a drill deep link
   useEffect(() => {
@@ -410,7 +450,8 @@ export const App: React.FC = () => {
   };
 
   const handleSelectTest = (test: TestPacket, attempt: TestAttempt | null) => {
-    const freshest = resolveFreshestAttempt(attempt, getLocalTestAttempt(test.testId));
+    const freshest =
+      attempt ?? resolveAttemptForTest(test, currentUid, studentAttempts);
     if (
       freshest &&
       (freshest.status === 'submitted' || freshest.status === 'expired') &&
@@ -422,8 +463,16 @@ export const App: React.FC = () => {
         results: freshest.results,
         attempt: freshest,
       });
-      const newUrl = buildRouteUrl({ drill: null, testsList: true, resultsTestId: test.testId });
-      window.history.pushState({ testsList: true, resultsTestId: test.testId }, '', newUrl);
+      const newUrl = buildRouteUrl({
+        drill: null,
+        testsList: true,
+        resultsTestId: test.testId,
+      });
+      window.history.pushState(
+        { testsList: true, resultsTestId: test.testId },
+        '',
+        newUrl
+      );
     } else {
       setBriefingState({ testPacket: test, existingAttempt: freshest });
     }
@@ -439,38 +488,39 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleBeginTest = () => {
+  const handleLaunchAttempt = (attempt: TestAttempt) => {
     if (!briefingState) return;
     const { testPacket } = briefingState;
     setBriefingState(null);
-    clearLocalTestAttempt(testPacket.testId);
     cancelWorkout();
-    setScreen({ kind: 'testRunner', testPacket, initialAttempt: null });
+    setScreen({ kind: 'testRunner', testPacket, initialAttempt: attempt });
     const newUrl = buildRouteUrl({ drill: null, testId: testPacket.testId });
     window.history.pushState({ testId: testPacket.testId }, '', newUrl);
   };
 
-  const handleResumeTest = () => {
-    if (!briefingState) return;
-    const { testPacket, existingAttempt } = briefingState;
+  const handleViewResultsFromBriefing = (attempt: TestAttempt) => {
+    if (!briefingState || !attempt.results) return;
+    const { testPacket } = briefingState;
     setBriefingState(null);
-    cancelWorkout();
-    setScreen({ kind: 'testRunner', testPacket, initialAttempt: existingAttempt });
-    const newUrl = buildRouteUrl({ drill: null, testId: testPacket.testId });
-    window.history.pushState({ testId: testPacket.testId }, '', newUrl);
+    setScreen({
+      kind: 'testResults',
+      testPacket,
+      results: attempt.results,
+      attempt,
+    });
+    const newUrl = buildRouteUrl({
+      drill: null,
+      testsList: true,
+      resultsTestId: testPacket.testId,
+    });
+    window.history.pushState(
+      { testsList: true, resultsTestId: testPacket.testId },
+      '',
+      newUrl
+    );
   };
 
   const handleExitTest = () => {
-    if (screen.kind === 'testRunner') {
-      const testId = screen.testPacket.testId;
-      const local = getLocalTestAttempt(testId);
-      if (local) {
-        setStudentAttempts((prev) => ({
-          ...prev,
-          [testId]: resolveFreshestAttempt(prev[testId], local) ?? local,
-        }));
-      }
-    }
     if (window.history.state && window.history.state.testId) {
       window.history.back();
     } else {
@@ -575,7 +625,7 @@ export const App: React.FC = () => {
         <Suspense fallback={suspenseFallback}>
           <TestRunner
             testPacket={screen.testPacket}
-            studentUids={[user?.uid || 'student']}
+            currentUid={currentUid}
             initialAttempt={screen.initialAttempt}
             onExitToMenu={handleExitTest}
           />
@@ -630,6 +680,8 @@ export const App: React.FC = () => {
         <PracticeTestsList
           tests={availableTests}
           attempts={studentAttempts}
+          currentUid={currentUid}
+          isTeacher={isTeacher}
           isLoading={isTestsLoading}
           onSelectTest={handleSelectTest}
           onBack={handleBackFromTestsList}
@@ -664,9 +716,10 @@ export const App: React.FC = () => {
       {briefingState && (
         <TestBriefingModal
           testPacket={briefingState.testPacket}
+          currentUid={currentUid}
           existingAttempt={briefingState.existingAttempt}
-          onBegin={handleBeginTest}
-          onResume={handleResumeTest}
+          onLaunchAttempt={handleLaunchAttempt}
+          onViewResults={handleViewResultsFromBriefing}
           onClose={() => setBriefingState(null)}
         />
       )}
