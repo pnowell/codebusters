@@ -3,13 +3,29 @@ import type { FloatingGhostItem } from '../../../hooks/useFloatingGhosts';
 import type { HeatTierInfo } from '../../../hooks/useVelocityTracker';
 import { FloatingGhosts } from './FloatingGhosts';
 
+export interface FlashcardStats {
+  current60s: number;
+  best60s: number;
+  streak: number;
+  bestStreak: number;
+  correctQuestions: number;
+  totalQuestions: number;
+}
+
+export interface FlashcardStageActions {
+  masteredCount: number;
+  onOpenMastery: () => void;
+  onOpenLeaderboard?: () => void;
+}
+
 export interface FlashcardWorkspaceProps {
   ghosts: FloatingGhostItem[];
   onRemoveGhost: (id: string) => void;
   heatTier: HeatTierInfo['tier'];
   barPercent: number;
   newRecordAlert: boolean;
-  best60s: number;
+  stats: FlashcardStats;
+  stageActions?: FlashcardStageActions;
   isWrong: boolean;
   wrongHintContent?: React.ReactNode;
   promptContent: React.ReactNode;
@@ -33,7 +49,8 @@ export const FlashcardWorkspace: React.FC<FlashcardWorkspaceProps> = ({
   heatTier,
   barPercent,
   newRecordAlert,
-  best60s,
+  stats,
+  stageActions,
   isWrong,
   wrongHintContent,
   promptContent,
@@ -51,6 +68,11 @@ export const FlashcardWorkspace: React.FC<FlashcardWorkspaceProps> = ({
     ? Math.max(0, Math.min(100, barPercent))
     : 0;
 
+  const accuracyPct =
+    stats.totalQuestions > 0
+      ? Math.round((stats.correctQuestions / stats.totalQuestions) * 100)
+      : null;
+
   return (
     <div className="workspace-anchor">
       <FloatingGhosts ghosts={ghosts} onRemove={onRemoveGhost} />
@@ -64,6 +86,42 @@ export const FlashcardWorkspace: React.FC<FlashcardWorkspaceProps> = ({
               className="workspace-pace-fill"
               style={{ width: `${clampedPercent}%` }}
             />
+          </div>
+
+          <div className="workspace-stats-strip" aria-label="Live drill statistics">
+            <div className="workspace-stat-chip">
+              <div className="workspace-stat-main">
+                <span className="workspace-stat-label">⚡ 60s</span>
+                <strong className="workspace-stat-val">{stats.current60s}</strong>
+              </div>
+              <span className="workspace-stat-sub">Best {stats.best60s}</span>
+            </div>
+
+            <div className="workspace-stat-divider" aria-hidden="true" />
+
+            <div className="workspace-stat-chip">
+              <div className="workspace-stat-main">
+                <span className="workspace-stat-label">🔥 Streak</span>
+                <strong className="workspace-stat-val">{stats.streak}</strong>
+              </div>
+              <span className="workspace-stat-sub">Best {stats.bestStreak}</span>
+            </div>
+
+            <div className="workspace-stat-divider" aria-hidden="true" />
+
+            <div className="workspace-stat-chip">
+              <div className="workspace-stat-main">
+                <span className="workspace-stat-label">🎯 Acc</span>
+                <strong className="workspace-stat-val">
+                  {accuracyPct !== null ? `${accuracyPct}%` : '—'}
+                </strong>
+              </div>
+              <span className="workspace-stat-sub">
+                {stats.totalQuestions > 0
+                  ? `${stats.correctQuestions}/${stats.totalQuestions}`
+                  : '0/0'}
+              </span>
+            </div>
           </div>
 
           <div className="workspace-horizontal-row">
@@ -118,12 +176,40 @@ export const FlashcardWorkspace: React.FC<FlashcardWorkspaceProps> = ({
               <div className="answer-hint">{wrongHintContent}</div>
             ) : newRecordAlert ? (
               <div className="workspace-new-best-pill" role="status">
-                ★ NEW 60s BEST: {best60s}
+                ★ NEW 60s BEST: {stats.best60s}
               </div>
             ) : null}
           </div>
         </div>
       </div>
+
+      {stageActions && (
+        <div className="drill-stage-actions-row">
+          <button
+            type="button"
+            className="popover-action-btn stage-action-btn mastery-action"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={stageActions.onOpenMastery}
+          >
+            <span>📊 Alphabet Mastery</span>
+            <span className="popover-action-badge">
+              {stageActions.masteredCount}/26
+            </span>
+          </button>
+
+          {stageActions.onOpenLeaderboard && (
+            <button
+              type="button"
+              className="popover-action-btn stage-action-btn leaderboard-action"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={stageActions.onOpenLeaderboard}
+            >
+              <span>🏆 Team Leaderboard</span>
+              <span className="popover-action-chevron">›</span>
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 };

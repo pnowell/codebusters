@@ -11,6 +11,7 @@ import { AlphabetMasteryModal } from './shared/AlphabetMasteryModal';
 import { FlashcardWorkspace } from './shared/FlashcardWorkspace';
 import { LeaderboardModal } from '../leaderboard/LeaderboardModal';
 import { useAuth } from '../../context/useAuth';
+import { useIsLargeDrillStage } from '../../hooks/useIsLargeDrillStage';
 
 interface LetterOffsetDrillProps {
   initialMode?: OffsetsMode;
@@ -259,6 +260,7 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
     });
   }, [flushSession, mode, sessionBest60s, workoutContext]);
 
+  const isLargeStage = useIsLargeDrillStage();
   const modeLabel = mode === 'letterToNum' ? 'Letter → #' : '# → Letter';
   const headerTitle = workoutContext ? `Warm-up: ${modeLabel}` : `Offsets: ${modeLabel}`;
 
@@ -269,18 +271,14 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
       onSkipWarmup={onSkipWarmup}
       onAdvanceWarmup={handleAdvanceWarmup}
       menuProps={{
-        streak,
-        bestStreak: scores.bestStreak,
-        current60s,
-        best60s: scores.best60s,
-        totalQuestions,
-        correctQuestions,
-        masteredCount,
-        onOpenMastery: () => setIsModalOpen(true),
-        onOpenLeaderboard: isAllowed ? () => setIsLeaderboardOpen(true) : undefined,
         modeOptions: MODES,
         activeMode: mode,
         onSelectMode: (newMode) => onModeChange(newMode as OffsetsMode),
+        masteryAction: !isLargeStage
+          ? { masteredCount, onOpen: () => setIsModalOpen(true) }
+          : undefined,
+        onOpenLeaderboard:
+          !isLargeStage && isAllowed ? () => setIsLeaderboardOpen(true) : undefined,
         onCloseFocusRestore: focusAnswerInput,
       }}
     />
@@ -298,7 +296,25 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
             heatTier={heat.tier}
             barPercent={barPercent}
             newRecordAlert={newRecordAlert}
-            best60s={scores.best60s}
+            stats={{
+              current60s,
+              best60s: scores.best60s,
+              streak,
+              bestStreak: scores.bestStreak,
+              correctQuestions,
+              totalQuestions,
+            }}
+            stageActions={
+              isLargeStage
+                ? {
+                    masteredCount,
+                    onOpenMastery: () => setIsModalOpen(true),
+                    onOpenLeaderboard: isAllowed
+                      ? () => setIsLeaderboardOpen(true)
+                      : undefined,
+                  }
+                : undefined
+            }
             isWrong={wrongFeedback !== null}
             wrongHintContent={
               wrongFeedback ? (

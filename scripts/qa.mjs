@@ -220,11 +220,51 @@ class CdpSession {
   }
 }
 
+function viewportFileForSlot(slot) {
+  return path.join(slot.profileDir, 'qa-viewport.json');
+}
+
+function readSavedViewport(slot) {
+  try {
+    const raw = fs.readFileSync(viewportFileForSlot(slot), 'utf8');
+    const parsed = JSON.parse(raw);
+    if (
+      parsed &&
+      typeof parsed.width === 'number' &&
+      typeof parsed.height === 'number' &&
+      parsed.width > 0 &&
+      parsed.height > 0
+    ) {
+      return {
+        width: parsed.width,
+        height: parsed.height,
+        mobile: Boolean(parsed.mobile),
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 async function withPageSession(slot, fn) {
   const target = await getAppPageTarget(slot);
   const session = new CdpSession(target.webSocketDebuggerUrl);
   await session.connect();
   try {
+    const savedViewport = readSavedViewport(slot);
+    if (savedViewport) {
+      await session.send('Emulation.setDeviceMetricsOverride', {
+        width: savedViewport.width,
+        height: savedViewport.height,
+        deviceScaleFactor: 2,
+        mobile: savedViewport.mobile,
+      });
+      await session.evaluate(
+        "window.dispatchEvent(new Event('resize')); window.visualViewport?.dispatchEvent(new Event('resize')); true"
+      );
+      await sleep(60);
+    }
     return await fn(session, target);
   } finally {
     session.close();
@@ -880,32 +920,42 @@ async function cmdGoto(targetArg, rawUrl) {
 async function cmdViewport(targetArg, preset = 'desktop') {
   const slots = resolveSlots(targetArg);
   for (const slot of slots) {
-    await withPageSession(slot, async (session) => {
-      if (preset === 'reset' || preset === 'clear') {
+    ensurePrivateDir(slot.profileDir);
+    const vpFile = viewportFileForSlot(slot);
+    if (preset === 'reset' || preset === 'clear') {
+      try {
+        fs.unlinkSync(vpFile);
+      } catch {
+        // Ignore if not present
+      }
+      await withPageSession(slot, async (session) => {
         await session.send('Emulation.clearDeviceMetricsOverride');
-        console.log(`[${slot.label}] Cleared viewport override`);
-        return;
-      }
-      let width = 1280;
-      let height = 800;
-      let mobile = false;
-      if (preset === 'mobile') {
-        width = 390;
-        height = 844;
-        mobile = true;
-      } else if (/^\d+x\d+$/i.test(preset)) {
-        const [w, h] = preset.toLowerCase().split('x').map(Number);
-        width = w;
-        height = h;
-      }
-      await session.send('Emulation.setDeviceMetricsOverride', {
-        width,
-        height,
-        deviceScaleFactor: 2,
-        mobile,
       });
-      console.log(`[${slot.label}] Viewport set to ${width}x${height} (mobile=${mobile})`);
-    });
+      console.log(`[${slot.label}] Cleared viewport override`);
+      continue;
+    }
+
+    let width = 1280;
+    let height = 800;
+    let mobile = false;
+    if (preset === 'mobile') {
+      width = 390;
+      height = 844;
+      mobile = true;
+    } else if (/^\d+x\d+$/i.test(preset)) {
+      const [w, h] = preset.toLowerCase().split('x').map(Number);
+      width = w;
+      height = h;
+      mobile = w < 600;
+    }
+
+    fs.writeFileSync(
+      vpFile,
+      JSON.stringify({ width, height, mobile }),
+      { mode: 0o600 }
+    );
+    await withPageSession(slot, async () => {});
+    console.log(`[${slot.label}] Viewport set to ${width}x${height} (mobile=${mobile})`);
   }
 }
 

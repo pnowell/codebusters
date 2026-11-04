@@ -6,41 +6,34 @@ export interface DrillModeOption<T extends string = string> {
 }
 
 export interface DrillOverflowMenuProps {
-  streak: number;
-  bestStreak: number;
-  current60s: number;
-  best60s: number;
-  totalQuestions: number;
-  correctQuestions: number;
-  masteredCount: number;
-  onOpenMastery: () => void;
-  onOpenLeaderboard?: () => void;
   modeOptions?: readonly DrillModeOption[];
   activeMode?: string;
   onSelectMode?: (modeId: string) => void;
+  masteryAction?: {
+    masteredCount: number;
+    onOpen: () => void;
+  };
+  onOpenLeaderboard?: () => void;
   onCloseFocusRestore?: () => void;
 }
 
 export const DrillOverflowMenu: React.FC<DrillOverflowMenuProps> = ({
-  streak,
-  bestStreak,
-  current60s,
-  best60s,
-  totalQuestions,
-  correctQuestions,
-  masteredCount,
-  onOpenMastery,
-  onOpenLeaderboard,
   modeOptions,
   activeMode,
   onSelectMode,
+  masteryAction,
+  onOpenLeaderboard,
   onCloseFocusRestore,
 }) => {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
 
+  const hasModeSection = Boolean(modeOptions && modeOptions.length > 0 && onSelectMode);
+  const hasActionsSection = Boolean(masteryAction || onOpenLeaderboard);
+  const hasAnyItems = hasModeSection || hasActionsSection;
+
   useEffect(() => {
-    if (!open) return;
+    if (!open || !hasAnyItems) return;
 
     const handlePointerDown = (e: PointerEvent) => {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
@@ -75,20 +68,26 @@ export const DrillOverflowMenu: React.FC<DrillOverflowMenuProps> = ({
       document.removeEventListener('pointerdown', handlePointerDown);
       window.removeEventListener('keydown', handleKeyDownCapture, true);
     };
-  }, [open, onCloseFocusRestore]);
+  }, [open, hasAnyItems, onCloseFocusRestore]);
 
-  const accuracyPct =
-    totalQuestions > 0 ? Math.round((correctQuestions / totalQuestions) * 100) : 100;
+  if (!hasAnyItems) {
+    return null;
+  }
+
+  const buttonTitle =
+    hasModeSection && !hasActionsSection
+      ? 'Switch Drill Mode'
+      : 'Mastery & Leaderboard';
 
   return (
     <div className="drill-overflow-wrapper" ref={wrapperRef}>
       <button
         type="button"
         className={`btn-simple btn-drill-overflow ${open ? 'is-open' : ''}`}
-        aria-label="Drill stats and options"
+        aria-label="Drill options"
         aria-haspopup="true"
         aria-expanded={open}
-        title="Stats, Mastery & Leaderboard"
+        title={buttonTitle}
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => {
           setOpen((prev) => {
@@ -114,8 +113,8 @@ export const DrillOverflowMenu: React.FC<DrillOverflowMenuProps> = ({
       </button>
 
       {open && (
-        <div className="drill-overflow-popover" role="region" aria-label="Drill stats and actions">
-          {modeOptions && modeOptions.length > 0 && onSelectMode && (
+        <div className="drill-overflow-popover" role="region" aria-label="Drill options">
+          {hasModeSection && modeOptions && onSelectMode && (
             <div className="popover-section">
               <div className="popover-section-label">Mode</div>
               <div className="popover-mode-segmented">
@@ -140,59 +139,39 @@ export const DrillOverflowMenu: React.FC<DrillOverflowMenuProps> = ({
             </div>
           )}
 
-          <div className="popover-section popover-stats-list">
-            <div className="popover-stat-row">
-              <span className="popover-stat-label">🔥 Streak</span>
-              <span className="popover-stat-val">
-                <strong>{streak}</strong>{' '}
-                <small className="popover-stat-sub">(Best {bestStreak})</small>
-              </span>
-            </div>
-            <div className="popover-stat-row">
-              <span className="popover-stat-label">⚡ 60s Score</span>
-              <span className="popover-stat-val">
-                <strong>{current60s}</strong>{' '}
-                <small className="popover-stat-sub">(Best {best60s})</small>
-              </span>
-            </div>
-            <div className="popover-stat-row">
-              <span className="popover-stat-label">🎯 Accuracy</span>
-              <span className="popover-stat-val">
-                <strong>{accuracyPct}%</strong>{' '}
-                <small className="popover-stat-sub">
-                  ({correctQuestions}/{totalQuestions})
-                </small>
-              </span>
-            </div>
-          </div>
+          {hasActionsSection && (
+            <div className="popover-actions">
+              {masteryAction && (
+                <button
+                  type="button"
+                  className="popover-action-btn mastery-action"
+                  onClick={() => {
+                    setOpen(false);
+                    masteryAction.onOpen();
+                  }}
+                >
+                  <span>📊 Alphabet Mastery</span>
+                  <span className="popover-action-badge">
+                    {masteryAction.masteredCount}/26
+                  </span>
+                </button>
+              )}
 
-          <div className="popover-actions">
-            <button
-              type="button"
-              className="popover-action-btn mastery-action"
-              onClick={() => {
-                setOpen(false);
-                onOpenMastery();
-              }}
-            >
-              <span>📊 Alphabet Mastery</span>
-              <span className="popover-action-badge">{masteredCount}/26</span>
-            </button>
-
-            {onOpenLeaderboard && (
-              <button
-                type="button"
-                className="popover-action-btn leaderboard-action"
-                onClick={() => {
-                  setOpen(false);
-                  onOpenLeaderboard();
-                }}
-              >
-                <span>🏆 Team Leaderboard</span>
-                <span className="popover-action-chevron">›</span>
-              </button>
-            )}
-          </div>
+              {onOpenLeaderboard && (
+                <button
+                  type="button"
+                  className="popover-action-btn leaderboard-action"
+                  onClick={() => {
+                    setOpen(false);
+                    onOpenLeaderboard();
+                  }}
+                >
+                  <span>🏆 Team Leaderboard</span>
+                  <span className="popover-action-chevron">›</span>
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

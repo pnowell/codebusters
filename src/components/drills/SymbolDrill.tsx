@@ -14,6 +14,7 @@ import { FlashcardWorkspace } from './shared/FlashcardWorkspace';
 import { CipherGlyph } from './shared/CipherGlyph';
 import { LeaderboardModal } from '../leaderboard/LeaderboardModal';
 import { useAuth } from '../../context/useAuth';
+import { useIsLargeDrillStage } from '../../hooks/useIsLargeDrillStage';
 
 export type SymbolCipherType = 'atbash' | 'pigpen' | 'galactic';
 
@@ -215,6 +216,8 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
     });
   }, [flushSession, sessionBest60s, workoutContext]);
 
+  const isLargeStage = useIsLargeDrillStage();
+
   const headerRight = (
     <WarmupHeaderRight
       workoutContext={workoutContext}
@@ -222,15 +225,11 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
       onSkipWarmup={skipWarmup}
       onAdvanceWarmup={handleAdvanceWarmup}
       menuProps={{
-        streak,
-        bestStreak: scores.bestStreak,
-        current60s,
-        best60s: scores.best60s,
-        totalQuestions,
-        correctQuestions,
-        masteredCount,
-        onOpenMastery: () => setIsMasteryOpen(true),
-        onOpenLeaderboard: isAllowed ? () => setIsLeaderboardOpen(true) : undefined,
+        masteryAction: !isLargeStage
+          ? { masteredCount, onOpen: () => setIsMasteryOpen(true) }
+          : undefined,
+        onOpenLeaderboard:
+          !isLargeStage && isAllowed ? () => setIsLeaderboardOpen(true) : undefined,
         onCloseFocusRestore: focusAnswerInput,
       }}
     />
@@ -288,7 +287,25 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
             heatTier={heat.tier}
             barPercent={barPercent}
             newRecordAlert={newRecordAlert}
-            best60s={scores.best60s}
+            stats={{
+              current60s,
+              best60s: scores.best60s,
+              streak,
+              bestStreak: scores.bestStreak,
+              correctQuestions,
+              totalQuestions,
+            }}
+            stageActions={
+              isLargeStage
+                ? {
+                    masteredCount,
+                    onOpenMastery: () => setIsMasteryOpen(true),
+                    onOpenLeaderboard: isAllowed
+                      ? () => setIsLeaderboardOpen(true)
+                      : undefined,
+                  }
+                : undefined
+            }
             isWrong={wrongFeedback !== null}
             wrongHintContent={wrongHintContent}
             promptContent={promptContent}
