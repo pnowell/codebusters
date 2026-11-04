@@ -2,11 +2,12 @@
 .drill-container {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   height: 100%;
   max-height: 100%;
-  overflow: hidden;
+  overflow: visible;
   gap: 0.35rem;
 }
 
@@ -212,6 +213,7 @@
 
 .reference-sheet {
   position: relative;
+  margin-top: 3px;
   background: rgba(15, 23, 42, 0.95);
   border: 1px solid var(--border-color);
   border-radius: 10px;
@@ -220,27 +222,29 @@
 
 .ref-close-btn {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: -6px;
+  right: -6px;
   z-index: 50;
-  background: rgba(30, 41, 59, 0.95);
-  border: 1px solid rgba(148, 163, 184, 0.45);
-  color: #94a3b8;
+  background: #1e293b;
+  border: 1px solid rgba(148, 163, 184, 0.55);
+  color: #cbd5e1;
   width: 22px;
   height: 22px;
-  border-radius: 6px;
+  border-radius: 9999px;
+  padding: 0;
+  line-height: 1;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
-  transition: all 0.15s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+  transition: transform 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .ref-close-btn:hover {
-  background: rgba(56, 189, 248, 0.2);
+  background: #16304d;
   border-color: var(--accent-blue);
   color: var(--accent-blue);
   transform: scale(1.08);
@@ -266,7 +270,7 @@
   align-items: center;
   background: #ffffff;
   border-radius: 7px;
-  padding: 0.12rem 0.2rem;
+  padding: 0.15rem 0.75rem;
   overflow-x: auto;
   width: 100%;
 }
@@ -577,10 +581,11 @@
 .drill-stage-viewport {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   width: 100%;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .drill-stage-group {
@@ -1057,7 +1062,7 @@
 /* Symbol Drill Styles */
 .symbol-drill-ref-box {
   max-height: 155px;
-  overflow: hidden;
+  overflow: visible;
   display: flex;
   flex-direction: column;
 }
@@ -1068,7 +1073,7 @@
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  padding: 0.12rem 0.2rem;
+  padding: 0.15rem 0.75rem;
 }
 
 .symbol-drill-ref-box .official-ref-img {
