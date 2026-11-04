@@ -37,6 +37,7 @@ import {
   type DrillSection,
 } from './utils/routing';
 import { useVisualViewportHeight } from './hooks/useVisualViewportHeight';
+import { useOuterMarginScroll } from './hooks/useOuterMarginScroll';
 import { useWorkoutCircuit } from './hooks/useWorkoutCircuit';
 import { useAuth } from './context/useAuth';
 
@@ -129,6 +130,7 @@ export const App: React.FC = () => {
 
   // Pin outer window and track visual viewport height above mobile virtual keyboard
   useVisualViewportHeight();
+  useOuterMarginScroll();
 
   const navigateToDrill = useCallback(
     (
