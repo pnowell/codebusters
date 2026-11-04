@@ -21,7 +21,10 @@ const KEYS = {
   drillScores: 'davinci_drill_scores',
   drillHistory: 'davinci_drill_history',
   practiceHistory: 'davinci_cipher_practice_history',
+  ownerUid: 'davinci_owner_uid',
 } as const;
+
+const LOCAL_KEY_PREFIX = 'davinci_';
 
 export const MAX_RECENT_DRILL_SESSIONS = 5;
 
@@ -60,6 +63,48 @@ export function withoutSyncDispatch<T>(fn: () => T): T {
 function dispatchSync(type: SyncEventType, data: unknown) {
   if (isSyncSuppressed) return;
   globalSyncDispatcher?.(type, data);
+}
+
+export function getLocalOwnerUid(): string | null {
+  try {
+    return localStorage.getItem(KEYS.ownerUid);
+  } catch {
+    return null;
+  }
+}
+
+export function setLocalOwnerUid(uid: string | null): void {
+  try {
+    if (uid) {
+      localStorage.setItem(KEYS.ownerUid, uid);
+    } else {
+      localStorage.removeItem(KEYS.ownerUid);
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+/**
+ * Clears all DaVinci Decoders localStorage entries (`davinci_*` settings, stats,
+ * progress, history, and local test attempts) so switching accounts never bleeds
+ * a previous user's state into a subsequent session.
+ */
+export function clearAllLocalUserData(): void {
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(LOCAL_KEY_PREFIX)) {
+        keysToRemove.push(key);
+      }
+    }
+    for (const key of keysToRemove) {
+      localStorage.removeItem(key);
+    }
+  } catch {
+    // Ignore storage errors
+  }
 }
 
 export function loadSettings(): UserSettings {

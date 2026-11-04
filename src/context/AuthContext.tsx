@@ -9,6 +9,7 @@ import {
 } from '../services/auth';
 import {
   mergeAndInitializeCloudUser,
+  resetClientSessionState,
   startCloudSync,
   stopCloudSync,
 } from '../services/sync';
@@ -76,12 +77,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signOut = async () => {
     setIsLoading(true);
+    resetClientSessionState();
     await signOutUser();
     setUser(null);
     setAllowedUser(null);
     setError(null);
     setRejectedEmail(null);
-    stopCloudSync();
     setIsLoading(false);
   };
 

@@ -758,6 +758,7 @@ export const App: React.FC = () => {
 
       {isOptionsOpen && (
         <OptionsModal
+          key={`${user?.uid ?? 'guest'}:${settings.studentName}:${settings.unlockedCiphers.join(',')}`}
           isOpen={true}
           onClose={closeOptions}
           settings={settings}

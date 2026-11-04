@@ -18,6 +18,9 @@ import {
   registerSyncDispatcher,
   withoutSyncDispatch,
   sanitizeProgressDict,
+  clearAllLocalUserData,
+  getLocalOwnerUid,
+  setLocalOwnerUid,
   type DrillProgressRecord,
   type DrillScoresRecord,
   type DrillHistoryRecord,
@@ -31,7 +34,11 @@ import type {
   DrillProgress,
   DrillSessionSample,
 } from '../types';
-import { upsertPublicProfile, normalizePublicProfile } from './profileService';
+import {
+  upsertPublicProfile,
+  normalizePublicProfile,
+  clearProfilesCache,
+} from './profileService';
 import { updateLeaderboardScore } from './leaderboard';
 
 let activeSyncUnsubscribe: Unsubscribe | null = null;
@@ -193,6 +200,15 @@ export async function mergeAndInitializeCloudUser(
 ): Promise<void> {
   if (!db) return;
 
+  // Defense-in-depth: if localStorage still holds data from a different signed-in account,
+  // wipe it before reading so one user's stats/name can never merge into another user's profile.
+  const previousOwnerUid = getLocalOwnerUid();
+  if (previousOwnerUid && previousOwnerUid !== uid) {
+    withoutSyncDispatch(() => {
+      clearAllLocalUserData();
+    });
+  }
+
   const userDocRef = doc(db, 'users', uid);
   const profileDocRef = doc(db, 'profiles', uid);
 
@@ -268,10 +284,19 @@ export async function mergeAndInitializeCloudUser(
     }
   }
 
-  // 7. Name: Profile customized name or local name
+  // 7. Name: Existing profile displayName -> allowed_users displayName -> Guest custom name -> 'Decoder'
+  const cleanDefaultName =
+    defaultName && defaultName.trim() && defaultName.trim() !== 'Decoder'
+      ? defaultName.trim()
+      : undefined;
+  const cleanLocalName =
+    localSettings.studentName &&
+    localSettings.studentName.trim() &&
+    localSettings.studentName.trim() !== 'Decoder'
+      ? localSettings.studentName.trim()
+      : undefined;
   const finalName =
-    profileData.displayName ||
-    (localSettings.studentName !== 'Decoder' ? localSettings.studentName : (defaultName || 'Decoder'));
+    profileData.displayName || cleanDefaultName || cleanLocalName || 'Decoder';
 
   // Update local storage with merged state (suppress sync broadcast to prevent loop)
   const updatedLocalSettings: UserSettings = {
@@ -280,6 +305,7 @@ export async function mergeAndInitializeCloudUser(
   };
 
   withoutSyncDispatch(() => {
+    setLocalOwnerUid(uid);
     saveSettings(updatedLocalSettings);
     saveCompletedQuoteIds(mergedCompleted);
     saveCipherPracticeHistory(mergedHistory);
@@ -434,6 +460,19 @@ export function stopCloudSync(): void {
   }
   pendingCloudUpdates = {};
   currentSyncedUid = null;
+}
+
+/**
+ * Stops cloud sync, clears cached profiles and all `davinci_*` localStorage data,
+ * and notifies listeners so UI state resets cleanly on logout.
+ */
+export function resetClientSessionState(): void {
+  stopCloudSync();
+  clearProfilesCache();
+  withoutSyncDispatch(() => {
+    clearAllLocalUserData();
+  });
+  notifySyncListeners();
 }
 
 /**

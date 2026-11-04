@@ -120,6 +120,7 @@ export function subscribeTeamProfiles(
       colRef,
       (snap) => {
         const list: PublicProfile[] = [];
+        profilesCache.clear();
         snap.forEach((docSnap) => {
           const raw = docSnap.data() as Record<string, unknown>;
           const profile = normalizePublicProfile(raw, docSnap.id);
@@ -151,6 +152,17 @@ export function subscribeTeamProfiles(
       activeProfilesUnsubscribe = null;
     }
   };
+}
+
+/**
+ * Tears down active `/profiles` subscription and clears the in-memory profile cache on sign-out.
+ */
+export function clearProfilesCache(): void {
+  if (activeProfilesUnsubscribe) {
+    activeProfilesUnsubscribe();
+    activeProfilesUnsubscribe = null;
+  }
+  profilesCache.clear();
 }
 
 /**
