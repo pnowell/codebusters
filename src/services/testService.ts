@@ -225,7 +225,7 @@ export function resolveAttemptForTest(
   // Backwards compatibility for legacy solo attempts created with timestamped IDs
   if (!cloudMatch && !isCollaborative && !testPacket.cohorts?.length) {
     for (const candidate of Object.values(attemptsByAttemptId)) {
-      if (candidate.testId === testPacket.testId) {
+      if (candidate.testId === testPacket.testId && candidate.studentUids.length <= 1) {
         cloudMatch = resolveFreshestAttempt(cloudMatch, candidate);
       }
     }
@@ -340,10 +340,7 @@ export async function setLobbyReadyState(
   currentUid: string,
   ready: boolean
 ): Promise<TestAttempt | null> {
-  const { cohort, memberUids, attemptId, teamName } = resolveUserCohort(
-    testPacket,
-    currentUid
-  );
+  const { memberUids, attemptId } = resolveUserCohort(testPacket, currentUid);
 
   // Offline / Guest mode fallback
   if (!db || currentUid === 'student') {
@@ -435,8 +432,6 @@ export async function setLobbyReadyState(
     const payload: Record<string, unknown> = {
       attemptId,
       testId: testPacket.testId,
-      ...(cohort?.id ? { cohortId: cohort.id } : {}),
-      ...(teamName ? { teamName } : {}),
       studentUids: memberUids,
       readyUids: nextReady,
       submitReadyUids: [],
@@ -452,8 +447,6 @@ export async function setLobbyReadyState(
     return {
       attemptId,
       testId: testPacket.testId,
-      cohortId: cohort?.id,
-      teamName,
       studentUids: memberUids,
       readyUids: nextReady,
       submitReadyUids: [],

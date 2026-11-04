@@ -687,7 +687,10 @@ export const App: React.FC = () => {
       {screen.kind === 'testRunner' && (
         <Suspense fallback={suspenseFallback}>
           <TestRunner
-            testPacket={screen.testPacket}
+            testPacket={
+              availableTests.find((t) => t.testId === screen.testPacket.testId) ??
+              screen.testPacket
+            }
             currentUid={currentUid}
             initialAttempt={screen.initialAttempt}
             onExitToMenu={handleExitTest}
@@ -730,10 +733,12 @@ export const App: React.FC = () => {
       {screen.kind === 'testResults' && (
         <Suspense fallback={suspenseFallback}>
           <TestResultsView
-            testPacket={screen.testPacket}
+            testPacket={
+              availableTests.find((t) => t.testId === screen.testPacket.testId) ??
+              screen.testPacket
+            }
             results={screen.results}
             studentUids={screen.attempt?.studentUids}
-            teamName={screen.attempt?.teamName}
             onBack={handleBackFromTestResults}
           />
         </Suspense>
@@ -778,7 +783,10 @@ export const App: React.FC = () => {
 
       {briefingState && (
         <TestBriefingModal
-          testPacket={briefingState.testPacket}
+          testPacket={
+            availableTests.find((t) => t.testId === briefingState.testPacket.testId) ??
+            briefingState.testPacket
+          }
           currentUid={currentUid}
           existingAttempt={briefingState.existingAttempt}
           onLaunchAttempt={handleLaunchAttempt}

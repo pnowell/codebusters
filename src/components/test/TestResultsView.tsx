@@ -5,12 +5,12 @@ import { getQuoteById } from '../../data/quotes';
 import { groupIntoWords, isLetter } from '../../utils/ciphers';
 import { formatDuration } from '../../utils/format';
 import { getDisplayNamesForUids } from '../../services/profileService';
+import { resolveTeamNameForMembers } from '../../utils/testSync';
 
 interface TestResultsViewProps {
   testPacket: TestPacket;
   results: TestEvaluationResult;
   studentUids?: string[];
-  teamName?: string;
   onBack: () => void;
 }
 
@@ -161,10 +161,12 @@ export const TestResultsView: React.FC<TestResultsViewProps> = ({
   testPacket,
   results,
   studentUids,
-  teamName,
   onBack,
 }) => {
-  const teamOrStudentNames = teamName || (studentUids && studentUids.length > 0 ? getDisplayNamesForUids(studentUids) : null);
+  const liveTeamName = resolveTeamNameForMembers(testPacket, studentUids);
+  const teamOrStudentNames =
+    liveTeamName ||
+    (studentUids && studentUids.length > 0 ? getDisplayNamesForUids(studentUids) : null);
 
   // Accordion state: by default, all problems start collapsed as requested
   const [expandedIndices, setExpandedIndices] = useState<Record<number, boolean>>({});

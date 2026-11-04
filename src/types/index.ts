@@ -176,12 +176,10 @@ export interface MemberPresence {
 export interface TestAttempt {
   attemptId: string;
   testId: string;
-  cohortId?: string;
   studentUids: string[];
   readyUids?: string[];
   submitReadyUids?: string[];
   presence?: Record<string, MemberPresence>;
-  teamName?: string;
   startedAt: number;
   submittedAt?: number;
   status: TestAttemptStatus;

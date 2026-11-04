@@ -157,12 +157,49 @@ export const TestCohortModal: React.FC<TestCohortModalProps> = ({
     }
   };
 
+  const [confirmResetAllOrphans, setConfirmResetAllOrphans] = useState<boolean>(false);
+
+  const matchedAttemptIds = useMemo(() => {
+    const ids = new Set<string>();
+    cohorts.forEach((c) => {
+      if (c.studentUids.length > 0) {
+        ids.add(getCohortAttemptId(testPacket.testId, c.studentUids));
+      }
+    });
+    return ids;
+  }, [cohorts, testPacket.testId]);
+
+  const unmatchedAttempts = useMemo(() => {
+    return Object.values(attemptsMap)
+      .filter((att) => !matchedAttemptIds.has(att.attemptId))
+      .sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+  }, [attemptsMap, matchedAttemptIds]);
+
+  const formatAttemptMembers = (uids: string[]): string => {
+    if (uids.length === 0) return 'Unknown user';
+    return uids
+      .map((uid) => profileByUid.get(uid)?.displayName || uid.slice(0, 8))
+      .join(' & ');
+  };
+
   const handleResetAttempt = async (attemptId: string) => {
     setErrorMsg(null);
     const ok = await deleteTestAttempt(attemptId);
     if (!ok) {
       setErrorMsg('Failed to reset attempt. Check your connection or Firestore rules.');
     }
+    setConfirmResetId(null);
+  };
+
+  const handleResetAllUnmatched = async () => {
+    setErrorMsg(null);
+    const results = await Promise.all(
+      unmatchedAttempts.map((att) => deleteTestAttempt(att.attemptId))
+    );
+    if (results.some((ok) => !ok)) {
+      setErrorMsg('Failed to reset one or more attempts. Check Firestore permissions.');
+    }
+    setConfirmResetAllOrphans(false);
     setConfirmResetId(null);
   };
 
@@ -183,12 +220,86 @@ export const TestCohortModal: React.FC<TestCohortModalProps> = ({
       cohorts: cleanedCohorts,
     });
 
-    setIsSaving(false);
     if (ok) {
+      const savedCohortAttemptIds = new Set(
+        cleanedCohorts.map((c) => getCohortAttemptId(testPacket.testId, c.studentUids))
+      );
+      const orphanedLobbies = Object.values(attemptsMap).filter(
+        (att) =>
+          att.status === 'lobby' &&
+          (!savedCohortAttemptIds.has(att.attemptId) || (att.readyUids?.length ?? 0) === 0)
+      );
+      if (orphanedLobbies.length > 0) {
+        await Promise.all(
+          orphanedLobbies.map((att) => deleteTestAttempt(att.attemptId))
+        );
+      }
+      setIsSaving(false);
       onClose();
     } else {
+      setIsSaving(false);
       setErrorMsg('Could not save test settings. Verify teacher permissions in Firestore.');
     }
+  };
+
+  const getAttemptBadgeMeta = (attempt: TestAttempt, memberCount: number) => {
+    if (attempt.status === 'lobby') {
+      const readyCount = attempt.readyUids?.length ?? 0;
+      return {
+        label: `Lobby (${readyCount}/${Math.max(1, memberCount)} Ready)`,
+        statusClass: 'cohort-attempt-lobby',
+      };
+    }
+    if (attempt.status === 'in_progress') {
+      return {
+        label: 'In Progress',
+        statusClass: 'cohort-attempt-active',
+      };
+    }
+    if (attempt.results) {
+      return {
+        label: `${attempt.status === 'expired' ? 'Expired' : 'Submitted'}: ${attempt.results.totalScore}/${attempt.results.maxPossibleScore} pts`,
+        statusClass: 'cohort-attempt-done',
+      };
+    }
+    return {
+      label: attempt.status,
+      statusClass: 'cohort-attempt-done',
+    };
+  };
+
+  const renderResetControl = (attemptId: string) => {
+    if (confirmResetId === attemptId) {
+      return (
+        <div className="cohort-reset-confirm">
+          <span>Reset run?</span>
+          <button
+            type="button"
+            className="btn-cohort-danger"
+            onClick={() => void handleResetAttempt(attemptId)}
+          >
+            Yes, Reset
+          </button>
+          <button
+            type="button"
+            className="btn-cohort-mini"
+            onClick={() => setConfirmResetId(null)}
+          >
+            Cancel
+          </button>
+        </div>
+      );
+    }
+    return (
+      <button
+        type="button"
+        className="btn-cohort-mini"
+        onClick={() => setConfirmResetId(attemptId)}
+        title="Delete this attempt so they can start fresh"
+      >
+        Reset Attempt
+      </button>
+    );
   };
 
   const renderAttemptStatus = (studentUids: string[]) => {
@@ -197,54 +308,12 @@ export const TestCohortModal: React.FC<TestCohortModalProps> = ({
     const attempt = attemptsMap[attemptId];
     if (!attempt) return null;
 
-    let label = '';
-    let statusClass = '';
-    if (attempt.status === 'lobby') {
-      const readyCount = attempt.readyUids?.length ?? 0;
-      label = `Lobby (${readyCount}/${studentUids.length} Ready)`;
-      statusClass = 'cohort-attempt-lobby';
-    } else if (attempt.status === 'in_progress') {
-      label = 'In Progress';
-      statusClass = 'cohort-attempt-active';
-    } else if (attempt.results) {
-      label = `${attempt.status === 'expired' ? 'Expired' : 'Submitted'}: ${attempt.results.totalScore}/${attempt.results.maxPossibleScore} pts`;
-      statusClass = 'cohort-attempt-done';
-    } else {
-      label = attempt.status;
-      statusClass = 'cohort-attempt-done';
-    }
+    const { label, statusClass } = getAttemptBadgeMeta(attempt, studentUids.length);
 
     return (
       <div className="cohort-attempt-bar">
         <span className={`cohort-attempt-badge ${statusClass}`}>{label}</span>
-        {confirmResetId === attemptId ? (
-          <div className="cohort-reset-confirm">
-            <span>Reset run?</span>
-            <button
-              type="button"
-              className="btn-cohort-danger"
-              onClick={() => void handleResetAttempt(attemptId)}
-            >
-              Yes, Reset
-            </button>
-            <button
-              type="button"
-              className="btn-cohort-mini"
-              onClick={() => setConfirmResetId(null)}
-            >
-              Cancel
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            className="btn-cohort-mini"
-            onClick={() => setConfirmResetId(attemptId)}
-            title="Delete this team's attempt so they can start fresh"
-          >
-            Reset Attempt
-          </button>
-        )}
+        {renderResetControl(attemptId)}
       </div>
     );
   };
@@ -428,6 +497,76 @@ export const TestCohortModal: React.FC<TestCohortModalProps> = ({
             </div>
           )}
         </div>
+
+        {/* Unmatched Solo or Previous Team Attempts */}
+        {unmatchedAttempts.length > 0 && (
+          <div className="cohort-orphan-section">
+            <div className="cohort-unassigned-header">
+              <span className="cohort-section-heading">
+                Other / Previous Attempts ({unmatchedAttempts.length})
+              </span>
+              {unmatchedAttempts.length > 1 &&
+                (confirmResetAllOrphans ? (
+                  <div className="cohort-reset-confirm">
+                    <span>Reset all {unmatchedAttempts.length}?</span>
+                    <button
+                      type="button"
+                      className="btn-cohort-danger"
+                      onClick={() => void handleResetAllUnmatched()}
+                    >
+                      Yes, Reset All
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-cohort-mini"
+                      onClick={() => setConfirmResetAllOrphans(false)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn-cohort-mini"
+                    onClick={() => setConfirmResetAllOrphans(true)}
+                  >
+                    Reset All ({unmatchedAttempts.length})
+                  </button>
+                ))}
+            </div>
+
+            <div className="cohort-orphan-list">
+              {unmatchedAttempts.map((att) => {
+                const { label, statusClass } = getAttemptBadgeMeta(
+                  att,
+                  att.studentUids.length
+                );
+                const isSolo = att.studentUids.length <= 1;
+                return (
+                  <div key={att.attemptId} className="cohort-orphan-row">
+                    <div className="cohort-orphan-info">
+                      <span className="cohort-orphan-names">
+                        {formatAttemptMembers(att.studentUids)}
+                      </span>
+                      <span className="cohort-orphan-tag">
+                        {isSolo ? 'Solo' : 'Previous Team'}
+                      </span>
+                      {att.status === 'lobby' && (
+                        <span className="cohort-orphan-hint">Auto-clears on Save</span>
+                      )}
+                    </div>
+                    <div className="cohort-orphan-actions">
+                      <span className={`cohort-attempt-badge ${statusClass}`}>
+                        {label}
+                      </span>
+                      {renderResetControl(att.attemptId)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {errorMsg && <div className="cohort-error-banner">⚠️ {errorMsg}</div>}

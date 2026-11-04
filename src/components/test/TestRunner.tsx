@@ -66,7 +66,6 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
     return cohortInfo.memberUids;
   }, [initialAttempt?.studentUids, cohortInfo.memberUids]);
 
-  const teamName = initialAttempt?.teamName ?? cohortInfo.teamName;
   const isCollaborative = memberUids.length > 1;
 
   const totalQuestions = testPacket.questions.length;
@@ -142,7 +141,6 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
   const attemptRef = useRef<TestAttempt>({
     attemptId,
     testId: testPacket.testId,
-    teamName,
     studentUids: memberUids,
     submitReadyUids,
     presence,
@@ -156,7 +154,6 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
     attemptRef.current = {
       attemptId,
       testId: testPacket.testId,
-      teamName,
       studentUids: memberUids,
       submitReadyUids,
       presence,
@@ -168,7 +165,6 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
   }, [
     attemptId,
     testPacket.testId,
-    teamName,
     memberUids,
     submitReadyUids,
     presence,
@@ -538,7 +534,6 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
         testPacket={testPacket}
         results={results}
         studentUids={memberUids}
-        teamName={teamName}
         onBack={onExitToMenu}
       />
     );

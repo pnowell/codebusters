@@ -89,6 +89,28 @@ export function getCohortAttemptId(testId: string, studentUids: readonly string[
   return `${testId}__${sorted.join('_')}`;
 }
 
+/**
+ * Resolves the live team display name from `testPacket.cohorts` for an exact member UID group.
+ */
+export function resolveTeamNameForMembers(
+  testPacket: TestPacket,
+  studentUids: readonly string[] | undefined
+): string | undefined {
+  const target = normalizeUidList(studentUids);
+  if (target.length === 0 || !Array.isArray(testPacket.cohorts)) return undefined;
+
+  for (const cohort of testPacket.cohorts) {
+    const members = normalizeUidList(cohort.studentUids);
+    if (
+      members.length === target.length &&
+      members.every((uid, idx) => uid === target[idx])
+    ) {
+      return cohort.name?.trim() || undefined;
+    }
+  }
+  return undefined;
+}
+
 function sanitizeLetterInput(val: unknown): string {
   if (typeof val !== 'string' || val.length === 0) return '';
   const upper = val.slice(-1).toUpperCase();
@@ -399,8 +421,6 @@ export function normalizeTestAttempt(
   return {
     attemptId: typeof raw.attemptId === 'string' && raw.attemptId ? raw.attemptId : fallbackAttemptId,
     testId: typeof raw.testId === 'string' ? raw.testId : '',
-    cohortId: typeof raw.cohortId === 'string' ? raw.cohortId : undefined,
-    teamName: typeof raw.teamName === 'string' ? raw.teamName : undefined,
     studentUids: toStringArray(raw.studentUids),
     readyUids: toStringArray(raw.readyUids),
     submitReadyUids: toStringArray(raw.submitReadyUids),
