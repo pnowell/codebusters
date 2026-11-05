@@ -83,6 +83,43 @@ export interface LetterProgress {
 
 export type DrillProgress = Record<string, LetterProgress>;
 
+export type QuoteBrowserMode = 'standalone' | 'picker';
+
+export type QuoteBrowserSortOption =
+  | 'id_asc'
+  | 'id_desc'
+  | 'len_asc'
+  | 'len_desc'
+  | 'chi_asc'
+  | 'chi_desc'
+  | 'unique_desc'
+  | 'author_asc'
+  | 'random';
+
+export type QuoteBrowserCategoryFilter = 'all' | 'kids_pool' | QuoteCategory;
+export type QuoteBrowserTierFilter = 'all' | CryptanalysisTier;
+export type QuoteBrowserMinWordFilter = 'any' | '1' | '2plus';
+export type QuoteBrowserApostropheFilter = 'any' | 'yes' | 'no';
+export type QuoteBrowserFlagFilter = 'all' | 'unflagged' | 'flagged';
+
+export interface QuoteBrowserFilterPrefs {
+  sortBy: QuoteBrowserSortOption;
+  filtersExpanded: boolean;
+  categoryFilter: QuoteBrowserCategoryFilter;
+  tierFilter: QuoteBrowserTierFilter;
+  minLength: string;
+  maxLength: string;
+  minChi: string;
+  maxChi: string;
+  minWordFilter: QuoteBrowserMinWordFilter;
+  apostropheFilter: QuoteBrowserApostropheFilter;
+  flagFilter: QuoteBrowserFlagFilter;
+  hideUsedInTests: boolean;
+  unseenOnly: boolean;
+}
+
+export type QuoteBrowserPrefsMap = Partial<Record<QuoteBrowserMode, QuoteBrowserFilterPrefs>>;
+
 export interface UserProfile {
   uid: string;
   email: string;
@@ -91,6 +128,7 @@ export interface UserProfile {
   drillHistory?: Partial<Record<DrillId, DrillHistoryEntry>>;
   completedQuotes?: number[];
   practiceHistory?: Record<string, { count: number; lastPracticed: number }>;
+  quoteBrowserPrefs?: QuoteBrowserPrefsMap;
   lastActiveAt?: unknown;
 }
 

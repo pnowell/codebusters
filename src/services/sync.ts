@@ -15,6 +15,9 @@ import {
   MAX_RECENT_DRILL_SESSIONS,
   loadCipherPracticeHistory,
   saveCipherPracticeHistory,
+  loadQuoteBrowserPrefsMap,
+  saveQuoteBrowserPrefsMap,
+  sanitizeQuoteBrowserPrefsMap,
   registerSyncDispatcher,
   withoutSyncDispatch,
   sanitizeProgressDict,
@@ -33,6 +36,7 @@ import type {
   DrillScore,
   DrillProgress,
   DrillSessionSample,
+  QuoteBrowserPrefsMap,
 } from '../types';
 import {
   upsertPublicProfile,
@@ -171,6 +175,9 @@ registerSyncDispatcher((type, data) => {
     case 'practiceHistory':
       pushCloudUpdate({ practiceHistory: data as Record<string, { count: number; lastPracticed: number }> });
       break;
+    case 'quoteBrowserPrefs':
+      pushCloudUpdate({ quoteBrowserPrefs: data as QuoteBrowserPrefsMap });
+      break;
   }
 });
 
@@ -234,6 +241,7 @@ export async function mergeAndInitializeCloudUser(
   const localDrillScores = loadAllDrillScores();
   const localDrillHistory = loadAllDrillHistory();
   const localPracticeHistory = loadCipherPracticeHistory();
+  const localQuoteBrowserPrefs = loadQuoteBrowserPrefsMap();
 
   // Smart Merge:
   // 1. Unlocked Ciphers: Union of local and cloud
@@ -284,6 +292,14 @@ export async function mergeAndInitializeCloudUser(
     }
   }
 
+  // 6b. Quote Browser Filter Preferences: Cloud fallback + local overrides
+  const cloudQuoteBrowserPrefs = sanitizeQuoteBrowserPrefsMap(cloudData.quoteBrowserPrefs);
+  const mergedQuoteBrowserPrefs: QuoteBrowserPrefsMap = {
+    ...cloudQuoteBrowserPrefs,
+    ...localQuoteBrowserPrefs,
+  };
+  const hasQuoteBrowserPrefs = Object.keys(mergedQuoteBrowserPrefs).length > 0;
+
   // 7. Name: Existing profile displayName -> allowed_users displayName -> Guest custom name -> 'Decoder'
   const cleanDefaultName =
     defaultName && defaultName.trim() && defaultName.trim() !== 'Decoder'
@@ -311,6 +327,9 @@ export async function mergeAndInitializeCloudUser(
     saveCipherPracticeHistory(mergedHistory);
     saveAllDrillProgress(mergedProgress);
     saveAllDrillHistory(mergedDrillHistory);
+    if (hasQuoteBrowserPrefs) {
+      saveQuoteBrowserPrefsMap(mergedQuoteBrowserPrefs);
+    }
     for (const [id, score] of Object.entries(mergedDrillScores)) {
       if (score) {
         saveDrillScore(id as DrillId, score);
@@ -329,6 +348,7 @@ export async function mergeAndInitializeCloudUser(
       drillProgress: mergedProgress,
       drillHistory: mergedDrillHistory,
       practiceHistory: mergedHistory,
+      ...(hasQuoteBrowserPrefs ? { quoteBrowserPrefs: mergedQuoteBrowserPrefs } : {}),
       lastActiveAt: serverTimestamp(),
     },
     { merge: true }
@@ -435,6 +455,15 @@ export function startCloudSync(uid: string): void {
         }
         if (historyChanged) {
           saveCipherPracticeHistory(mergedHistory);
+          hasChanged = true;
+        }
+      }
+
+      if (data.quoteBrowserPrefs) {
+        const remotePrefs = sanitizeQuoteBrowserPrefsMap(data.quoteBrowserPrefs);
+        const currentPrefs = loadQuoteBrowserPrefsMap();
+        if (JSON.stringify(currentPrefs) !== JSON.stringify(remotePrefs)) {
+          saveQuoteBrowserPrefsMap(remotePrefs);
           hasChanged = true;
         }
       }

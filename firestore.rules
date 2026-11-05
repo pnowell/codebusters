@@ -33,8 +33,10 @@ service cloud.firestore {
     }
 
     // Private per-student / per-teacher drill history and settings
+    // (teachers have read-only access to aggregate student quote completion counts)
     match /users/{uid} {
-      allow read, write: if isAllowedUser() && request.auth.uid == uid;
+      allow read: if isAllowedUser() && (request.auth.uid == uid || isTeacher());
+      allow write: if isAllowedUser() && request.auth.uid == uid;
     }
 
     // Team public profiles (displayName, role, leaderboard high scores)

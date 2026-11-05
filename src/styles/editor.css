@@ -816,7 +816,7 @@
   border-radius: 10px;
   padding: 0.6rem 0.75rem;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 172px), 1fr));
   gap: 0.55rem 0.7rem;
   align-items: end;
   flex-shrink: 0;
@@ -826,6 +826,12 @@
   display: flex;
   flex-direction: column;
   gap: 0.22rem;
+  min-width: 0;
+}
+
+.qb-filter-field .qb-select {
+  width: 100%;
+  min-width: 0;
 }
 
 .qb-filter-label {
@@ -840,11 +846,12 @@
   display: flex;
   align-items: center;
   gap: 0.28rem;
+  min-width: 0;
 }
 
 .qb-range-input {
   width: 100%;
-  min-width: 52px;
+  min-width: 0;
   background: rgba(15, 23, 42, 0.85);
   border: 1px solid rgba(148, 163, 184, 0.3);
   border-radius: 7px;
@@ -859,6 +866,13 @@
   font-size: 0.78rem;
 }
 
+.qb-toggle-pair {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.28rem;
+  min-width: 0;
+}
+
 .qb-chip-toggle {
   background: rgba(15, 23, 42, 0.85);
   border: 1px solid rgba(148, 163, 184, 0.3);
@@ -870,6 +884,14 @@
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
+}
+
+.qb-toggle-pair .qb-chip-toggle {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-sans);
+  padding: 0.36rem 0.42rem;
+  text-align: center;
 }
 
 .qb-chip-toggle.active {
@@ -907,6 +929,29 @@
   font-family: var(--font-mono);
 }
 
+.qb-usage-pill-btn {
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  color: var(--text-muted);
+  border-radius: 999px;
+  padding: 0.15rem 0.58rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.qb-usage-pill-btn:hover {
+  border-color: rgba(56, 189, 248, 0.45);
+  color: #e0f2fe;
+}
+
+.qb-usage-pill-btn.active {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: rgba(56, 189, 248, 0.52);
+  color: #e0f2fe;
+}
+
 .qb-flagged-pill-btn {
   background: rgba(244, 63, 94, 0.12);
   border: 1px solid rgba(244, 63, 94, 0.32);
@@ -923,6 +968,16 @@
   background: rgba(244, 63, 94, 0.28);
   border-color: rgba(244, 63, 94, 0.65);
   color: #ffffff;
+}
+
+.qb-info-banner {
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: #bae6fd;
+  padding: 0.45rem 0.7rem;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  flex-shrink: 0;
 }
 
 .qb-copy-flagged-btn,
@@ -1020,7 +1075,8 @@
 .qb-tier-badge,
 .qb-stat-pill,
 .qb-warn-pill,
-.qb-used-pill {
+.qb-used-pill,
+.qb-finished-pill {
   font-size: 0.7rem;
   font-weight: 700;
   padding: 0.12rem 0.42rem;
@@ -1086,6 +1142,12 @@
   background: rgba(56, 189, 248, 0.15);
   border: 1px solid rgba(56, 189, 248, 0.35);
   color: #bae6fd;
+}
+
+.qb-finished-pill {
+  background: rgba(245, 158, 11, 0.16);
+  border: 1px solid rgba(245, 158, 11, 0.38);
+  color: #fde68a;
 }
 
 .qb-card-actions {

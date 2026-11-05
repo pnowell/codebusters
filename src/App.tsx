@@ -19,6 +19,7 @@ import { NotAllowedModal } from './components/auth/NotAllowedModal';
 import { isLookupCipher } from './data/drills';
 import {
   loadSettings,
+  saveCompletedQuoteIds,
   saveSettings,
   withoutSyncDispatch,
 } from './services/storage';
@@ -281,6 +282,35 @@ export const App: React.FC = () => {
       setIsAttemptsLoaded(true);
     });
   }, [isAllowed, user?.uid]);
+
+  // Automatically record all quotes from any student test attempt into completedQuotes
+  // so individual lookup drills skip test quotes and `/users/{uid}` stays synchronized.
+  useEffect(() => {
+    if (!isAllowed || isTeacher || isTestsLoading || !isAttemptsLoaded) return;
+    const attemptList = Object.values(studentAttempts);
+    if (attemptList.length === 0) return;
+
+    const testById = new Map(availableTests.map((t) => [t.testId, t]));
+    const seenQuoteIds = new Set<number>();
+
+    for (const attempt of attemptList) {
+      const packet = testById.get(attempt.testId);
+      if (packet) {
+        for (const q of packet.questions) {
+          seenQuoteIds.add(q.quoteId);
+        }
+      }
+      if (attempt.results?.questions) {
+        for (const qr of attempt.results.questions) {
+          seenQuoteIds.add(qr.quoteId);
+        }
+      }
+    }
+
+    if (seenQuoteIds.size > 0) {
+      saveCompletedQuoteIds(Array.from(seenQuoteIds));
+    }
+  }, [isAllowed, isTeacher, isTestsLoading, isAttemptsLoaded, availableTests, studentAttempts]);
 
   // Subscribe to teacher-curated quote flags so student drills also skip flagged quotes
   useEffect(() => {
@@ -864,6 +894,7 @@ export const App: React.FC = () => {
               screen.testPacket
             }
             currentUid={currentUid}
+            isTeacher={isTeacher}
             initialAttempt={screen.initialAttempt}
             onExitToMenu={handleExitTest}
           />

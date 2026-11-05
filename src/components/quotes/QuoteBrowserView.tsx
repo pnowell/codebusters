@@ -1,5 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { TestPacket } from '../../types';
+import {
+  fetchStudentQuoteCompletions,
+  getCachedStudentQuoteCompletions,
+} from '../../services/quoteCompletionService';
 import { QuoteBrowserPanel } from './QuoteBrowserPanel';
 
 interface QuoteBrowserViewProps {
@@ -11,6 +15,23 @@ export const QuoteBrowserView: React.FC<QuoteBrowserViewProps> = ({
   tests,
   onBack,
 }) => {
+  const [finishedByQuotesMap, setFinishedByQuotesMap] = useState<
+    ReadonlyMap<number, string[]>
+  >(() => getCachedStudentQuoteCompletions());
+  const [usersReadBlocked, setUsersReadBlocked] = useState<boolean>(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchStudentQuoteCompletions(tests).then((snapshot) => {
+      if (cancelled) return;
+      setFinishedByQuotesMap(snapshot.finishedByQuotesMap);
+      setUsersReadBlocked(snapshot.usersReadBlocked);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [tests]);
+
   const usedInTestsByQuoteId = useMemo(() => {
     const map = new Map<number, string[]>();
     tests.forEach((test) => {
@@ -49,6 +70,8 @@ export const QuoteBrowserView: React.FC<QuoteBrowserViewProps> = ({
       <QuoteBrowserPanel
         mode="standalone"
         usedInTestsByQuoteId={usedInTestsByQuoteId}
+        finishedByQuotesMap={finishedByQuotesMap}
+        usersReadBlocked={usersReadBlocked}
       />
     </div>
   );

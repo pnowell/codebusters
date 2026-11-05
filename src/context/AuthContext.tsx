@@ -14,6 +14,7 @@ import {
   stopCloudSync,
 } from '../services/sync';
 import { resetQuoteFlagsCache } from '../services/quoteFlagService';
+import { resetQuoteCompletionsCache } from '../services/quoteCompletionService';
 import { AuthContext } from './authContextDef';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -44,12 +45,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             currentAllowed.role
           );
           startCloudSync(currentUser.uid);
-        } catch (e) {
-          console.error('[AuthContext] Cloud merge error:', e);
+        } catch {
+          console.error('[AuthContext] Cloud merge failed');
         }
       } else {
         stopCloudSync();
         resetQuoteFlagsCache();
+        resetQuoteCompletionsCache();
       }
     });
 
@@ -81,6 +83,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     resetClientSessionState();
     resetQuoteFlagsCache();
+    resetQuoteCompletionsCache();
     await signOutUser();
     setUser(null);
     setAllowedUser(null);

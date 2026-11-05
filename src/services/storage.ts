@@ -7,6 +7,15 @@ import type {
   LetterProgress,
   DrillProgress,
   OffsetsMode,
+  QuoteBrowserMode,
+  QuoteBrowserSortOption,
+  QuoteBrowserCategoryFilter,
+  QuoteBrowserTierFilter,
+  QuoteBrowserMinWordFilter,
+  QuoteBrowserApostropheFilter,
+  QuoteBrowserFlagFilter,
+  QuoteBrowserFilterPrefs,
+  QuoteBrowserPrefsMap,
 } from '../types';
 export type { OffsetsMode };
 import {
@@ -21,6 +30,7 @@ const KEYS = {
   drillScores: 'davinci_drill_scores',
   drillHistory: 'davinci_drill_history',
   practiceHistory: 'davinci_cipher_practice_history',
+  quoteBrowserPrefs: 'davinci_quote_browser_prefs',
   ownerUid: 'davinci_owner_uid',
 } as const;
 
@@ -39,7 +49,8 @@ type SyncEventType =
   | 'drillProgress'
   | 'drillScores'
   | 'drillHistory'
-  | 'practiceHistory';
+  | 'practiceHistory'
+  | 'quoteBrowserPrefs';
 
 type SyncDispatcher = (type: SyncEventType, data: unknown) => void;
 
@@ -470,3 +481,205 @@ export function saveCipherPracticeHistory(history: CipherPracticeHistory): void 
     // Ignore
   }
 }
+
+// ---------------------------------------------------------------------------
+// Persistent Teacher Quote Browser Filter & Sort Preferences
+// ---------------------------------------------------------------------------
+
+const VALID_QB_SORT_OPTIONS: ReadonlySet<string> = new Set<QuoteBrowserSortOption>([
+  'id_asc',
+  'id_desc',
+  'len_asc',
+  'len_desc',
+  'chi_asc',
+  'chi_desc',
+  'unique_desc',
+  'author_asc',
+  'random',
+]);
+
+const VALID_QB_CATEGORIES: ReadonlySet<string> = new Set<QuoteBrowserCategoryFilter>([
+  'all',
+  'kids_pool',
+  'kid_joke',
+  'kid_science',
+  'kid_book',
+  'kid_movie',
+  'kid_lyric',
+  'general',
+]);
+
+const VALID_QB_TIERS: ReadonlySet<string> = new Set<QuoteBrowserTierFilter>([
+  'all',
+  'short_drill',
+  'easy',
+  'medium',
+  'hard',
+]);
+
+const VALID_QB_MIN_WORDS: ReadonlySet<string> = new Set<QuoteBrowserMinWordFilter>([
+  'any',
+  '1',
+  '2plus',
+]);
+
+const VALID_QB_APOSTROPHES: ReadonlySet<string> = new Set<QuoteBrowserApostropheFilter>([
+  'any',
+  'yes',
+  'no',
+]);
+
+const VALID_QB_FLAGS: ReadonlySet<string> = new Set<QuoteBrowserFlagFilter>([
+  'all',
+  'unflagged',
+  'flagged',
+]);
+
+function sanitizeBoundedNumberInput(val: unknown): string {
+  if (typeof val !== 'string') return '';
+  const trimmed = val.trim();
+  if (trimmed === '') return '';
+  return /^\d{1,4}(\.\d{1,2})?$/.test(trimmed) ? trimmed : '';
+}
+
+export function getDefaultQuoteBrowserPrefs(
+  mode: QuoteBrowserMode,
+  defaultPickerMaxLength = '75'
+): QuoteBrowserFilterPrefs {
+  const isPicker = mode === 'picker';
+  return {
+    sortBy: 'id_asc',
+    filtersExpanded: true,
+    categoryFilter: 'all',
+    tierFilter: 'all',
+    minLength: '',
+    maxLength: isPicker ? defaultPickerMaxLength : '',
+    minChi: '',
+    maxChi: '',
+    minWordFilter: 'any',
+    apostropheFilter: 'any',
+    flagFilter: isPicker ? 'unflagged' : 'all',
+    hideUsedInTests: true,
+    unseenOnly: true,
+  };
+}
+
+export function sanitizeQuoteBrowserFilterPrefs(
+  raw: unknown,
+  mode: QuoteBrowserMode,
+  defaultPickerMaxLength = '75'
+): QuoteBrowserFilterPrefs {
+  const defaults = getDefaultQuoteBrowserPrefs(mode, defaultPickerMaxLength);
+  if (!raw || typeof raw !== 'object') return defaults;
+  const obj = raw as Partial<Record<keyof QuoteBrowserFilterPrefs, unknown>>;
+
+  return {
+    sortBy:
+      typeof obj.sortBy === 'string' && VALID_QB_SORT_OPTIONS.has(obj.sortBy)
+        ? (obj.sortBy as QuoteBrowserSortOption)
+        : defaults.sortBy,
+    filtersExpanded:
+      typeof obj.filtersExpanded === 'boolean'
+        ? obj.filtersExpanded
+        : defaults.filtersExpanded,
+    categoryFilter:
+      typeof obj.categoryFilter === 'string' && VALID_QB_CATEGORIES.has(obj.categoryFilter)
+        ? (obj.categoryFilter as QuoteBrowserCategoryFilter)
+        : defaults.categoryFilter,
+    tierFilter:
+      typeof obj.tierFilter === 'string' && VALID_QB_TIERS.has(obj.tierFilter)
+        ? (obj.tierFilter as QuoteBrowserTierFilter)
+        : defaults.tierFilter,
+    minLength:
+      obj.minLength !== undefined
+        ? sanitizeBoundedNumberInput(obj.minLength)
+        : defaults.minLength,
+    maxLength:
+      obj.maxLength !== undefined
+        ? sanitizeBoundedNumberInput(obj.maxLength)
+        : defaults.maxLength,
+    minChi:
+      obj.minChi !== undefined
+        ? sanitizeBoundedNumberInput(obj.minChi)
+        : defaults.minChi,
+    maxChi:
+      obj.maxChi !== undefined
+        ? sanitizeBoundedNumberInput(obj.maxChi)
+        : defaults.maxChi,
+    minWordFilter:
+      typeof obj.minWordFilter === 'string' && VALID_QB_MIN_WORDS.has(obj.minWordFilter)
+        ? (obj.minWordFilter as QuoteBrowserMinWordFilter)
+        : defaults.minWordFilter,
+    apostropheFilter:
+      typeof obj.apostropheFilter === 'string' && VALID_QB_APOSTROPHES.has(obj.apostropheFilter)
+        ? (obj.apostropheFilter as QuoteBrowserApostropheFilter)
+        : defaults.apostropheFilter,
+    flagFilter:
+      typeof obj.flagFilter === 'string' && VALID_QB_FLAGS.has(obj.flagFilter)
+        ? (obj.flagFilter as QuoteBrowserFlagFilter)
+        : defaults.flagFilter,
+    hideUsedInTests:
+      typeof obj.hideUsedInTests === 'boolean'
+        ? obj.hideUsedInTests
+        : defaults.hideUsedInTests,
+    unseenOnly:
+      typeof obj.unseenOnly === 'boolean' ? obj.unseenOnly : defaults.unseenOnly,
+  };
+}
+
+export function sanitizeQuoteBrowserPrefsMap(raw: unknown): QuoteBrowserPrefsMap {
+  if (!raw || typeof raw !== 'object') return {};
+  const obj = raw as Record<string, unknown>;
+  const clean: QuoteBrowserPrefsMap = {};
+  if (obj.picker && typeof obj.picker === 'object') {
+    clean.picker = sanitizeQuoteBrowserFilterPrefs(obj.picker, 'picker');
+  }
+  if (obj.standalone && typeof obj.standalone === 'object') {
+    clean.standalone = sanitizeQuoteBrowserFilterPrefs(obj.standalone, 'standalone');
+  }
+  return clean;
+}
+
+export function loadQuoteBrowserPrefsMap(): QuoteBrowserPrefsMap {
+  try {
+    const raw = localStorage.getItem(KEYS.quoteBrowserPrefs);
+    if (!raw) return {};
+    return sanitizeQuoteBrowserPrefsMap(JSON.parse(raw));
+  } catch {
+    return {};
+  }
+}
+
+export function loadQuoteBrowserModePrefs(
+  mode: QuoteBrowserMode,
+  defaultPickerMaxLength = '75'
+): QuoteBrowserFilterPrefs {
+  const map = loadQuoteBrowserPrefsMap();
+  const existing = map[mode];
+  if (!existing) {
+    return getDefaultQuoteBrowserPrefs(mode, defaultPickerMaxLength);
+  }
+  return sanitizeQuoteBrowserFilterPrefs(existing, mode, defaultPickerMaxLength);
+}
+
+export function saveQuoteBrowserPrefsMap(map: QuoteBrowserPrefsMap): void {
+  try {
+    const clean = sanitizeQuoteBrowserPrefsMap(map);
+    localStorage.setItem(KEYS.quoteBrowserPrefs, JSON.stringify(clean));
+    dispatchSync('quoteBrowserPrefs', clean);
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function saveQuoteBrowserModePrefs(
+  mode: QuoteBrowserMode,
+  prefs: QuoteBrowserFilterPrefs
+): void {
+  const current = loadQuoteBrowserPrefsMap();
+  saveQuoteBrowserPrefsMap({
+    ...current,
+    [mode]: sanitizeQuoteBrowserFilterPrefs(prefs, mode),
+  });
+}
+

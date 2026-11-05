@@ -5,7 +5,19 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import type { CryptanalysisTier, Quote, QuoteCategory, QuoteFlag } from '../../types';
+import type {
+  CryptanalysisTier,
+  Quote,
+  QuoteBrowserApostropheFilter,
+  QuoteBrowserCategoryFilter,
+  QuoteBrowserFlagFilter,
+  QuoteBrowserMinWordFilter,
+  QuoteBrowserMode,
+  QuoteBrowserSortOption,
+  QuoteBrowserTierFilter,
+  QuoteCategory,
+  QuoteFlag,
+} from '../../types';
 import { getAllQuotes, MAX_LOOKUP_LENGTH } from '../../data/quotes';
 import {
   getQuoteFlagsMap,
@@ -13,31 +25,22 @@ import {
   saveQuoteFlag,
   subscribeQuoteFlags,
 } from '../../services/quoteFlagService';
+import {
+  getDefaultQuoteBrowserPrefs,
+  loadQuoteBrowserModePrefs,
+  saveQuoteBrowserModePrefs,
+} from '../../services/storage';
+import { subscribeToSyncUpdates } from '../../services/sync';
 
-export type QuoteBrowserMode = 'standalone' | 'picker';
-
-type SortOption =
-  | 'id_asc'
-  | 'id_desc'
-  | 'len_asc'
-  | 'len_desc'
-  | 'chi_asc'
-  | 'chi_desc'
-  | 'unique_desc'
-  | 'author_asc'
-  | 'random';
-
-type CategoryFilter = 'all' | 'kids_pool' | QuoteCategory;
-type TierFilter = 'all' | CryptanalysisTier;
-type MinWordFilter = 'any' | '1' | '2plus';
-type ApostropheFilter = 'any' | 'yes' | 'no';
-type FlagFilter = 'all' | 'unflagged' | 'flagged';
+export type { QuoteBrowserMode };
 
 export interface QuoteBrowserPanelProps {
   mode?: QuoteBrowserMode;
   selectedQuoteId?: number;
   usedInCurrentTestIds?: ReadonlySet<number>;
   usedInTestsByQuoteId?: ReadonlyMap<number, string[]>;
+  finishedByQuotesMap?: ReadonlyMap<number, string[]>;
+  usersReadBlocked?: boolean;
   onSelectQuote?: (quote: Quote) => void;
 }
 
@@ -87,10 +90,12 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
   selectedQuoteId,
   usedInCurrentTestIds,
   usedInTestsByQuoteId,
+  finishedByQuotesMap,
+  usersReadBlocked = false,
   onSelectQuote,
 }) => {
-  const isPicker = mode === 'picker';
   const allQuotes = useMemo(() => getAllQuotes(), []);
+  const defaultPickerMaxLen = String(MAX_LOOKUP_LENGTH);
 
   const validQuoteIds = useMemo(
     () => new Set(allQuotes.map((q) => q.id)),
@@ -119,7 +124,11 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
     return active;
   }, [rawFlagsMap, validQuoteIds]);
 
-  // Filter & sort state
+  // Persistent teacher filter & sort state (scoped by 'picker' vs 'standalone' mode)
+  const [initialPrefs] = useState(() =>
+    loadQuoteBrowserModePrefs(mode, defaultPickerMaxLen)
+  );
+
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [jumpInput, setJumpInput] = useState<string>('');
   const [jumpFeedback, setJumpFeedback] = useState<{
@@ -128,23 +137,100 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
   } | null>(null);
   const [highlightedId, setHighlightedId] = useState<number | null>(null);
 
-  const [sortBy, setSortBy] = useState<SortOption>('id_asc');
+  const [sortBy, setSortBy] = useState<QuoteBrowserSortOption>(initialPrefs.sortBy);
   const [randomSeed, setRandomSeed] = useState<number>(1);
-  const [filtersExpanded, setFiltersExpanded] = useState<boolean>(true);
+  const [filtersExpanded, setFiltersExpanded] = useState<boolean>(
+    initialPrefs.filtersExpanded
+  );
 
-  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
-  const [tierFilter, setTierFilter] = useState<TierFilter>('all');
-  const [minLength, setMinLength] = useState<string>('');
-  const [maxLength, setMaxLength] = useState<string>(
-    isPicker ? String(MAX_LOOKUP_LENGTH) : ''
+  const [categoryFilter, setCategoryFilter] = useState<QuoteBrowserCategoryFilter>(
+    initialPrefs.categoryFilter
   );
-  const [minChi, setMinChi] = useState<string>('');
-  const [maxChi, setMaxChi] = useState<string>('');
-  const [minWordFilter, setMinWordFilter] = useState<MinWordFilter>('any');
-  const [apostropheFilter, setApostropheFilter] = useState<ApostropheFilter>('any');
-  const [flagFilter, setFlagFilter] = useState<FlagFilter>(
-    isPicker ? 'unflagged' : 'all'
+  const [tierFilter, setTierFilter] = useState<QuoteBrowserTierFilter>(
+    initialPrefs.tierFilter
   );
+  const [minLength, setMinLength] = useState<string>(initialPrefs.minLength);
+  const [maxLength, setMaxLength] = useState<string>(initialPrefs.maxLength);
+  const [minChi, setMinChi] = useState<string>(initialPrefs.minChi);
+  const [maxChi, setMaxChi] = useState<string>(initialPrefs.maxChi);
+  const [minWordFilter, setMinWordFilter] = useState<QuoteBrowserMinWordFilter>(
+    initialPrefs.minWordFilter
+  );
+  const [apostropheFilter, setApostropheFilter] =
+    useState<QuoteBrowserApostropheFilter>(initialPrefs.apostropheFilter);
+  const [flagFilter, setFlagFilter] = useState<QuoteBrowserFlagFilter>(
+    initialPrefs.flagFilter
+  );
+  const [hideUsedInTests, setHideUsedInTests] = useState<boolean>(
+    initialPrefs.hideUsedInTests
+  );
+  const [unseenOnly, setUnseenOnly] = useState<boolean>(initialPrefs.unseenOnly);
+
+  const applyingRemoteSyncRef = useRef<boolean>(false);
+
+  // Sync inbound cloud preference updates if another tab/device updated them
+  useEffect(() => {
+    return subscribeToSyncUpdates(() => {
+      const synced = loadQuoteBrowserModePrefs(mode, defaultPickerMaxLen);
+      applyingRemoteSyncRef.current = true;
+      setSortBy(synced.sortBy);
+      setFiltersExpanded(synced.filtersExpanded);
+      setCategoryFilter(synced.categoryFilter);
+      setTierFilter(synced.tierFilter);
+      setMinLength(synced.minLength);
+      setMaxLength(synced.maxLength);
+      setMinChi(synced.minChi);
+      setMaxChi(synced.maxChi);
+      setMinWordFilter(synced.minWordFilter);
+      setApostropheFilter(synced.apostropheFilter);
+      setFlagFilter(synced.flagFilter);
+      setHideUsedInTests(synced.hideUsedInTests);
+      setUnseenOnly(synced.unseenOnly);
+    });
+  }, [mode, defaultPickerMaxLen]);
+
+  // Persist teacher filter & sort changes to localStorage and cloud profile
+  const isFirstPersistRef = useRef<boolean>(true);
+  useEffect(() => {
+    if (isFirstPersistRef.current) {
+      isFirstPersistRef.current = false;
+      return;
+    }
+    if (applyingRemoteSyncRef.current) {
+      applyingRemoteSyncRef.current = false;
+      return;
+    }
+    saveQuoteBrowserModePrefs(mode, {
+      sortBy,
+      filtersExpanded,
+      categoryFilter,
+      tierFilter,
+      minLength,
+      maxLength,
+      minChi,
+      maxChi,
+      minWordFilter,
+      apostropheFilter,
+      flagFilter,
+      hideUsedInTests,
+      unseenOnly,
+    });
+  }, [
+    mode,
+    sortBy,
+    filtersExpanded,
+    categoryFilter,
+    tierFilter,
+    minLength,
+    maxLength,
+    minChi,
+    maxChi,
+    minWordFilter,
+    apostropheFilter,
+    flagFilter,
+    hideUsedInTests,
+    unseenOnly,
+  ]);
 
   // Inline flag note editing state
   const [editingFlagQuoteId, setEditingFlagQuoteId] = useState<number | null>(null);
@@ -164,6 +250,8 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
     if (minWordFilter !== 'any') count += 1;
     if (apostropheFilter !== 'any') count += 1;
     if (flagFilter !== 'all') count += 1;
+    if (hideUsedInTests) count += 1;
+    if (unseenOnly) count += 1;
     return count;
   }, [
     categoryFilter,
@@ -175,26 +263,32 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
     minWordFilter,
     apostropheFilter,
     flagFilter,
+    hideUsedInTests,
+    unseenOnly,
   ]);
 
   const hasNonDefaultFilters = useMemo(() => {
-    const defaultMaxLen = isPicker ? String(MAX_LOOKUP_LENGTH) : '';
-    const defaultFlagFilter: FlagFilter = isPicker ? 'unflagged' : 'all';
+    const defaults = getDefaultQuoteBrowserPrefs(mode, defaultPickerMaxLen);
     return (
       searchQuery.trim() !== '' ||
-      categoryFilter !== 'all' ||
-      tierFilter !== 'all' ||
-      minLength.trim() !== '' ||
-      maxLength.trim() !== defaultMaxLen ||
-      minChi.trim() !== '' ||
-      maxChi.trim() !== '' ||
-      minWordFilter !== 'any' ||
-      apostropheFilter !== 'any' ||
-      flagFilter !== defaultFlagFilter
+      sortBy !== defaults.sortBy ||
+      categoryFilter !== defaults.categoryFilter ||
+      tierFilter !== defaults.tierFilter ||
+      minLength.trim() !== defaults.minLength ||
+      maxLength.trim() !== defaults.maxLength ||
+      minChi.trim() !== defaults.minChi ||
+      maxChi.trim() !== defaults.maxChi ||
+      minWordFilter !== defaults.minWordFilter ||
+      apostropheFilter !== defaults.apostropheFilter ||
+      flagFilter !== defaults.flagFilter ||
+      hideUsedInTests !== defaults.hideUsedInTests ||
+      unseenOnly !== defaults.unseenOnly
     );
   }, [
-    isPicker,
+    mode,
+    defaultPickerMaxLen,
     searchQuery,
+    sortBy,
     categoryFilter,
     tierFilter,
     minLength,
@@ -204,6 +298,8 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
     minWordFilter,
     apostropheFilter,
     flagFilter,
+    hideUsedInTests,
+    unseenOnly,
   ]);
 
   const resetAllFiltersToShowEverything = useCallback(() => {
@@ -217,21 +313,27 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
     setMinWordFilter('any');
     setApostropheFilter('any');
     setFlagFilter('all');
+    setHideUsedInTests(false);
+    setUnseenOnly(false);
   }, []);
 
   const handleResetDefaultFilters = useCallback(() => {
+    const defaults = getDefaultQuoteBrowserPrefs(mode, defaultPickerMaxLen);
     setSearchQuery('');
-    setCategoryFilter('all');
-    setTierFilter('all');
-    setMinLength('');
-    setMaxLength(isPicker ? String(MAX_LOOKUP_LENGTH) : '');
-    setMinChi('');
-    setMaxChi('');
-    setMinWordFilter('any');
-    setApostropheFilter('any');
-    setFlagFilter(isPicker ? 'unflagged' : 'all');
+    setSortBy(defaults.sortBy);
+    setCategoryFilter(defaults.categoryFilter);
+    setTierFilter(defaults.tierFilter);
+    setMinLength(defaults.minLength);
+    setMaxLength(defaults.maxLength);
+    setMinChi(defaults.minChi);
+    setMaxChi(defaults.maxChi);
+    setMinWordFilter(defaults.minWordFilter);
+    setApostropheFilter(defaults.apostropheFilter);
+    setFlagFilter(defaults.flagFilter);
+    setHideUsedInTests(defaults.hideUsedInTests);
+    setUnseenOnly(defaults.unseenOnly);
     setJumpFeedback(null);
-  }, [isPicker]);
+  }, [mode, defaultPickerMaxLen]);
 
   const filteredQuotes = useMemo(() => {
     const trimmedSearch = searchQuery.trim();
@@ -250,6 +352,22 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
       const isFlagged = flagsMap.has(q.id);
       if (flagFilter === 'unflagged' && isFlagged) return false;
       if (flagFilter === 'flagged' && !isFlagged) return false;
+
+      if (hideUsedInTests) {
+        const isSelected = selectedQuoteId === q.id;
+        const inCurrentTest = usedInCurrentTestIds?.has(q.id) ?? false;
+        const inOtherTests = (usedInTestsByQuoteId?.get(q.id)?.length ?? 0) > 0;
+        if (inOtherTests || (inCurrentTest && !isSelected)) {
+          return false;
+        }
+      }
+
+      if (unseenOnly) {
+        const finishedCount = finishedByQuotesMap?.get(q.id)?.length ?? 0;
+        if (finishedCount > 0) {
+          return false;
+        }
+      }
 
       const qCat: QuoteCategory = q.category ?? 'general';
       if (categoryFilter === 'kids_pool') {
@@ -341,6 +459,12 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
     allQuotes,
     flagsMap,
     flagFilter,
+    hideUsedInTests,
+    selectedQuoteId,
+    usedInCurrentTestIds,
+    usedInTestsByQuoteId,
+    unseenOnly,
+    finishedByQuotesMap,
     categoryFilter,
     tierFilter,
     minLength,
@@ -641,7 +765,7 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
             className="qb-select qb-sort-select"
             value={sortBy}
             onChange={(e) => {
-              const next = e.target.value as SortOption;
+              const next = e.target.value as QuoteBrowserSortOption;
               setSortBy(next);
               if (next === 'random') {
                 setRandomSeed((s) => s + 1);
@@ -710,7 +834,9 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
               id="qb-cat-select"
               className="qb-select"
               value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value as CategoryFilter)}
+              onChange={(e) =>
+                setCategoryFilter(e.target.value as QuoteBrowserCategoryFilter)
+              }
             >
               <option value="all">All Categories</option>
               <option value="kids_pool">Kids Pool (All Kid_*)</option>
@@ -731,7 +857,9 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
               id="qb-tier-select"
               className="qb-select"
               value={tierFilter}
-              onChange={(e) => setTierFilter(e.target.value as TierFilter)}
+              onChange={(e) =>
+                setTierFilter(e.target.value as QuoteBrowserTierFilter)
+              }
             >
               <option value="all">All Tiers</option>
               <option value="short_drill">Short Drill</option>
@@ -813,7 +941,9 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
               id="qb-minword-select"
               className="qb-select"
               value={minWordFilter}
-              onChange={(e) => setMinWordFilter(e.target.value as MinWordFilter)}
+              onChange={(e) =>
+                setMinWordFilter(e.target.value as QuoteBrowserMinWordFilter)
+              }
             >
               <option value="any">Any</option>
               <option value="1">1 Letter (Has A / I)</option>
@@ -830,7 +960,7 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
               className="qb-select"
               value={apostropheFilter}
               onChange={(e) =>
-                setApostropheFilter(e.target.value as ApostropheFilter)
+                setApostropheFilter(e.target.value as QuoteBrowserApostropheFilter)
               }
             >
               <option value="any">Any</option>
@@ -847,23 +977,63 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
               id="qb-flag-select"
               className="qb-select"
               value={flagFilter}
-              onChange={(e) => setFlagFilter(e.target.value as FlagFilter)}
+              onChange={(e) =>
+                setFlagFilter(e.target.value as QuoteBrowserFlagFilter)
+              }
             >
               <option value="all">All Quotes</option>
               <option value="unflagged">Unflagged Only</option>
               <option value="flagged">🚩 Flagged Only ({flagsMap.size})</option>
             </select>
           </div>
+
+          <div className="qb-filter-field">
+            <span className="qb-filter-label">Usage &amp; Freshness</span>
+            <div className="qb-toggle-pair">
+              <button
+                type="button"
+                className={`qb-chip-toggle ${hideUsedInTests ? 'active' : ''}`}
+                onClick={() => setHideUsedInTests((prev) => !prev)}
+                title="Hide quotes already included on practice tests"
+              >
+                {hideUsedInTests ? '✓ ' : ''}Hide Used
+              </button>
+              <button
+                type="button"
+                className={`qb-chip-toggle ${unseenOnly ? 'active' : ''}`}
+                onClick={() => setUnseenOnly((prev) => !prev)}
+                title="Only show quotes that 0 students have completed"
+              >
+                {unseenOnly ? '✓ ' : ''}Unseen
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* 3. Results Count & Flag Actions Strip */}
+      {/* 3. Results Count & Quick Filter Strip */}
       <div className="qb-summary-bar">
         <div className="qb-summary-left">
           <span className="qb-count-text">
             Showing <strong>{filteredQuotes.length.toLocaleString()}</strong> of{' '}
             {allQuotes.length.toLocaleString()} quotes
           </span>
+          <button
+            type="button"
+            className={`qb-usage-pill-btn ${hideUsedInTests ? 'active' : ''}`}
+            onClick={() => setHideUsedInTests((prev) => !prev)}
+            title="Toggle hiding quotes already included in practice tests"
+          >
+            {hideUsedInTests ? '✓ ' : ''}Hide Used in Tests
+          </button>
+          <button
+            type="button"
+            className={`qb-usage-pill-btn ${unseenOnly ? 'active' : ''}`}
+            onClick={() => setUnseenOnly((prev) => !prev)}
+            title="Toggle showing only quotes that 0 students have completed"
+          >
+            {unseenOnly ? '✓ ' : ''}Unseen Only
+          </button>
           <button
             type="button"
             className={`qb-flagged-pill-btn ${
@@ -904,6 +1074,14 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
         </div>
       </div>
 
+      {usersReadBlocked && (
+        <div className="qb-info-banner">
+          ℹ️ Publish updated <code>firestore.rules</code> in Firebase Console to
+          include solo drill completions in Finished counts (practice test attempts
+          are already counted).
+        </div>
+      )}
+
       {flagError && <div className="qb-error-banner">⚠️ {flagError}</div>}
 
       {/* 4. Virtualized Quote List */}
@@ -937,6 +1115,7 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
               const isHighlighted = highlightedId === quote.id;
               const inCurrentTest = usedInCurrentTestIds?.has(quote.id) ?? false;
               const otherTests = usedInTestsByQuoteId?.get(quote.id);
+              const finishedStudents = finishedByQuotesMap?.get(quote.id);
               const category: QuoteCategory = quote.category ?? 'general';
 
               return (
@@ -987,7 +1166,15 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
                           className="qb-used-pill"
                           title={`Used in: ${otherTests.join(', ')}`}
                         >
-                          📝 Used ({otherTests.length})
+                          📝 Used in Tests
+                        </span>
+                      )}
+                      {finishedStudents && finishedStudents.length > 0 && (
+                        <span
+                          className="qb-finished-pill"
+                          title={`Completed by: ${finishedStudents.join(', ')}`}
+                        >
+                          ✓ {finishedStudents.length} Finished
                         </span>
                       )}
                     </div>

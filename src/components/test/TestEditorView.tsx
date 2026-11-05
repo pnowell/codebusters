@@ -20,6 +20,10 @@ import {
   getQuoteFlagsMap,
   subscribeQuoteFlags,
 } from '../../services/quoteFlagService';
+import {
+  fetchStudentQuoteCompletions,
+  getCachedStudentQuoteCompletions,
+} from '../../services/quoteCompletionService';
 import { subscribeTeamProfiles } from '../../services/profileService';
 import {
   deleteTestAttempt,
@@ -98,8 +102,18 @@ function buildAutoPrompt(
   return `${prefix}Decode this ${cipherMeta} message${byline}.`;
 }
 
-function buildStarterQuestions(): EditableQuestion[] {
+function buildStarterQuestions(existingTests: readonly TestPacket[]): EditableQuestion[] {
   const used = new Set<number>();
+  for (const t of existingTests) {
+    for (const q of t.questions) {
+      used.add(q.quoteId);
+    }
+  }
+  for (const [quoteId, students] of getCachedStudentQuoteCompletions().entries()) {
+    if (students.length > 0) {
+      used.add(quoteId);
+    }
+  }
   const ciphers: LookupCipherType[] = ['atbash', 'pigpen', 'galactic'];
   return ciphers.map((cipher, idx) => {
     const picked = pickRandomCleanLookupQuote(used);
@@ -184,7 +198,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
         description: q.description ?? '',
       }));
     }
-    return buildStarterQuestions();
+    return buildStarterQuestions(existingTests);
   });
 
   // Form state — Tab 2 (Visibility, Teams & Attempts)
@@ -205,12 +219,28 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
   );
   const [includeTeachers, setIncludeTeachers] = useState<boolean>(false);
 
-  // Subscriptions: Profiles, Attempts (edit mode), and Quote Flags
+  // Subscriptions: Profiles, Attempts (edit mode), Quote Flags, and Student Completions
   const [profiles, setProfiles] = useState<PublicProfile[]>([]);
   const [attemptsMap, setAttemptsMap] = useState<Record<string, TestAttempt>>({});
   const [flagsMap, setFlagsMap] = useState<ReadonlyMap<number, QuoteFlag>>(() =>
     getQuoteFlagsMap()
   );
+  const [finishedByQuotesMap, setFinishedByQuotesMap] = useState<
+    ReadonlyMap<number, string[]>
+  >(() => getCachedStudentQuoteCompletions());
+  const [usersReadBlocked, setUsersReadBlocked] = useState<boolean>(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchStudentQuoteCompletions(existingTests).then((snapshot) => {
+      if (cancelled) return;
+      setFinishedByQuotesMap(snapshot.finishedByQuotesMap);
+      setUsersReadBlocked(snapshot.usersReadBlocked);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [existingTests]);
 
   useEffect(() => {
     const unsubProfiles = subscribeTeamProfiles((list) => setProfiles(list));
@@ -347,6 +377,19 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
     return map;
   }, [existingTests, editingTestId]);
 
+  const freshQuoteExcludeIds = useMemo(() => {
+    const exclude = new Set<number>(usedInCurrentTestIds);
+    for (const quoteId of usedInOtherTestsByQuoteId.keys()) {
+      exclude.add(quoteId);
+    }
+    for (const [quoteId, students] of finishedByQuotesMap.entries()) {
+      if (students.length > 0) {
+        exclude.add(quoteId);
+      }
+    }
+    return exclude;
+  }, [usedInCurrentTestIds, usedInOtherTestsByQuoteId, finishedByQuotesMap]);
+
   const totalPoints = useMemo(
     () => questions.reduce((sum, q) => sum + (Number.isFinite(q.points) ? q.points : 0), 0),
     [questions]
@@ -356,7 +399,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
   const handleAddQuestion = () => {
     const cycleCiphers: LookupCipherType[] = ['atbash', 'pigpen', 'galactic'];
     const nextCipher = cycleCiphers[questions.length % cycleCiphers.length];
-    const picked = pickRandomCleanLookupQuote(usedInCurrentTestIds);
+    const picked = pickRandomCleanLookupQuote(freshQuoteExcludeIds);
     const uid = createClientUid('q', qSeqRef.current);
     qSeqRef.current += 1;
 
@@ -405,8 +448,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
   };
 
   const handlePickRandomForQuestion = (question: EditableQuestion) => {
-    const exclude = new Set(usedInCurrentTestIds);
-    const picked = pickRandomCleanLookupQuote(exclude);
+    const picked = pickRandomCleanLookupQuote(freshQuoteExcludeIds);
     const prevQuote = getQuoteById(question.quoteId);
     const prevDefault = buildAutoPrompt(
       question.cipher,
@@ -992,6 +1034,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                 const flagEntry = flagsMap.get(q.quoteId);
                 const isDupeInDraft = duplicateQuoteIdsInDraft.has(q.quoteId);
                 const otherTests = usedInOtherTestsByQuoteId.get(q.quoteId);
+                const finishedStudents = finishedByQuotesMap.get(q.quoteId);
                 const isPreviewOpen = expandedPreviewUids.has(q.uid);
                 const cat: QuoteCategory = quote?.category ?? 'general';
 
@@ -1179,7 +1222,15 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                               className="qb-used-pill"
                               title={`Also used in: ${otherTests.join(', ')}`}
                             >
-                              📝 In {otherTests.length} other test(s)
+                              📝 Used in Tests
+                            </span>
+                          )}
+                          {finishedStudents && finishedStudents.length > 0 && (
+                            <span
+                              className="qb-finished-pill"
+                              title={`Completed by: ${finishedStudents.join(', ')}`}
+                            >
+                              ✓ {finishedStudents.length} Finished
                             </span>
                           )}
                         </div>
@@ -1593,6 +1644,8 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
             selectedQuoteId={pickerTargetQuestion.quoteId}
             usedInCurrentTestIds={usedInCurrentTestIds}
             usedInTestsByQuoteId={usedInOtherTestsByQuoteId}
+            finishedByQuotesMap={finishedByQuotesMap}
+            usersReadBlocked={usersReadBlocked}
             onSelectQuote={handleSelectQuoteFromPicker}
           />
         </Modal>

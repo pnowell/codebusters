@@ -32,6 +32,7 @@ import {
   subscribeTestAttemptById,
   updateMemberPresence,
 } from '../../services/testService';
+import { saveCompletedQuoteIds } from '../../services/storage';
 import { Modal } from '../common/Modal';
 import { TestCipherWorkspace } from './TestCipherWorkspace';
 import { TestReviewScreen } from './TestReviewScreen';
@@ -40,6 +41,7 @@ import { TestResultsView } from './TestResultsView';
 interface TestRunnerProps {
   testPacket: TestPacket;
   currentUid: string;
+  isTeacher?: boolean;
   initialAttempt?: TestAttempt | null;
   onExitToMenu: () => void;
 }
@@ -50,9 +52,18 @@ const PRESENCE_HEARTBEAT_MS = 30_000;
 export const TestRunner: React.FC<TestRunnerProps> = ({
   testPacket,
   currentUid,
+  isTeacher = false,
   initialAttempt,
   onExitToMenu,
 }) => {
+  useEffect(() => {
+    if (isTeacher) return;
+    const ids = testPacket.questions.map((q) => q.quoteId);
+    if (ids.length > 0) {
+      saveCompletedQuoteIds(ids);
+    }
+  }, [isTeacher, testPacket.questions]);
+
   const cohortInfo = useMemo(
     () => resolveUserCohort(testPacket, currentUid),
     [testPacket, currentUid]
