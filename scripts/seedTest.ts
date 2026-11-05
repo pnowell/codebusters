@@ -30,7 +30,7 @@ const practiceTest1: TestPacket = {
   testId: 'invitational-practice-1',
   title: 'Invitational Practice Test #1',
   description:
-    'Science Olympiad Division A Practice Exam. 5 problems covering Pigpen, Galactic, Atbash, and Caesar ciphers. Work carefully — unanswered letters count as errors!',
+    'Science Olympiad Division A Practice Exam. 5 problems covering Pigpen, Galactic, and Atbash ciphers. Work carefully — unanswered letters count as errors!',
   timeLimitSeconds: 2100, // 35 minutes
   active: true,
   createdAt: serverTimestamp(),
@@ -58,11 +58,10 @@ const practiceTest1: TestPacket = {
     },
     {
       questionNumber: 4,
-      cipher: 'caesar',
+      cipher: 'galactic',
       quoteId: 21, // "Do no harm and leave the world a better place than you found it."
       points: 150,
-      params: { caesarShift: 2 },
-      description: 'Decode this quote encrypted with a Caesar shift of +2 (A → C).',
+      description: 'Decode this quote written in the Standard Galactic Alphabet.',
     },
     {
       questionNumber: 5,
@@ -79,18 +78,17 @@ const practiceTest2: TestPacket = {
   testId: 'invitational-practice-2',
   title: 'Invitational Practice Test #2',
   description:
-    'Science Olympiad Division A Warmup Exam. 4 problems covering Caesar, Atbash, and Pigpen ciphers. Decode accurately and beat the clock!',
+    'Science Olympiad Division A Warmup Exam. 4 problems covering Atbash, Pigpen, and Galactic ciphers. Decode accurately and beat the clock!',
   timeLimitSeconds: 1500, // 25 minutes
   active: true,
   createdAt: serverTimestamp(),
   questions: [
     {
       questionNumber: 1,
-      cipher: 'caesar',
+      cipher: 'atbash',
       quoteId: 21, // "Do no harm and leave the world a better place than you found it."
       points: 125,
-      params: { caesarShift: 4 },
-      description: 'Decode this quote encrypted with a Caesar shift of +4 (A → E).',
+      description: 'Decode this quote using the Atbash cipher (A ↔ Z, B ↔ Y).',
     },
     {
       questionNumber: 2,

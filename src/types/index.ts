@@ -96,21 +96,19 @@ export interface UserProfile {
   lastActiveAt?: unknown;
 }
 
-export interface TestCipherParams {
-  caesarShift?: number;
-  vigenereKey?: string;
-  alphabetMapping?: Record<string, string>;
-  hint?: string;
+export interface QuoteFlag {
+  quoteId: number;
+  note?: string;
+  updatedAt?: unknown;
 }
 
 export interface TestQuestion {
   questionNumber: number; // 1-indexed (1, 2, 3...)
-  cipher: CipherType;
+  cipher: LookupCipherType;
   quoteId: number;
   points: number;
   isTiebreaker?: boolean;
   description?: string;
-  params?: TestCipherParams;
 }
 
 export interface TestCohort {

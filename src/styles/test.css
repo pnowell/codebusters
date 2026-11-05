@@ -492,68 +492,6 @@
   margin: 0;
 }
 
-/* Caesar Shift Reference Box */
-.caesar-ref-card {
-  padding: 0.5rem 0.75rem;
-  background: rgba(15, 23, 42, 0.75);
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  overflow-x: auto;
-}
-
-.caesar-ref-header {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-}
-
-.caesar-ref-header strong {
-  color: var(--accent-blue);
-}
-
-.caesar-ref-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  overflow-x: auto;
-}
-
-.caesar-ref-row {
-  display: flex;
-  align-items: center;
-  gap: 0.2rem;
-}
-
-.caesar-row-label {
-  width: 50px;
-  color: var(--text-muted);
-  font-size: 0.7rem;
-  text-transform: uppercase;
-}
-
-.caesar-cell {
-  width: 20px;
-  height: 20px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 3px;
-}
-
-.plain-cell {
-  background: rgba(51, 65, 85, 0.5);
-  color: var(--text-main);
-}
-
-.cipher-cell {
-  background: rgba(56, 189, 248, 0.15);
-  color: var(--accent-blue);
-  font-weight: 700;
-}
-
 .test-workspace-footer {
   display: flex;
   align-items: center;

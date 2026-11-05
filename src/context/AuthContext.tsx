@@ -13,6 +13,7 @@ import {
   startCloudSync,
   stopCloudSync,
 } from '../services/sync';
+import { resetQuoteFlagsCache } from '../services/quoteFlagService';
 import { AuthContext } from './authContextDef';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -48,6 +49,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       } else {
         stopCloudSync();
+        resetQuoteFlagsCache();
       }
     });
 
@@ -78,6 +80,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = async () => {
     setIsLoading(true);
     resetClientSessionState();
+    resetQuoteFlagsCache();
     await signOutUser();
     setUser(null);
     setAllowedUser(null);

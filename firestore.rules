@@ -44,10 +44,29 @@ service cloud.firestore {
       allow delete: if isTeacher();
     }
 
-    // Practice test packets (students see active tests; teachers see all & configure cohorts)
+    // Practice test packets (students see active tests; teachers author, edit, delete & configure cohorts)
     match /tests/{testId} {
       allow read: if isTeacher() || (isAllowedUser() && resource.data.active == true);
-      allow write: if isTeacher();
+      allow create, update: if isTeacher()
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 120
+        && request.resource.data.timeLimitSeconds is int
+        && request.resource.data.timeLimitSeconds >= 60
+        && request.resource.data.questions is list;
+      allow delete: if isTeacher();
+    }
+
+    // Teacher-curated quote flags for QA inspection & live student drill exclusion
+    match /quote_flags/{quoteId} {
+      allow read: if isAllowedUser();
+      allow create, update: if isTeacher()
+        && request.resource.data.quoteId is int
+        && request.resource.data.quoteId >= 0
+        && (!('note' in request.resource.data)
+            || (request.resource.data.note is string
+                && request.resource.data.note.size() <= 500));
+      allow delete: if isTeacher();
     }
 
     // Collaborative & solo test attempts

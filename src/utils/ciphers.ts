@@ -52,21 +52,6 @@ export function atbashChar(char: string): string {
 }
 
 /**
- * Caesar mapping: shift by n (-3 to +3 for Div A).
- * Used by upcoming Caesar drill (Meeting 2).
- */
-export function caesarChar(char: string, shift: number): string {
-  const off = letterToOffset(char);
-  if (off === -1) return char;
-  const shifted = ((off + shift) % 26 + 26) % 26;
-  return offsetToLetter(shifted);
-}
-
-export function caesarText(text: string, shift: number): string {
-  return text.split('').map(c => caesarChar(c, shift)).join('');
-}
-
-/**
  * Evaluate student answer against target plaintext using official SoCal DaVinci scoring:
  * - 0 to 2 errors: Full credit
  * - 3 to 4 errors: Half credit

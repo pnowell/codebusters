@@ -2,11 +2,10 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { CipherGlyph } from './CipherGlyph';
 import { isLetter, findLetterIndex, groupIntoWords } from '../../../utils/ciphers';
 import { useKeepInView } from '../../../hooks/useKeepInView';
-import type { CipherType, Quote, TestCipherParams } from '../../../types';
+import type { LookupCipherType, Quote } from '../../../types';
 
 interface QuoteTileGridProps {
-  cipher: CipherType;
-  params?: TestCipherParams;
+  cipher: LookupCipherType;
   quote: Quote;
   userInputs: string[];
   onChangeUserInputs: (inputs: string[]) => void;
@@ -17,7 +16,6 @@ interface QuoteTileGridProps {
 
 export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
   cipher,
-  params,
   quote,
   userInputs,
   onChangeUserInputs,
@@ -28,11 +26,6 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
   const chars = useMemo(() => quote.quote.toUpperCase().split(''), [quote.quote]);
   const words = useMemo(() => groupIntoWords(chars), [chars]);
   const firstLetterIdx = useMemo(() => chars.findIndex(isLetter), [chars]);
-
-  const alphaIndices = useMemo(() => {
-    let alphaCount = 0;
-    return chars.map((c) => (isLetter(c) ? alphaCount++ : -1));
-  }, [chars]);
 
   const [prevQuoteId, setPrevQuoteId] = useState<number>(quote.id);
   const [activeIdx, setActiveIdx] = useState<number>(() =>
@@ -140,12 +133,7 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
                     onClick={() => isAlpha && !disabled && focusTile(index)}
                   >
                     <div className="tile-cipher">
-                      <CipherGlyph
-                        cipher={cipher}
-                        params={params}
-                        char={char}
-                        alphaIndex={alphaIndices[index]}
-                      />
+                      <CipherGlyph cipher={cipher} char={char} />
                     </div>
                     {isAlpha ? (
                       <input

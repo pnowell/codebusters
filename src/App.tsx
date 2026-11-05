@@ -30,11 +30,13 @@ import {
 } from './services/testService';
 import { subscribeToSyncUpdates } from './services/sync';
 import { subscribeTeamProfiles } from './services/profileService';
+import { subscribeQuoteFlags } from './services/quoteFlagService';
 import {
   parseUrlRoute,
   buildRouteUrl,
   parseUnlockedParam,
   type DrillSection,
+  type TestEditorTab,
 } from './utils/routing';
 import { useVisualViewportHeight } from './hooks/useVisualViewportHeight';
 import { useOuterMarginScroll } from './hooks/useOuterMarginScroll';
@@ -59,6 +61,18 @@ const TestResultsView = lazy(() =>
   }))
 );
 
+const TestEditorView = lazy(() =>
+  import('./components/test/TestEditorView').then((m) => ({
+    default: m.TestEditorView,
+  }))
+);
+
+const QuoteBrowserView = lazy(() =>
+  import('./components/quotes/QuoteBrowserView').then((m) => ({
+    default: m.QuoteBrowserView,
+  }))
+);
+
 type ActiveScreen =
   | { kind: 'menu' }
   | {
@@ -69,6 +83,14 @@ type ActiveScreen =
       quoteId?: number;
     }
   | { kind: 'testsList' }
+  | { kind: 'quotesBrowser' }
+  | {
+      kind: 'testEditor';
+      editTarget: string;
+      tab: TestEditorTab;
+      draftTemplate?: TestPacket;
+      editorNonce: number;
+    }
   | { kind: 'testRunner'; testPacket: TestPacket; initialAttempt: TestAttempt | null }
   | {
       kind: 'testResults';
@@ -104,6 +126,17 @@ function initScreen(): ActiveScreen {
       quoteId: route.quoteId,
     };
   }
+  if (route.quotesBrowser) {
+    return { kind: 'quotesBrowser' };
+  }
+  if (route.editTest) {
+    return {
+      kind: 'testEditor',
+      editTarget: route.editTest,
+      tab: route.editTab ?? 'questions',
+      editorNonce: 0,
+    };
+  }
   if (route.testsList) {
     return { kind: 'testsList' };
   }
@@ -111,7 +144,7 @@ function initScreen(): ActiveScreen {
 }
 
 export const App: React.FC = () => {
-  const { user, allowedUser, isAllowed } = useAuth();
+  const { user, allowedUser, isAllowed, isLoading: isAuthLoading } = useAuth();
   const isTeacher = allowedUser?.role === 'teacher';
   const currentUid = user?.uid || 'student';
 
@@ -248,6 +281,24 @@ export const App: React.FC = () => {
       setIsAttemptsLoaded(true);
     });
   }, [isAllowed, user?.uid]);
+
+  // Subscribe to teacher-curated quote flags so student drills also skip flagged quotes
+  useEffect(() => {
+    if (!isAllowed) return;
+    return subscribeQuoteFlags();
+  }, [isAllowed]);
+
+  // Redirect non-teachers away from teacher-only routes (?editTest=... or ?quotes=true)
+  useEffect(() => {
+    if (isAuthLoading || !isAllowed || isTeacher) return;
+    if (screen.kind === 'testEditor' || screen.kind === 'quotesBrowser') {
+      queueMicrotask(() => {
+        const listUrl = buildRouteUrl({ drill: null, testsList: true });
+        window.history.replaceState({ testsList: true }, '', listUrl);
+        setScreen({ kind: 'testsList' });
+      });
+    }
+  }, [isAuthLoading, isAllowed, isTeacher, screen.kind]);
 
   // Deep-link direct test launch if ?test=testId is provided
   useEffect(() => {
@@ -395,6 +446,23 @@ export const App: React.FC = () => {
           offsetsMode: route.offsetsMode,
           quoteId: route.quoteId,
         });
+      } else if (route.quotesBrowser) {
+        setScreen({ kind: 'quotesBrowser' });
+      } else if (route.editTest) {
+        setScreen((prev) => {
+          if (
+            prev.kind === 'testEditor' &&
+            prev.editTarget === route.editTest
+          ) {
+            return { ...prev, tab: route.editTab ?? prev.tab };
+          }
+          return {
+            kind: 'testEditor',
+            editTarget: route.editTest!,
+            tab: route.editTab ?? 'questions',
+            editorNonce: Date.now(),
+          };
+        });
       } else if (route.testId) {
         const matched = availableTests.find((t) => t.testId === route.testId);
         if (matched) {
@@ -435,7 +503,7 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [availableTests, cancelWorkout, currentUid, studentAttempts]);
 
-  // Seed history stack with menu when landing directly on a drill or tests list deep link
+  // Seed history stack when landing directly on a deep link
   useEffect(() => {
     const route = parseUrlRoute();
     const currentUrl = `${window.location.pathname}${window.location.search}`;
@@ -448,6 +516,30 @@ export const App: React.FC = () => {
           offsetsMode: route.offsetsMode,
           quoteId: route.quoteId,
         },
+        '',
+        currentUrl
+      );
+    } else if (
+      route.quotesBrowser &&
+      (!window.history.state || !('quotesBrowser' in window.history.state))
+    ) {
+      window.history.replaceState(
+        { testsList: true },
+        '',
+        buildRouteUrl({ drill: null, testsList: true })
+      );
+      window.history.pushState({ quotesBrowser: true }, '', currentUrl);
+    } else if (
+      route.editTest &&
+      (!window.history.state || !('editTest' in window.history.state))
+    ) {
+      window.history.replaceState(
+        { testsList: true },
+        '',
+        buildRouteUrl({ drill: null, testsList: true })
+      );
+      window.history.pushState(
+        { editTest: route.editTest, editTab: route.editTab ?? 'questions' },
         '',
         currentUrl
       );
@@ -474,6 +566,84 @@ export const App: React.FC = () => {
       setScreen({ kind: 'menu' });
       const newUrl = buildRouteUrl({ drill: null });
       window.history.pushState({ drill: null }, '', newUrl);
+    }
+  };
+
+  const handleOpenQuotesBrowser = () => {
+    if (!isTeacher) return;
+    setScreen({ kind: 'quotesBrowser' });
+    const newUrl = buildRouteUrl({ drill: null, quotesBrowser: true });
+    window.history.pushState({ quotesBrowser: true }, '', newUrl);
+  };
+
+  const handleNewTest = () => {
+    if (!isTeacher) return;
+    setScreen({
+      kind: 'testEditor',
+      editTarget: 'new',
+      tab: 'questions',
+      editorNonce: Date.now(),
+    });
+    const newUrl = buildRouteUrl({ drill: null, editTest: 'new' });
+    window.history.pushState({ editTest: 'new', editTab: 'questions' }, '', newUrl);
+  };
+
+  const handleEditTest = (testId: string, tab: TestEditorTab = 'questions') => {
+    if (!isTeacher) return;
+    setScreen({
+      kind: 'testEditor',
+      editTarget: testId,
+      tab,
+      editorNonce: Date.now(),
+    });
+    const newUrl = buildRouteUrl({ drill: null, editTest: testId, editTab: tab });
+    window.history.pushState({ editTest: testId, editTab: tab }, '', newUrl);
+  };
+
+  const handleDuplicateFromEditor = (draftTemplate: TestPacket) => {
+    if (!isTeacher) return;
+    setScreen({
+      kind: 'testEditor',
+      editTarget: 'new',
+      tab: 'questions',
+      draftTemplate,
+      editorNonce: Date.now(),
+    });
+    const newUrl = buildRouteUrl({ drill: null, editTest: 'new' });
+    window.history.replaceState(
+      { editTest: 'new', editTab: 'questions', fromDuplicate: true },
+      '',
+      newUrl
+    );
+  };
+
+  const handleEditorTabChange = useCallback((tab: TestEditorTab) => {
+    setScreen((prev) => {
+      if (prev.kind !== 'testEditor') return prev;
+      const newUrl = buildRouteUrl({
+        drill: null,
+        editTest: prev.editTarget,
+        editTab: tab,
+      });
+      window.history.replaceState(
+        { ...(window.history.state || {}), editTest: prev.editTarget, editTab: tab },
+        '',
+        newUrl
+      );
+      return { ...prev, tab };
+    });
+  }, []);
+
+  const handleBackFromTeacherScreen = () => {
+    if (
+      window.history.state &&
+      (window.history.state.editTest || window.history.state.quotesBrowser)
+    ) {
+      window.history.back();
+    } else {
+      setScreen({ kind: 'testsList' });
+      const newUrl = buildRouteUrl({ drill: null, testsList: true });
+      window.history.replaceState({ testsList: true }, '', newUrl);
     }
   };
 
@@ -754,8 +924,81 @@ export const App: React.FC = () => {
           isTeacher={isTeacher}
           isLoading={isTestsLoading}
           onSelectTest={handleSelectTest}
+          onNewTest={handleNewTest}
+          onEditTest={(testId) => handleEditTest(testId, 'questions')}
+          onOpenQuotesBrowser={handleOpenQuotesBrowser}
           onBack={handleBackFromTestsList}
         />
+      )}
+
+      {screen.kind === 'quotesBrowser' && isTeacher && (
+        <Suspense fallback={suspenseFallback}>
+          <QuoteBrowserView
+            tests={availableTests}
+            onBack={handleBackFromTeacherScreen}
+          />
+        </Suspense>
+      )}
+
+      {screen.kind === 'testEditor' && isTeacher && (
+        <Suspense fallback={suspenseFallback}>
+          {screen.editTarget === 'new' ? (
+            <TestEditorView
+              key={`new:${screen.editorNonce}`}
+              mode="create"
+              initialPacket={screen.draftTemplate}
+              existingTests={availableTests}
+              initialTab={screen.tab}
+              onTabChange={handleEditorTabChange}
+              onBack={handleBackFromTeacherScreen}
+              onSaved={() => handleBackFromTeacherScreen()}
+              onDeleted={handleBackFromTeacherScreen}
+            />
+          ) : isTestsLoading ? (
+            suspenseFallback
+          ) : (() => {
+              const targetTest = availableTests.find(
+                (t) => t.testId === screen.editTarget
+              );
+              if (!targetTest) {
+                return (
+                  <div className="practice-tests-view">
+                    <header className="editor-top-header">
+                      <button
+                        type="button"
+                        className="btn-simple btn-tests-back"
+                        onClick={handleBackFromTeacherScreen}
+                      >
+                        ← Practice Tests
+                      </button>
+                      <h2 className="editor-header-title">Test Not Found</h2>
+                    </header>
+                    <div className="tests-list-empty">
+                      <div className="empty-icon">🔍</div>
+                      <p>
+                        Practice test <strong>{screen.editTarget}</strong> was not
+                        found.
+                      </p>
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <TestEditorView
+                  key={`edit:${targetTest.testId}:${screen.editorNonce}`}
+                  mode="edit"
+                  initialPacket={targetTest}
+                  existingTests={availableTests}
+                  initialTab={screen.tab}
+                  onTabChange={handleEditorTabChange}
+                  onBack={handleBackFromTeacherScreen}
+                  onSaved={() => handleBackFromTeacherScreen()}
+                  onDuplicate={handleDuplicateFromEditor}
+                  onDeleted={handleBackFromTeacherScreen}
+                />
+              );
+            })()}
+        </Suspense>
       )}
 
       {isOptionsOpen && (

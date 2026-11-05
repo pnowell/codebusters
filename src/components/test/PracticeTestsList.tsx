@@ -6,7 +6,6 @@ import {
 } from '../../services/profileService';
 import { resolveAttemptForTest } from '../../services/testService';
 import { resolveUserCohort } from '../../utils/testSync';
-import { TestCohortModal } from './TestCohortModal';
 
 interface PracticeTestsListProps {
   tests: TestPacket[];
@@ -15,6 +14,9 @@ interface PracticeTestsListProps {
   isTeacher?: boolean;
   isLoading?: boolean;
   onSelectTest: (test: TestPacket, attempt: TestAttempt | null) => void;
+  onNewTest?: () => void;
+  onEditTest?: (testId: string) => void;
+  onOpenQuotesBrowser?: () => void;
   onBack: () => void;
 }
 
@@ -25,74 +27,67 @@ export const PracticeTestsList: React.FC<PracticeTestsListProps> = ({
   isTeacher = false,
   isLoading = false,
   onSelectTest,
+  onNewTest,
+  onEditTest,
+  onOpenQuotesBrowser,
   onBack,
 }) => {
   const [now, setNow] = useState(() => Date.now());
   const [, setProfilesVersion] = useState(0);
-  const [configuringTestId, setConfiguringTestId] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 5000);
     const unsubProfiles = subscribeTeamProfiles(() => {
       setProfilesVersion((v) => v + 1);
     });
-    const handlePopState = (e: PopStateEvent) => {
-      if (
-        e.state?.modal === 'cohortConfig' &&
-        typeof e.state.configTestId === 'string'
-      ) {
-        setConfiguringTestId(e.state.configTestId);
-      } else {
-        setConfiguringTestId(null);
-      }
-    };
-    window.addEventListener('popstate', handlePopState);
     return () => {
       clearInterval(timer);
       unsubProfiles();
-      window.removeEventListener('popstate', handlePopState);
     };
   }, []);
-
-  const openConfigureModal = (testId: string) => {
-    window.history.pushState(
-      {
-        ...(window.history.state || { testsList: true }),
-        modal: 'cohortConfig',
-        configTestId: testId,
-      },
-      '',
-      window.location.href
-    );
-    setConfiguringTestId(testId);
-  };
-
-  const closeConfigureModal = () => {
-    if (window.history.state?.modal === 'cohortConfig') {
-      window.history.back();
-    } else {
-      setConfiguringTestId(null);
-    }
-  };
-
-  const configuringTest = configuringTestId
-    ? tests.find((t) => t.testId === configuringTestId) ?? null
-    : null;
 
   return (
     <div className="practice-tests-view">
       {/* 1. Header */}
       <header className="practice-tests-header">
-        <button
-          className="btn-simple btn-tests-back"
-          onClick={onBack}
-          title="Return to Main Menu"
-        >
-          ← Main Menu
-        </button>
-        <div className="practice-tests-header-title">
-          <h2>Practice Tests</h2>
+        <div className="practice-tests-header-left">
+          <button
+            type="button"
+            className="btn-simple btn-tests-back"
+            onClick={onBack}
+            title="Return to Main Menu"
+          >
+            ← Main Menu
+          </button>
+          <div className="practice-tests-header-title">
+            <h2>Practice Tests</h2>
+          </div>
         </div>
+
+        {isTeacher && (
+          <div className="practice-tests-teacher-actions">
+            {onOpenQuotesBrowser && (
+              <button
+                type="button"
+                className="btn-simple btn-quotes-browser"
+                onClick={onOpenQuotesBrowser}
+                title="Browse, filter, and flag quotes in the database"
+              >
+                📚 Quote Browser
+              </button>
+            )}
+            {onNewTest && (
+              <button
+                type="button"
+                className="btn-main-action btn-new-test"
+                onClick={onNewTest}
+                title="Create a new practice test"
+              >
+                + New Test
+              </button>
+            )}
+          </div>
+        )}
       </header>
 
       {/* 2. List of Tests */}
@@ -166,17 +161,17 @@ export const PracticeTestsList: React.FC<PracticeTestsListProps> = ({
                   </div>
 
                   <div className="test-row-top-right">
-                    {isTeacher && (
+                    {isTeacher && onEditTest && (
                       <button
                         type="button"
                         className="btn-simple btn-configure-test"
                         onClick={(e) => {
                           e.stopPropagation();
-                          openConfigureModal(test.testId);
+                          onEditTest(test.testId);
                         }}
-                        title="Configure visibility and student teams"
+                        title="Edit test questions, visibility, and student teams"
                       >
-                        ⚙️ Configure
+                        ✏️ Edit
                       </button>
                     )}
 
@@ -240,13 +235,6 @@ export const PracticeTestsList: React.FC<PracticeTestsListProps> = ({
           })
         )}
       </main>
-
-      {configuringTest && (
-        <TestCohortModal
-          testPacket={configuringTest}
-          onClose={closeConfigureModal}
-        />
-      )}
     </div>
   );
 };

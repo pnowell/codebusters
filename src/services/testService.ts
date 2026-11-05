@@ -3,6 +3,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
   query,
   runTransaction,
@@ -13,7 +14,10 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { isLookupCipher } from '../data/drills';
 import type {
+  CipherType,
+  LookupCipherType,
   Quote,
   TestAttempt,
   TestCohort,
@@ -121,13 +125,54 @@ function normalizeCohorts(raw: unknown): TestCohort[] | undefined {
   return cohorts.length > 0 ? cohorts : undefined;
 }
 
+function normalizeTestQuestions(raw: unknown): TestQuestion[] {
+  if (!Array.isArray(raw)) return [];
+  const questions: TestQuestion[] = [];
+  raw.forEach((item, index) => {
+    if (!item || typeof item !== 'object') return;
+    const obj = item as Record<string, unknown>;
+    const rawCipher = typeof obj.cipher === 'string' ? (obj.cipher as CipherType) : 'atbash';
+    const cipher: LookupCipherType = isLookupCipher(rawCipher) ? rawCipher : 'atbash';
+    const quoteId =
+      typeof obj.quoteId === 'number' && Number.isInteger(obj.quoteId) && obj.quoteId >= 0
+        ? obj.quoteId
+        : 0;
+    const points =
+      typeof obj.points === 'number' && Number.isFinite(obj.points) && obj.points > 0
+        ? Math.round(obj.points)
+        : 150;
+    const description =
+      typeof obj.description === 'string' && obj.description.trim().length > 0
+        ? obj.description.trim().slice(0, 240)
+        : undefined;
+    const isTiebreaker = Boolean(obj.isTiebreaker);
+    questions.push({
+      questionNumber: index + 1,
+      cipher,
+      quoteId,
+      points,
+      ...(isTiebreaker ? { isTiebreaker: true } : {}),
+      ...(description ? { description } : {}),
+    });
+  });
+  return questions;
+}
+
 function normalizeTestPacket(raw: Record<string, unknown>, fallbackId: string): TestPacket {
   const base = raw as unknown as TestPacket;
   const cohorts = normalizeCohorts(raw.cohorts);
+  const questions = normalizeTestQuestions(raw.questions);
   return {
     ...base,
     testId: base.testId || fallbackId,
+    title: typeof raw.title === 'string' && raw.title.trim() ? raw.title.trim() : fallbackId,
+    description: typeof raw.description === 'string' ? raw.description : '',
+    timeLimitSeconds:
+      typeof raw.timeLimitSeconds === 'number' && raw.timeLimitSeconds >= 60
+        ? Math.round(raw.timeLimitSeconds)
+        : 2100,
     active: Boolean(raw.active),
+    questions,
     cohorts,
   };
 }
@@ -700,26 +745,186 @@ export async function expireTestAttemptTransaction(
   });
 }
 
+const VALID_TEST_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$/;
+
 /**
- * Teacher API: Updates `active` visibility and `cohorts` assignments on `/tests/{testId}`.
+ * Generates a URL-safe, collision-free `testId` slug from a test title.
  */
-export async function updateTestConfiguration(
-  testId: string,
-  updates: { active: boolean; cohorts: TestCohort[] }
-): Promise<boolean> {
-  if (!db || !testId) return false;
-  try {
-    const docRef = doc(db, 'tests', testId);
-    const sanitizedCohorts = normalizeCohorts(updates.cohorts) ?? [];
-    await updateDoc(docRef, {
-      active: Boolean(updates.active),
-      cohorts: sanitizedCohorts,
-      updatedAt: serverTimestamp(),
+export function generateUniqueTestId(
+  title: string,
+  existingIds: ReadonlySet<string>
+): string {
+  const normalized = title
+    .normalize('NFKD')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48)
+    .replace(/-+$/g, '');
+
+  const base =
+    normalized && normalized !== 'new' ? normalized : 'practice-test';
+
+  if (!existingIds.has(base)) {
+    return base;
+  }
+
+  let suffix = 2;
+  while (existingIds.has(`${base}-${suffix}`)) {
+    suffix += 1;
+  }
+  return `${base}-${suffix}`;
+}
+
+/**
+ * Teacher API: Creates or updates a full `TestPacket` document in `/tests/{testId}`
+ * with strict input validation and zero `undefined` properties.
+ */
+export async function saveTestPacket(
+  packet: TestPacket,
+  options?: { isNew?: boolean }
+): Promise<{ ok: boolean; testId?: string; error?: string }> {
+  if (!db) {
+    return { ok: false, error: 'Database connection is not available.' };
+  }
+
+  const trimmedTitle = packet.title.trim();
+  if (!trimmedTitle || trimmedTitle.length > 120) {
+    return { ok: false, error: 'Title must be between 1 and 120 characters.' };
+  }
+
+  const timeLimitSeconds = Math.round(packet.timeLimitSeconds);
+  if (!Number.isFinite(timeLimitSeconds) || timeLimitSeconds < 60 || timeLimitSeconds > 10800) {
+    return { ok: false, error: 'Time limit must be between 1 and 180 minutes.' };
+  }
+
+  if (!Array.isArray(packet.questions) || packet.questions.length === 0) {
+    return { ok: false, error: 'Add at least one question before saving.' };
+  }
+  if (packet.questions.length > 50) {
+    return { ok: false, error: 'Tests cannot exceed 50 questions.' };
+  }
+
+  let resolvedTestId = packet.testId.trim();
+  if (!VALID_TEST_ID_RE.test(resolvedTestId) || resolvedTestId.toLowerCase() === 'new') {
+    return { ok: false, error: 'Invalid test identifier.' };
+  }
+
+  const sanitizedQuestions: TestQuestion[] = [];
+  for (let i = 0; i < packet.questions.length; i += 1) {
+    const q = packet.questions[i];
+    if (!isLookupCipher(q.cipher)) {
+      return { ok: false, error: `Question ${i + 1} uses an unsupported cipher.` };
+    }
+    const quoteId = Math.round(q.quoteId);
+    if (!Number.isInteger(quoteId) || quoteId < 0) {
+      return { ok: false, error: `Question ${i + 1} has an invalid quote ID.` };
+    }
+    const points = Math.max(0, Math.min(5000, Math.round(q.points)));
+    const cleanDesc =
+      typeof q.description === 'string' && q.description.trim().length > 0
+        ? q.description.trim().slice(0, 250)
+        : undefined;
+
+    sanitizedQuestions.push({
+      questionNumber: i + 1,
+      cipher: q.cipher,
+      quoteId,
+      points,
+      ...(q.isTiebreaker ? { isTiebreaker: true } : {}),
+      ...(cleanDesc ? { description: cleanDesc } : {}),
     });
-    return true;
-  } catch (err) {
-    console.warn('[TestService] Failed to update test configuration:', err);
-    return false;
+  }
+
+  const sanitizedCohorts = normalizeCohorts(packet.cohorts) ?? [];
+  const cleanDescription = packet.description.trim().slice(0, 400);
+
+  try {
+    if (options?.isNew) {
+      const baseId = resolvedTestId;
+      let attemptIdx = 1;
+      while (attemptIdx <= 15) {
+        const candidateRef = doc(db, 'tests', resolvedTestId);
+        const existingSnap = await getDoc(candidateRef);
+        if (!existingSnap.exists()) {
+          break;
+        }
+        attemptIdx += 1;
+        resolvedTestId = `${baseId.slice(0, 48)}-${attemptIdx}`;
+      }
+
+      const createRef = doc(db, 'tests', resolvedTestId);
+      await setDoc(createRef, {
+        testId: resolvedTestId,
+        title: trimmedTitle,
+        description: cleanDescription,
+        timeLimitSeconds,
+        active: Boolean(packet.active),
+        questions: sanitizedQuestions,
+        cohorts: sanitizedCohorts,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      return { ok: true, testId: resolvedTestId };
+    }
+
+    const docRef = doc(db, 'tests', resolvedTestId);
+    await setDoc(
+      docRef,
+      {
+        testId: resolvedTestId,
+        title: trimmedTitle,
+        description: cleanDescription,
+        timeLimitSeconds,
+        active: Boolean(packet.active),
+        questions: sanitizedQuestions,
+        cohorts: sanitizedCohorts,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+    return { ok: true, testId: resolvedTestId };
+  } catch {
+    console.warn('[TestService] Failed to save test packet');
+    return {
+      ok: false,
+      error: 'Could not save test. Verify teacher permissions and network connection.',
+    };
+  }
+}
+
+/**
+ * Teacher API: Deletes `/tests/{testId}` along with all associated `/test_attempts` documents.
+ */
+export async function deleteTestPacketAndAttempts(
+  testId: string
+): Promise<{ ok: boolean; error?: string }> {
+  if (!db || !testId || !VALID_TEST_ID_RE.test(testId)) {
+    return { ok: false, error: 'Invalid test identifier.' };
+  }
+  try {
+    const attemptsQuery = query(
+      collection(db, 'test_attempts'),
+      where('testId', '==', testId)
+    );
+    const snap = await getDocs(attemptsQuery);
+    if (!snap.empty) {
+      await Promise.all(
+        snap.docs.map(async (docSnap) => {
+          await deleteDoc(docSnap.ref);
+          clearLocalTestAttempt(docSnap.id, testId);
+        })
+      );
+    }
+    await deleteDoc(doc(db, 'tests', testId));
+    clearLocalTestAttempt(testId);
+    return { ok: true };
+  } catch {
+    console.warn('[TestService] Failed to delete test packet');
+    return {
+      ok: false,
+      error: 'Could not delete test. Verify teacher permissions and network connection.',
+    };
   }
 }
 

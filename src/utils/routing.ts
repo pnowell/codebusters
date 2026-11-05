@@ -2,6 +2,7 @@ import { isCipherType, type CipherType } from '../data/drills';
 import type { OffsetsMode } from '../types';
 
 export type DrillSection = 'memorize' | 'cipher';
+export type TestEditorTab = 'questions' | 'teams';
 
 export interface Route {
   drill: CipherType | null;
@@ -11,11 +12,20 @@ export interface Route {
   testId?: string;
   testsList?: boolean;
   resultsTestId?: string;
+  editTest?: string;
+  editTab?: TestEditorTab;
+  quotesBrowser?: boolean;
 }
 
 function isOffsetsMode(val: string | null): val is OffsetsMode {
   return val === 'letterToNum' || val === 'numToLetter';
 }
+
+function isTestEditorTab(val: string | null): val is TestEditorTab {
+  return val === 'questions' || val === 'teams';
+}
+
+const SAFE_TEST_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
 
 export function parseUrlRoute(search = window.location.search): Route {
   const p = new URLSearchParams(search);
@@ -26,6 +36,9 @@ export function parseUrlRoute(search = window.location.search): Route {
   const test = p.get('test');
   const tests = p.get('tests');
   const results = p.get('results');
+  const editTestRaw = p.get('editTest');
+  const tabParam = p.get('tab');
+  const quotesParam = p.get('quotes');
   const quoteId = q !== null ? parseInt(q, 10) : NaN;
 
   let drill: CipherType | null = null;
@@ -39,6 +52,9 @@ export function parseUrlRoute(search = window.location.search): Route {
     section = 'memorize';
   }
 
+  const editTest =
+    editTestRaw && SAFE_TEST_ID_RE.test(editTestRaw) ? editTestRaw : undefined;
+
   return {
     drill,
     section,
@@ -47,10 +63,13 @@ export function parseUrlRoute(search = window.location.search): Route {
     testId: test || undefined,
     testsList: tests === 'true' || tests === '1' || Boolean(results),
     resultsTestId: results || undefined,
+    editTest,
+    editTab: editTest && isTestEditorTab(tabParam) ? tabParam : undefined,
+    quotesBrowser: quotesParam === 'true' || quotesParam === '1',
   };
 }
 
-/** Returns a URL for the current path with drill/cipher/mode/q/test/tests/results set (or removed), preserving other params like ?unlocked. */
+/** Returns a URL for the current path with drill/cipher/mode/q/test/tests/results/editTest/quotes set (or removed), preserving other params like ?unlocked. */
 export function buildRouteUrl(route: Route): string {
   const p = new URLSearchParams(window.location.search);
   if (route.drill) {
@@ -77,6 +96,15 @@ export function buildRouteUrl(route: Route): string {
   else p.delete('tests');
   if (route.resultsTestId) p.set('results', route.resultsTestId);
   else p.delete('results');
+  if (route.editTest) p.set('editTest', route.editTest);
+  else p.delete('editTest');
+  if (route.editTest && route.editTab && route.editTab !== 'questions') {
+    p.set('tab', route.editTab);
+  } else {
+    p.delete('tab');
+  }
+  if (route.quotesBrowser) p.set('quotes', 'true');
+  else p.delete('quotes');
   const qs = p.toString();
   return qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
 }
