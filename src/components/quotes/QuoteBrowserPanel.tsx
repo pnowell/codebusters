@@ -92,16 +92,32 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
   const isPicker = mode === 'picker';
   const allQuotes = useMemo(() => getAllQuotes(), []);
 
-  // Live Firestore quote flags map
-  const [flagsMap, setFlagsMap] = useState<ReadonlyMap<number, QuoteFlag>>(() =>
+  const validQuoteIds = useMemo(
+    () => new Set(allQuotes.map((q) => q.id)),
+    [allQuotes]
+  );
+
+  // Live Firestore quote flags map (filtered to quotes present in quotes.json so
+  // pre-deploy orphaned flags never produce phantom counts or stale exports)
+  const [rawFlagsMap, setRawFlagsMap] = useState<ReadonlyMap<number, QuoteFlag>>(() =>
     getQuoteFlagsMap()
   );
 
   useEffect(() => {
     return subscribeQuoteFlags((updated) => {
-      setFlagsMap(new Map(updated));
+      setRawFlagsMap(new Map(updated));
     });
   }, []);
+
+  const flagsMap = useMemo(() => {
+    const active = new Map<number, QuoteFlag>();
+    for (const [quoteId, flag] of rawFlagsMap.entries()) {
+      if (validQuoteIds.has(quoteId)) {
+        active.set(quoteId, flag);
+      }
+    }
+    return active;
+  }, [rawFlagsMap, validQuoteIds]);
 
   // Filter & sort state
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -126,8 +142,6 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
   const [maxChi, setMaxChi] = useState<string>('');
   const [minWordFilter, setMinWordFilter] = useState<MinWordFilter>('any');
   const [apostropheFilter, setApostropheFilter] = useState<ApostropheFilter>('any');
-  const [excludeArchaicMisspelled, setExcludeArchaicMisspelled] =
-    useState<boolean>(isPicker);
   const [flagFilter, setFlagFilter] = useState<FlagFilter>(
     isPicker ? 'unflagged' : 'all'
   );
@@ -149,7 +163,6 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
     if (maxChi.trim() !== '') count += 1;
     if (minWordFilter !== 'any') count += 1;
     if (apostropheFilter !== 'any') count += 1;
-    if (excludeArchaicMisspelled) count += 1;
     if (flagFilter !== 'all') count += 1;
     return count;
   }, [
@@ -161,13 +174,11 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
     maxChi,
     minWordFilter,
     apostropheFilter,
-    excludeArchaicMisspelled,
     flagFilter,
   ]);
 
   const hasNonDefaultFilters = useMemo(() => {
     const defaultMaxLen = isPicker ? String(MAX_LOOKUP_LENGTH) : '';
-    const defaultExclude = isPicker;
     const defaultFlagFilter: FlagFilter = isPicker ? 'unflagged' : 'all';
     return (
       searchQuery.trim() !== '' ||
@@ -179,7 +190,6 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
       maxChi.trim() !== '' ||
       minWordFilter !== 'any' ||
       apostropheFilter !== 'any' ||
-      excludeArchaicMisspelled !== defaultExclude ||
       flagFilter !== defaultFlagFilter
     );
   }, [
@@ -193,7 +203,6 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
     maxChi,
     minWordFilter,
     apostropheFilter,
-    excludeArchaicMisspelled,
     flagFilter,
   ]);
 
@@ -207,7 +216,6 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
     setMaxChi('');
     setMinWordFilter('any');
     setApostropheFilter('any');
-    setExcludeArchaicMisspelled(false);
     setFlagFilter('all');
   }, []);
 
@@ -221,7 +229,6 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
     setMaxChi('');
     setMinWordFilter('any');
     setApostropheFilter('any');
-    setExcludeArchaicMisspelled(isPicker);
     setFlagFilter(isPicker ? 'unflagged' : 'all');
     setJumpFeedback(null);
   }, [isPicker]);
@@ -243,10 +250,6 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
       const isFlagged = flagsMap.has(q.id);
       if (flagFilter === 'unflagged' && isFlagged) return false;
       if (flagFilter === 'flagged' && !isFlagged) return false;
-
-      if (excludeArchaicMisspelled && (q.isArchaic || q.isMisspelled)) {
-        return false;
-      }
 
       const qCat: QuoteCategory = q.category ?? 'general';
       if (categoryFilter === 'kids_pool') {
@@ -338,7 +341,6 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
     allQuotes,
     flagsMap,
     flagFilter,
-    excludeArchaicMisspelled,
     categoryFilter,
     tierFilter,
     minLength,
@@ -852,17 +854,6 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
               <option value="flagged">🚩 Flagged Only ({flagsMap.size})</option>
             </select>
           </div>
-
-          <div className="qb-filter-field qb-filter-checkbox-wrap">
-            <label className="qb-checkbox-label">
-              <input
-                type="checkbox"
-                checked={excludeArchaicMisspelled}
-                onChange={(e) => setExcludeArchaicMisspelled(e.target.checked)}
-              />
-              <span>Exclude Archaic & Misspelled</span>
-            </label>
-          </div>
         </div>
       )}
 
@@ -987,12 +978,6 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
                       <span className="qb-stat-pill">Uniq: {quote.unique}</span>
                       {quote.hasApostrophe && (
                         <span className="qb-stat-pill qb-pill-apos">’ Apos</span>
-                      )}
-                      {quote.isArchaic && (
-                        <span className="qb-warn-pill">📜 Archaic</span>
-                      )}
-                      {quote.isMisspelled && (
-                        <span className="qb-warn-pill">🔤 Misspelled</span>
                       )}
                       {inCurrentTest && !isSelected && (
                         <span className="qb-used-pill">📋 In This Test</span>

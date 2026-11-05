@@ -1159,12 +1159,6 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                               <span className="qb-stat-pill">
                                 χ² {quote.chi.toFixed(1)}
                               </span>
-                              {quote.isArchaic && (
-                                <span className="qb-warn-pill">📜 Archaic</span>
-                              )}
-                              {quote.isMisspelled && (
-                                <span className="qb-warn-pill">🔤 Misspelled</span>
-                              )}
                             </>
                           )}
                           {flagEntry && (

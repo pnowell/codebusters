@@ -23,8 +23,6 @@ export interface Quote {
   hasStandardApostrophe?: boolean;
   hasTrickyApostrophe?: boolean;
   hasOneLetter: boolean;
-  isArchaic?: boolean;
-  isMisspelled?: boolean;
   category?: QuoteCategory;
   tags?: string[];
   tier: CryptanalysisTier;

@@ -878,21 +878,6 @@
   color: #e0f2fe;
 }
 
-.qb-filter-checkbox-wrap {
-  justify-content: center;
-  padding-bottom: 0.25rem;
-}
-
-.qb-checkbox-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--text-main);
-  cursor: pointer;
-}
-
 /* Summary Strip */
 .qb-summary-bar {
   display: flex;

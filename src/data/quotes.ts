@@ -5,14 +5,11 @@ import { getFlaggedQuoteIds } from '../services/quoteFlagService';
 
 const ALL_QUOTES = quotesData as Quote[];
 
-/** Quotes clean and suitable for 5th graders (no archaic language, no intentional typos) */
-const CLEAN_QUOTES = ALL_QUOTES.filter(q => !q.isArchaic && !q.isMisspelled);
-
 /** Maximum length for symbol lookup drills to prevent excessive wrapping on mobile */
 export const MAX_LOOKUP_LENGTH = 75;
 
-/** Lookup-eligible quotes (clean and not excessively long) */
-const LOOKUP_ELIGIBLE_QUOTES = CLEAN_QUOTES.filter(q => q.length <= MAX_LOOKUP_LENGTH);
+/** Lookup-eligible quotes (not excessively long for mobile tile grids) */
+const LOOKUP_ELIGIBLE_QUOTES = ALL_QUOTES.filter(q => q.length <= MAX_LOOKUP_LENGTH);
 
 const KID_LOOKUP_POOL = LOOKUP_ELIGIBLE_QUOTES.filter(q => q.category && q.category !== 'general');
 const GENERAL_LOOKUP_POOL = LOOKUP_ELIGIBLE_QUOTES.filter(q => !q.category || q.category === 'general');
@@ -31,7 +28,7 @@ export function getQuoteById(id: number): Quote | undefined {
 }
 
 /**
- * Picks a random clean, unflagged lookup-eligible quote (excluding any caller-supplied IDs,
+ * Picks a random unflagged lookup-eligible quote (excluding any caller-supplied IDs,
  * such as quotes already used in the current practice test).
  */
 export function pickRandomCleanLookupQuote(excludeIds?: ReadonlySet<number>): Quote {
@@ -52,8 +49,7 @@ export function pickRandomCleanLookupQuote(excludeIds?: ReadonlySet<number>): Qu
 /**
  * Picks a random quote for symbol lookup drills (Pigpen, Galactic, Atbash):
  * - Filters out quotes flagged by teachers (`quote_flags`) and quotes already completed by the user.
- * - Prefers kid-friendly quotes (~80% chance) while still drawing from the clean general pool (~20% chance).
- * - Avoids archaic language and misspelled quotes completely.
+ * - Prefers kid-friendly quotes (~80% chance) while still drawing from the general pool (~20% chance).
  * - Caps length at MAX_LOOKUP_LENGTH (75 chars) so quotes are not excessively long.
  * - Gracefully falls back if the completed list exhausts the uncompleted pool.
  */
@@ -73,7 +69,7 @@ function pickRandomLookupQuote(): Quote {
   const generalCandidates =
     uncompletedGeneral.length > 0 ? uncompletedGeneral : safeGeneralPool;
 
-  // 80% preference for kid-friendly jokes/facts/lyrics/movies, 20% for clean general quotes
+  // 80% preference for kid-friendly jokes/facts/lyrics/movies, 20% for general quotes
   const preferKid = Math.random() < 0.8;
   const primary = preferKid ? kidCandidates : generalCandidates;
   const secondary = preferKid ? generalCandidates : kidCandidates;
@@ -104,10 +100,10 @@ export function pickLookupQuote(preferredId?: number): Quote | null {
 
 export function getQuotesByTier(tier: CryptanalysisTier): Quote[] {
   const flaggedSet = getFlaggedQuoteIds();
-  return CLEAN_QUOTES.filter(q => q.tier === tier && !flaggedSet.has(q.id));
+  return ALL_QUOTES.filter(q => q.tier === tier && !flaggedSet.has(q.id));
 }
 
 export function getQuotesByCategory(category: QuoteCategory): Quote[] {
   const flaggedSet = getFlaggedQuoteIds();
-  return CLEAN_QUOTES.filter(q => q.category === category && !flaggedSet.has(q.id));
+  return ALL_QUOTES.filter(q => q.category === category && !flaggedSet.has(q.id));
 }
