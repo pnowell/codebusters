@@ -128,11 +128,39 @@ async function fetchAccessToken({ clientEmail, privateKey }) {
   return data.access_token;
 }
 
-function formatPermissionHint(status, stepLabel) {
-  if (status === 403) {
-    return `${stepLabel} failed with HTTP 403 (Permission Denied). Grant the "Firebase Rules Admin" role (roles/firebaserules.admin) to the FIREBASE_SERVICE_ACCOUNT in Google Cloud IAM.`;
+async function buildGoogleApiError(res, stepLabel) {
+  let detailSuffix = '';
+  try {
+    const body = await res.json();
+    const errObj = body?.error;
+    const statusText = typeof errObj?.status === 'string' ? errObj.status : '';
+    const rawMsg = typeof errObj?.message === 'string' ? errObj.message : '';
+    const safeMsg = rawMsg.replace(/[^\x20-\x7E]/g, ' ').trim().slice(0, 300);
+
+    const details = Array.isArray(errObj?.details) ? errObj.details : [];
+    const errorInfo = details.find(
+      (d) => d && typeof d === 'object' && typeof d.reason === 'string'
+    );
+    const reason = typeof errorInfo?.reason === 'string' ? errorInfo.reason : '';
+    const perm =
+      typeof errorInfo?.metadata?.permission === 'string'
+        ? errorInfo.metadata.permission
+        : '';
+
+    const parts = [statusText, reason, perm ? `permission=${perm}` : '', safeMsg].filter(Boolean);
+    if (parts.length > 0) {
+      detailSuffix = ` [${parts.join(' | ')}]`;
+    }
+  } catch {
+    // Non-JSON response body; fall back to HTTP status code only.
   }
-  return `${stepLabel} failed with HTTP ${status}.`;
+
+  if (res.status === 403) {
+    return new Error(
+      `${stepLabel} failed with HTTP 403.${detailSuffix} Ensure Firebase Rules API (firebaserules.googleapis.com) is enabled and the FIREBASE_SERVICE_ACCOUNT principal has "Firebase Rules Admin" (roles/firebaserules.admin).`
+    );
+  }
+  return new Error(`${stepLabel} failed with HTTP ${res.status}.${detailSuffix}`);
 }
 
 async function getCurrentReleaseState(projectId, accessToken) {
@@ -148,7 +176,7 @@ async function getCurrentReleaseState(projectId, accessToken) {
     return { exists: false, rulesetName: null, content: null };
   }
   if (!res.ok) {
-    throw new Error(formatPermissionHint(res.status, 'Fetching current cloud.firestore release'));
+    throw await buildGoogleApiError(res, 'Fetching current cloud.firestore release');
   }
 
   const releaseData = await res.json();
@@ -190,7 +218,7 @@ async function validateRulesSyntax(projectId, accessToken, rulesContent) {
   });
 
   if (!res.ok) {
-    throw new Error(formatPermissionHint(res.status, 'Validating firestore.rules syntax'));
+    throw await buildGoogleApiError(res, 'Validating firestore.rules syntax');
   }
 
   const data = await res.json();
@@ -234,7 +262,7 @@ async function createRuleset(projectId, accessToken, rulesContent) {
   });
 
   if (!res.ok) {
-    throw new Error(formatPermissionHint(res.status, 'Creating new Firestore ruleset'));
+    throw await buildGoogleApiError(res, 'Creating new Firestore ruleset');
   }
 
   const data = await res.json();
@@ -265,7 +293,7 @@ async function activateRelease(projectId, accessToken, rulesetName, releaseExist
     });
 
     if (!res.ok) {
-      throw new Error(formatPermissionHint(res.status, 'Creating cloud.firestore release'));
+      throw await buildGoogleApiError(res, 'Creating cloud.firestore release');
     }
     return;
   }
@@ -288,7 +316,7 @@ async function activateRelease(projectId, accessToken, rulesetName, releaseExist
   });
 
   if (!res.ok) {
-    throw new Error(formatPermissionHint(res.status, 'Updating cloud.firestore release'));
+    throw await buildGoogleApiError(res, 'Updating cloud.firestore release');
   }
 }
 
@@ -307,6 +335,10 @@ async function main() {
   }
 
   const creds = parseServiceAccount(rawSecret);
+  const accountSlug = creds.clientEmail.split('@')[0] ?? 'unknown';
+  console.log(
+    `[deployFirestoreRules] Authenticating as service account "${accountSlug}" for project "${creds.projectId}".`
+  );
   const accessToken = await fetchAccessToken(creds);
 
   const current = await getCurrentReleaseState(creds.projectId, accessToken);
