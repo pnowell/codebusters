@@ -47,7 +47,6 @@ Deployments to **GitHub Pages** are fully automated:
 - `?drill=<id>` — Directly opens a memorization/flashcard drill (`offsets`, `atbash`, `pigpen`, `galactic`).
 - `?cipher=<id>` — Directly opens a full-quote cipher decoding workspace (`atbash`, `pigpen`, `galactic`).
 - `?cipher=<id>&q=<quoteId>` — Directly opens a specific quote puzzle (e.g. `?cipher=pigpen&q=25`).
-- `?unlocked=<id1,id2,...>` — One-click classroom sync link generated from ⚙️ Options to configure which ciphers appear in General Practice on student devices.
 - `?tests=true` — Opens the Practice Tests catalog (when signed in on the team roster).
 - `?test=<testId>` — Directly opens or resumes a timed practice test session.
 - `?results=<testId>` — Opens the scored breakdown for a completed practice test.

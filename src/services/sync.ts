@@ -145,7 +145,6 @@ registerSyncDispatcher((type, data) => {
   switch (type) {
     case 'settings': {
       const s = data as UserSettings;
-      pushCloudUpdate({ unlockedCiphers: s.unlockedCiphers });
       upsertPublicProfile(currentSyncedUid, { displayName: s.studentName });
       break;
     }
@@ -244,15 +243,11 @@ export async function mergeAndInitializeCloudUser(
   const localQuoteBrowserPrefs = loadQuoteBrowserPrefsMap();
 
   // Smart Merge:
-  // 1. Unlocked Ciphers: Union of local and cloud
-  const cloudUnlocked = cloudData.unlockedCiphers ?? [];
-  const mergedUnlocked = Array.from(new Set([...localSettings.unlockedCiphers, ...cloudUnlocked]));
-
-  // 2. Completed Quotes: Union of stable IDs
+  // 1. Completed Quotes: Union of stable IDs
   const cloudCompleted = cloudData.completedQuotes ?? [];
   const mergedCompleted = Array.from(new Set([...localCompleted, ...cloudCompleted]));
 
-  // 3. Drill Scores: Max scores across Local and Cloud Profile
+  // 2. Drill Scores: Max scores across Local and Cloud Profile
   const profileScores = profileData.drillScores ?? {};
   const allScoreDrillIds = new Set([
     ...Object.keys(localDrillScores),
@@ -269,15 +264,15 @@ export async function mergeAndInitializeCloudUser(
     };
   }
 
-  // 4. Drill Progress: Merge per-card stats per drill
+  // 3. Drill Progress: Merge per-card stats per drill
   const cloudDrillProgress = normalizeCloudDrillProgress(cloudData);
   const mergedProgress = mergeAllDrillProgress(localDrillProgress, cloudDrillProgress);
 
-  // 5. Drill History: Merge rolling recent 60s sessions & lastPracticed timestamps
+  // 4. Drill History: Merge rolling recent 60s sessions & lastPracticed timestamps
   const cloudDrillHistory = sanitizeDrillHistoryRecord(cloudData.drillHistory);
   const mergedDrillHistory = mergeAllDrillHistory(localDrillHistory, cloudDrillHistory);
 
-  // 6. Practice History: Combine counts
+  // 5. Practice History: Combine counts
   const cloudHistory = cloudData.practiceHistory ?? {};
   const mergedHistory: Record<string, { count: number; lastPracticed: number }> = { ...cloudHistory };
   for (const [cipher, stat] of Object.entries(localPracticeHistory)) {
@@ -292,7 +287,7 @@ export async function mergeAndInitializeCloudUser(
     }
   }
 
-  // 6b. Quote Browser Filter Preferences: Cloud fallback + local overrides
+  // 5b. Quote Browser Filter Preferences: Cloud fallback + local overrides
   const cloudQuoteBrowserPrefs = sanitizeQuoteBrowserPrefsMap(cloudData.quoteBrowserPrefs);
   const mergedQuoteBrowserPrefs: QuoteBrowserPrefsMap = {
     ...cloudQuoteBrowserPrefs,
@@ -300,7 +295,7 @@ export async function mergeAndInitializeCloudUser(
   };
   const hasQuoteBrowserPrefs = Object.keys(mergedQuoteBrowserPrefs).length > 0;
 
-  // 7. Name: Existing profile displayName -> allowed_users displayName -> Guest custom name -> 'Decoder'
+  // 6. Name: Existing profile displayName -> allowed_users displayName -> Guest custom name -> 'Decoder'
   const cleanDefaultName =
     defaultName && defaultName.trim() && defaultName.trim() !== 'Decoder'
       ? defaultName.trim()
@@ -317,7 +312,6 @@ export async function mergeAndInitializeCloudUser(
   // Update local storage with merged state (suppress sync broadcast to prevent loop)
   const updatedLocalSettings: UserSettings = {
     studentName: finalName,
-    unlockedCiphers: mergedUnlocked,
   };
 
   withoutSyncDispatch(() => {
@@ -343,7 +337,6 @@ export async function mergeAndInitializeCloudUser(
     {
       uid,
       email: email.trim().toLowerCase(),
-      unlockedCiphers: mergedUnlocked,
       completedQuotes: mergedCompleted,
       drillProgress: mergedProgress,
       drillHistory: mergedDrillHistory,
@@ -392,21 +385,6 @@ export function startCloudSync(uid: string): void {
 
     // 2. Suppress outbound sync while applying inbound remote updates
     withoutSyncDispatch(() => {
-      // Sync unlocked ciphers down to localStorage if actually changed
-      if (data.unlockedCiphers) {
-        const current = loadSettings();
-        const cloudCiphers = data.unlockedCiphers ?? [];
-        const mergedCiphers = Array.from(new Set([...current.unlockedCiphers, ...cloudCiphers]));
-
-        if (current.unlockedCiphers.length !== mergedCiphers.length) {
-          saveSettings({
-            ...current,
-            unlockedCiphers: mergedCiphers,
-          });
-          hasChanged = true;
-        }
-      }
-
       if (data.drillProgress) {
         const remoteProgress = normalizeCloudDrillProgress(data);
         const currentProgress = loadAllDrillProgress();

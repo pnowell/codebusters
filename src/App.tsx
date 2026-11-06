@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import type {
   CipherType,
+  GeneralPracticeCiphers,
   OffsetsMode,
   UserSettings,
   TestPacket,
@@ -33,9 +34,16 @@ import { subscribeToSyncUpdates } from './services/sync';
 import { subscribeTeamProfiles } from './services/profileService';
 import { subscribeQuoteFlags } from './services/quoteFlagService';
 import {
+  createDefaultGeneralPracticeCiphers,
+  generalPracticeCiphersToList,
+  getGeneralPracticeCiphers,
+  saveGeneralPracticeCiphers,
+  sanitizeGeneralPracticeCiphers,
+  subscribeGeneralPracticeCiphers,
+} from './services/classroomConfigService';
+import {
   parseUrlRoute,
   buildRouteUrl,
-  parseUnlockedParam,
   type DrillSection,
   type TestEditorTab,
 } from './utils/routing';
@@ -105,17 +113,6 @@ interface BriefingState {
   existingAttempt: TestAttempt | null;
 }
 
-function initSettings(): UserSettings {
-  const loaded = loadSettings();
-  const ciphersFromUrl = parseUnlockedParam();
-  if (ciphersFromUrl) {
-    const updated = { ...loaded, unlockedCiphers: ciphersFromUrl };
-    saveSettings(updated);
-    return updated;
-  }
-  return loaded;
-}
-
 function initScreen(): ActiveScreen {
   const route = parseUrlRoute();
   if (route.drill) {
@@ -149,7 +146,9 @@ export const App: React.FC = () => {
   const isTeacher = allowedUser?.role === 'teacher';
   const currentUid = user?.uid || 'student';
 
-  const [settings, setSettings] = useState<UserSettings>(initSettings);
+  const [settings, setSettings] = useState<UserSettings>(loadSettings);
+  const [generalPracticeCiphers, setGeneralPracticeCiphers] =
+    useState<GeneralPracticeCiphers>(getGeneralPracticeCiphers);
   const [screen, setScreen] = useState<ActiveScreen>(initScreen);
 
   const [isOptionsOpen, setIsOptionsOpen] = useState<boolean>(false);
@@ -200,6 +199,11 @@ export const App: React.FC = () => {
     }
   }, []);
 
+  const activeGeneralPracticeCiphers = useMemo(
+    () => generalPracticeCiphersToList(generalPracticeCiphers),
+    [generalPracticeCiphers]
+  );
+
   const {
     workoutContext,
     workoutSummary,
@@ -207,7 +211,7 @@ export const App: React.FC = () => {
     cancelWorkout,
     dismissSummary,
   } = useWorkoutCircuit({
-    unlockedCiphers: settings.unlockedCiphers,
+    unlockedCiphers: activeGeneralPracticeCiphers,
     onNavigateToDrill: navigateToDrill,
     onExitToMenu: navigateToMenuCore,
   });
@@ -223,6 +227,20 @@ export const App: React.FC = () => {
       setSettings(loadSettings());
     });
   }, []);
+
+  // Subscribe to global teacher-configured General Practice cipher booleans
+  useEffect(() => {
+    if (!isAllowed) {
+      queueMicrotask(() => {
+        setGeneralPracticeCiphers(createDefaultGeneralPracticeCiphers());
+      });
+      return;
+    }
+
+    return subscribeGeneralPracticeCiphers((nextCiphers) => {
+      setGeneralPracticeCiphers(nextCiphers);
+    });
+  }, [isAllowed]);
 
   // Subscribe to practice tests in Firestore (teachers also see inactive drafts)
   useEffect(() => {
@@ -866,6 +884,13 @@ export const App: React.FC = () => {
     saveSettings(newSettings);
   };
 
+  const handleSaveGeneralPracticeCiphers = (nextCiphers: GeneralPracticeCiphers) => {
+    if (!isTeacher) return;
+    const sanitized = sanitizeGeneralPracticeCiphers(nextCiphers);
+    setGeneralPracticeCiphers(sanitized);
+    void saveGeneralPracticeCiphers(sanitized);
+  };
+
   const suspenseFallback = (
     <div className="drill-loading-state">Loading cipher workspace...</div>
   );
@@ -1034,11 +1059,15 @@ export const App: React.FC = () => {
 
       {isOptionsOpen && (
         <OptionsModal
-          key={`${user?.uid ?? 'guest'}:${settings.studentName}:${settings.unlockedCiphers.join(',')}`}
+          key={`${user?.uid ?? 'guest'}:${isTeacher ? 'teacher' : 'student'}:${settings.studentName}:${activeGeneralPracticeCiphers.join(',')}`}
           isOpen={true}
           onClose={closeOptions}
           settings={settings}
           onSaveSettings={handleSaveSettings}
+          generalPracticeCiphers={generalPracticeCiphers}
+          onSaveGeneralPracticeCiphers={
+            isTeacher ? handleSaveGeneralPracticeCiphers : undefined
+          }
         />
       )}
 

@@ -71,6 +71,17 @@ service cloud.firestore {
       allow delete: if isTeacher();
     }
 
+    // Global classroom configuration (e.g. ciphers included in General Practice)
+    match /classroom_config/{configId} {
+      allow read: if isAllowedUser();
+      allow create, update: if isTeacher()
+        && configId == 'general_practice'
+        && request.resource.data.keys().hasOnly(['ciphers', 'updatedAt'])
+        && request.resource.data.ciphers is map
+        && request.resource.data.ciphers.size() <= 20;
+      allow delete: if isTeacher();
+    }
+
     // Collaborative & solo test attempts
     match /test_attempts/{attemptId} {
       // Allow single-doc get when resource == null so transactions and lobby listeners

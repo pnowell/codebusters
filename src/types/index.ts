@@ -28,9 +28,10 @@ export interface Quote {
   tier: CryptanalysisTier;
 }
 
+export type GeneralPracticeCiphers = Partial<Record<CipherType, boolean>>;
+
 export interface UserSettings {
   studentName: string;
-  unlockedCiphers: CipherType[];
 }
 
 export type ScoreTier = 'full' | 'half' | 'none';
@@ -123,7 +124,6 @@ export type QuoteBrowserPrefsMap = Partial<Record<QuoteBrowserMode, QuoteBrowser
 export interface UserProfile {
   uid: string;
   email: string;
-  unlockedCiphers: CipherType[];
   drillProgress?: Partial<Record<DrillId, DrillProgress>>;
   drillHistory?: Partial<Record<DrillId, DrillHistoryEntry>>;
   completedQuotes?: number[];

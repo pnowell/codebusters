@@ -18,10 +18,6 @@ import type {
   QuoteBrowserPrefsMap,
 } from '../types';
 export type { OffsetsMode };
-import {
-  DEFAULT_UNLOCKED,
-  isCipherType,
-} from '../data/drills';
 
 const KEYS = {
   settings: 'davinci_settings',
@@ -40,7 +36,6 @@ export const MAX_RECENT_DRILL_SESSIONS = 5;
 
 const DEFAULT_SETTINGS: UserSettings = {
   studentName: 'Decoder',
-  unlockedCiphers: DEFAULT_UNLOCKED,
 };
 
 type SyncEventType =
@@ -124,9 +119,10 @@ export function loadSettings(): UserSettings {
     if (!raw) return DEFAULT_SETTINGS;
     const parsed = JSON.parse(raw) as Partial<UserSettings>;
     return {
-      ...DEFAULT_SETTINGS,
-      ...parsed,
-      unlockedCiphers: (parsed.unlockedCiphers ?? DEFAULT_SETTINGS.unlockedCiphers).filter(isCipherType),
+      studentName:
+        typeof parsed.studentName === 'string' && parsed.studentName.trim().length > 0
+          ? parsed.studentName
+          : DEFAULT_SETTINGS.studentName,
     };
   } catch {
     return DEFAULT_SETTINGS;

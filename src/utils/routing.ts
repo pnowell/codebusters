@@ -69,9 +69,10 @@ export function parseUrlRoute(search = window.location.search): Route {
   };
 }
 
-/** Returns a URL for the current path with drill/cipher/mode/q/test/tests/results/editTest/quotes set (or removed), preserving other params like ?unlocked. */
+/** Returns a URL for the current path with drill/cipher/mode/q/test/tests/results/editTest/quotes set (or removed). */
 export function buildRouteUrl(route: Route): string {
   const p = new URLSearchParams(window.location.search);
+  p.delete('unlocked');
   if (route.drill) {
     if (route.section === 'cipher') {
       p.set('cipher', route.drill);
@@ -107,9 +108,4 @@ export function buildRouteUrl(route: Route): string {
   else p.delete('quotes');
   const qs = p.toString();
   return qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
-}
-
-export function parseUnlockedParam(search = window.location.search): CipherType[] | null {
-  const raw = new URLSearchParams(search).get('unlocked');
-  return raw ? raw.split(',').filter(isCipherType) : null;
 }

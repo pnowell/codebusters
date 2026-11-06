@@ -102,6 +102,10 @@
   margin-bottom: 1.1rem;
 }
 
+.form-group:last-child {
+  margin-bottom: 0;
+}
+
 .form-group > label {
   display: block;
   font-size: 0.85rem;
@@ -136,15 +140,6 @@
   font-size: 0.9rem;
   color: var(--text-main);
   cursor: pointer;
-}
-
-.teacher-share-box {
-  background: rgba(56, 189, 248, 0.08);
-  border: 1px dashed rgba(56, 189, 248, 0.3);
-  padding: 0.85rem;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  margin-top: 0.75rem;
 }
 
 .options-account-section {

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import type { CipherType, UserSettings } from '../../types';
-import { IMPLEMENTED_DRILLS } from '../../data/drills';
+import type { CipherType, GeneralPracticeCiphers, UserSettings } from '../../types';
+import { GENERAL_PRACTICE_DRILLS } from '../../data/drills';
 import { useAuth } from '../../context/useAuth';
 import { Modal } from '../common/Modal';
 
@@ -9,6 +9,8 @@ interface OptionsModalProps {
   onClose: () => void;
   settings: UserSettings;
   onSaveSettings: (newSettings: UserSettings) => void;
+  generalPracticeCiphers: GeneralPracticeCiphers;
+  onSaveGeneralPracticeCiphers?: (ciphers: GeneralPracticeCiphers) => void;
 }
 
 export const OptionsModal: React.FC<OptionsModalProps> = ({
@@ -16,33 +18,30 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
   onClose,
   settings,
   onSaveSettings,
+  generalPracticeCiphers,
+  onSaveGeneralPracticeCiphers,
 }) => {
   const { user, allowedUser, isAllowed, isConfigured, signIn, signOut } = useAuth();
+  const isTeacher = Boolean(isAllowed && allowedUser?.role === 'teacher');
   const [studentName, setStudentName] = useState<string>(settings.studentName);
-  const [unlocked, setUnlocked] = useState<CipherType[]>(settings.unlockedCiphers);
-  const [copiedLink, setCopiedLink] = useState<boolean>(false);
+  const [cipherFlags, setCipherFlags] = useState<GeneralPracticeCiphers>(generalPracticeCiphers);
 
   const toggleCipher = (id: CipherType) => {
-    setUnlocked((prev) =>
-      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]
-    );
+    setCipherFlags((prev) => ({
+      ...prev,
+      [id]: !(prev[id] ?? true),
+    }));
   };
 
   const handleSave = () => {
     onSaveSettings({
       ...settings,
       studentName,
-      unlockedCiphers: unlocked,
     });
+    if (isTeacher && onSaveGeneralPracticeCiphers) {
+      onSaveGeneralPracticeCiphers(cipherFlags);
+    }
     onClose();
-  };
-
-  const handleCopyClassLink = () => {
-    const baseUrl = window.location.origin + window.location.pathname;
-    const shareUrl = `${baseUrl}?unlocked=${unlocked.join(',')}`;
-    navigator.clipboard.writeText(shareUrl);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2000);
   };
 
   return (
@@ -53,7 +52,9 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
       dialogClassName="modal-dialog card-panel"
     >
       <div className="modal-header">
-        <h3 id="options-modal-title">Classroom Options & Settings</h3>
+        <h3 id="options-modal-title">
+          {isTeacher ? 'Classroom Options & Settings' : 'Settings'}
+        </h3>
         <button className="close-btn" onClick={onClose} aria-label="Close settings">
           ✕
         </button>
@@ -82,7 +83,7 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
           ) : isConfigured ? (
             <div className="account-login-card">
               <p className="account-prompt-text">
-                Sign in with Google to sync your stats, unlocked ciphers, and completed quotes across devices.
+                Sign in with Google to sync your stats and completed quotes across devices.
               </p>
               <button
                 type="button"
@@ -102,7 +103,7 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
         </div>
 
         <div className="form-group">
-          <label>Student Name / Nickname:</label>
+          <label>Name / Nickname:</label>
           <input
             type="text"
             className="text-input"
@@ -112,36 +113,29 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
           />
         </div>
 
-        <div className="form-group">
-          <label>Ciphers included in General Practice:</label>
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.45rem' }}>
-            Letter Offsets is always included in the warm-up rotation.
+        {isTeacher && (
+          <div className="form-group">
+            <label>Ciphers included in General Practice:</label>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.45rem' }}>
+              Applies globally to everyone. Letter Offsets is always included in the warm-up rotation.
+            </div>
+            <div className="cipher-checkbox-list">
+              {GENERAL_PRACTICE_DRILLS.map((c) => {
+                const isChecked = cipherFlags[c.id] !== false;
+                return (
+                  <label key={c.id} className="checkbox-row">
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => toggleCipher(c.id)}
+                    />
+                    <span className="cipher-label-text">{c.name}</span>
+                  </label>
+                );
+              })}
+            </div>
           </div>
-          <div className="cipher-checkbox-list">
-            {IMPLEMENTED_DRILLS.filter((c) => c.id !== 'offsets').map((c) => {
-              const isChecked = unlocked.includes(c.id);
-              return (
-                <label key={c.id} className="checkbox-row">
-                  <input
-                    type="checkbox"
-                    checked={isChecked}
-                    onChange={() => toggleCipher(c.id)}
-                  />
-                  <span className="cipher-label-text">{c.name}</span>
-                </label>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="teacher-share-box">
-          <p>
-            <strong>Coach Tip:</strong> Copy this link to share in Zoom chat so students automatically get the right ciphers unlocked on their devices:
-          </p>
-          <button className="btn-simple" onClick={handleCopyClassLink}>
-            {copiedLink ? '✓ Link Copied to Clipboard!' : '📋 Copy Class Sync Link'}
-          </button>
-        </div>
+        )}
       </div>
 
       <div className="modal-footer">

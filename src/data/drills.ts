@@ -16,7 +16,7 @@ export type LookupCipherType = Extract<(typeof DRILLS)[number], { kind: 'lookup'
 export const DRILL_IDS: readonly CipherType[] = DRILLS.map(d => d.id);
 export const IMPLEMENTED_DRILLS = DRILLS.filter(d => d.implemented);
 export const COMING_SOON_DRILLS = DRILLS.filter(d => !d.implemented);
-export const DEFAULT_UNLOCKED: CipherType[] = IMPLEMENTED_DRILLS.map(d => d.id);
+export const GENERAL_PRACTICE_DRILLS = IMPLEMENTED_DRILLS.filter(d => d.id !== 'offsets');
 
 const LOOKUP_CIPHER_IDS: readonly string[] = DRILLS
   .filter(d => d.kind === 'lookup' && d.implemented)

@@ -15,6 +15,7 @@ import {
 } from '../services/sync';
 import { resetQuoteFlagsCache } from '../services/quoteFlagService';
 import { resetQuoteCompletionsCache } from '../services/quoteCompletionService';
+import { resetClassroomConfigCache } from '../services/classroomConfigService';
 import { AuthContext } from './authContextDef';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -52,6 +53,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         stopCloudSync();
         resetQuoteFlagsCache();
         resetQuoteCompletionsCache();
+        resetClassroomConfigCache();
       }
     });
 
@@ -84,6 +86,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     resetClientSessionState();
     resetQuoteFlagsCache();
     resetQuoteCompletionsCache();
+    resetClassroomConfigCache();
     await signOutUser();
     setUser(null);
     setAllowedUser(null);

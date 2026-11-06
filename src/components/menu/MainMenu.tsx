@@ -47,8 +47,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({
           type="button"
           className="btn-simple btn-icon-square"
           onClick={onOpenOptions}
-          title="Classroom Settings"
-          aria-label="Classroom Settings"
+          title="Settings"
+          aria-label="Settings"
         >
           <span className="btn-icon">⚙️</span>
         </button>
