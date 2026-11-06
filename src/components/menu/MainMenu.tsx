@@ -161,6 +161,21 @@ export const MainMenu: React.FC<MainMenuProps> = ({
           </button>
         ))}
       </div>
+
+      <footer className="menu-footer">
+        <span>DaVinci Decoders — Interactive Science Olympiad cipher &amp; cryptogram trainer</span>
+        <span className="menu-footer-sep" aria-hidden="true">•</span>
+        <a
+          href={
+            import.meta.env.DEV
+              ? '/privacy_policy.html'
+              : 'https://pnowell.github.io/codebusters/privacy_policy.html'
+          }
+          className="menu-footer-link"
+        >
+          Privacy Policy
+        </a>
+      </footer>
     </main>
   </>
 );

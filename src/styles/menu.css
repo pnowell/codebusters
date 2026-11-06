@@ -142,3 +142,52 @@
   padding: 0.8rem 0.75rem;
   border-radius: 8px;
 }
+
+.menu-footer {
+  flex-shrink: 0;
+  margin-top: 0.5rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.menu-footer-sep {
+  opacity: 0.6;
+}
+
+.menu-footer-link {
+  color: var(--accent-blue);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.menu-footer-link:hover,
+.menu-footer-link:focus-visible {
+  text-decoration: underline;
+}
+
+.initial-boot-fallback {
+  max-width: 600px;
+  margin: 2rem auto;
+  padding: 1.5rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.initial-boot-fallback h1 {
+  color: var(--text-main);
+  font-size: 1.35rem;
+  margin-bottom: 0.5rem;
+}
+
+.initial-boot-fallback a {
+  color: var(--accent-blue);
+}

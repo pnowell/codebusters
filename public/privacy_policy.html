@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- TODO(security): frame-ancestors / X-Frame-Options HTTP response headers are managed by GitHub Pages static hosting and cannot be set via HTML meta tags. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'self'; form-action 'none';"
+    />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="stylesheet" href="./privacy_policy.css" />
+    <title>Privacy Policy — DaVinci Decoders</title>
+  </head>
+  <body>
+    <div class="policy-shell">
+      <nav class="policy-nav" aria-label="Back navigation">
+        <a class="back-link" href="./">← Back to DaVinci Decoders</a>
+      </nav>
+
+      <main class="policy-card">
+        <header class="policy-header">
+          <h1>DaVinci Decoders Privacy Policy</h1>
+          <p class="policy-meta">Effective Date: November 6, 2026</p>
+        </header>
+
+        <section class="policy-section">
+          <h2>1. Overview</h2>
+          <p>
+            <strong>DaVinci Decoders</strong> (<a href="https://pnowell.github.io/codebusters/">https://pnowell.github.io/codebusters/</a>)
+            is an educational Science Olympiad cipher and cryptogram practice web application.
+            Students can practice freely in <strong>Guest Mode</strong> without signing in, or sign
+            in with a Google account if they are members of an authorized Science Olympiad classroom
+            roster.
+          </p>
+        </section>
+
+        <section class="policy-section">
+          <h2>2. Information Accessed via Google Sign-In</h2>
+          <p>
+            When you voluntarily click <strong>Sign In</strong> and authenticate with Google (via
+            Google Firebase Authentication), DaVinci Decoders accesses only standard OpenID Connect
+            identity fields:
+          </p>
+          <ul>
+            <li><strong>Email address</strong> — used strictly to check whether your account is on the coach-managed classroom allowlist.</li>
+            <li><strong>Google Account Unique Identifier (UID)</strong> — used to associate your saved cipher progress, leaderboard scores, and practice test attempts with your account.</li>
+            <li><strong>Basic profile display name</strong> — used only as a fallback if no classroom roster nickname is assigned.</li>
+          </ul>
+          <p>
+            DaVinci Decoders does not request access to Gmail, Google Drive, Contacts, Calendar, or
+            any other sensitive or restricted Google API scopes.
+          </p>
+        </section>
+
+        <section class="policy-section">
+          <h2>3. How Information Is Used and Stored</h2>
+          <ul>
+            <li>
+              <strong>Guest Mode (No Sign-In):</strong> Drill settings, mastery progress, and
+              completed quote IDs are stored solely in your own browser's <code>localStorage</code>
+              and are never transmitted to a server.
+            </li>
+            <li>
+              <strong>Authorized Classroom Accounts:</strong> If your email address is on the
+              classroom allowlist, your assigned display name, cipher mastery statistics, completed
+              quote history, drill high scores, and timed practice test responses are stored in
+              Google Cloud Firestore so your progress syncs across devices and appears on classroom
+              team leaderboards and coach review views.
+            </li>
+            <li>
+              <strong>Unlisted Accounts:</strong> If you sign in with a Google account that is not
+              on the classroom allowlist, no cloud profile or Firestore user record is created, and
+              the app continues operating locally in Guest Mode.
+            </li>
+          </ul>
+        </section>
+
+        <section class="policy-section">
+          <h2>4. Data Sharing &amp; Google API Limited Use Disclosure</h2>
+          <p>
+            DaVinci Decoders does <strong>not</strong> sell, rent, or share Google user data with
+            advertisers, data brokers, or any external third parties, and does <strong>not</strong>
+            use Google user data for artificial intelligence or machine learning model training.
+          </p>
+          <p>
+            Within an authorized classroom team, your coach-assigned display name and drill/test
+            scores are visible to fellow rostered teammates (for example, on team leaderboards and
+            partner practice tests) and to the team coach. Infrastructure hosting is provided by
+            Google Firebase / Google Cloud Platform and GitHub Pages.
+          </p>
+          <p>
+            DaVinci Decoders' use and transfer of information received from Google APIs adheres to
+            the
+            <a
+              href="https://developers.google.com/terms/api-services-user-data-policy"
+              rel="noopener noreferrer"
+              target="_blank"
+            >Google API Services User Data Policy</a>, including the Limited Use requirements.
+          </p>
+        </section>
+
+        <section class="policy-section">
+          <h2>5. Data Security</h2>
+          <p>
+            All communication between your browser, Google Authentication, and Cloud Firestore is
+            encrypted in transit using HTTPS/TLS and encrypted at rest by Google Cloud. Server-side
+            Firestore Security Rules enforce strict role-based access control so only verified
+            classroom roster members and the team coach can read or write classroom records.
+          </p>
+        </section>
+
+        <section class="policy-section">
+          <h2>6. Data Retention, Deletion &amp; Contact</h2>
+          <p>
+            Guest Mode data can be cleared at any time by clearing site data in your web browser.
+            Authorized classroom students or parents may request changes to their display name or
+            complete deletion of their cloud profile, practice history, and test records at any time
+            by contacting their team coach or opening a request on the project repository at
+            <a
+              href="https://github.com/pnowell/codebusters/issues"
+              rel="noopener noreferrer"
+              target="_blank"
+            >github.com/pnowell/codebusters/issues</a>.
+          </p>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
