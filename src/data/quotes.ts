@@ -53,21 +53,37 @@ export function pickRandomCleanLookupQuote(excludeIds?: ReadonlySet<number>): Qu
  * - Caps length at MAX_LOOKUP_LENGTH (75 chars) so quotes are not excessively long.
  * - Gracefully falls back if the completed list exhausts the uncompleted pool.
  */
-function pickRandomLookupQuote(): Quote {
+function pickRandomLookupQuote(excludeId?: number): Quote {
   const completedSet = new Set(loadCompletedQuoteIds());
   const flaggedSet = getFlaggedQuoteIds();
 
   const safeKidPool = KID_LOOKUP_POOL.filter(q => !flaggedSet.has(q.id));
   const safeGeneralPool = GENERAL_LOOKUP_POOL.filter(q => !flaggedSet.has(q.id));
 
-  // Filter out completed quotes from both pools
-  const uncompletedKid = safeKidPool.filter(q => !completedSet.has(q.id));
-  const uncompletedGeneral = safeGeneralPool.filter(q => !completedSet.has(q.id));
+  // Filter out completed quotes (and current quote if requesting "New") from both pools
+  const uncompletedKid = safeKidPool.filter(
+    q => !completedSet.has(q.id) && q.id !== excludeId
+  );
+  const uncompletedGeneral = safeGeneralPool.filter(
+    q => !completedSet.has(q.id) && q.id !== excludeId
+  );
 
-  // Determine active candidates (falling back to full unflagged pools if uncompleted quotes are exhausted)
-  const kidCandidates = uncompletedKid.length > 0 ? uncompletedKid : safeKidPool;
+  const nonCurrentKid = safeKidPool.filter(q => q.id !== excludeId);
+  const nonCurrentGeneral = safeGeneralPool.filter(q => q.id !== excludeId);
+
+  // Determine active candidates (falling back to non-current unflagged pools if uncompleted quotes are exhausted)
+  const kidCandidates =
+    uncompletedKid.length > 0
+      ? uncompletedKid
+      : nonCurrentKid.length > 0
+      ? nonCurrentKid
+      : safeKidPool;
   const generalCandidates =
-    uncompletedGeneral.length > 0 ? uncompletedGeneral : safeGeneralPool;
+    uncompletedGeneral.length > 0
+      ? uncompletedGeneral
+      : nonCurrentGeneral.length > 0
+      ? nonCurrentGeneral
+      : safeGeneralPool;
 
   // 80% preference for kid-friendly jokes/facts/lyrics/movies, 20% for general quotes
   const preferKid = Math.random() < 0.8;
@@ -89,13 +105,13 @@ function pickRandomLookupQuote(): Quote {
  * - If `preferredId` is specified (e.g. via deep-link URL ?q=123):
  *   Returns the Quote if found, or null if the quote does not exist (removed or retired).
  * - If `preferredId` is undefined:
- *   Returns a random eligible lookup quote.
+ *   Returns a random eligible lookup quote (optionally excluding `excludeId`).
  */
-export function pickLookupQuote(preferredId?: number): Quote | null {
+export function pickLookupQuote(preferredId?: number, excludeId?: number): Quote | null {
   if (preferredId !== undefined) {
     return getQuoteById(preferredId) ?? null;
   }
-  return pickRandomLookupQuote();
+  return pickRandomLookupQuote(excludeId);
 }
 
 export function getQuotesByTier(tier: CryptanalysisTier): Quote[] {

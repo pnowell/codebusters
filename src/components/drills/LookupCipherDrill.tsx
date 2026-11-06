@@ -5,7 +5,11 @@ import { ReferenceSheet } from './shared/ReferenceSheet';
 import { DrillActionRow } from './shared/DrillActionRow';
 import { ResultBanner } from './shared/ResultBanner';
 import { QuoteTileGrid } from './shared/QuoteTileGrid';
-import { evaluateSolution, isLetter } from '../../utils/ciphers';
+import {
+  evaluateSolution,
+  isLetter,
+  shouldCountQuoteCompleted,
+} from '../../utils/ciphers';
 import { pickLookupQuote } from '../../data/quotes';
 import { getDrill, type LookupCipherType } from '../../data/drills';
 import { saveCompletedQuoteId, recordCipherPractice } from '../../services/storage';
@@ -82,7 +86,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
   const isAllFilled = totalLetters > 0 && filledLetters === totalLetters;
 
   const loadNewQuote = useCallback(() => {
-    const nextQ = pickLookupQuote();
+    const nextQ = pickLookupQuote(undefined, quoteId);
     if (nextQ) {
       setNotFoundId(undefined);
       setPuzzle(freshPuzzle(nextQ));
@@ -91,7 +95,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
       startTimeRef.current = Date.now();
       onQuoteChange?.(nextQ.id);
     }
-  }, [onQuoteChange]);
+  }, [onQuoteChange, quoteId]);
 
   const handleNext = useCallback(() => {
     if (workoutContext) {
@@ -114,8 +118,10 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     const res = evaluateSolution(quote.quote, userInputs.join(''));
     setResult(res);
     setIsSubmitted(true);
-    saveCompletedQuoteId(quote.id);
-    recordCipherPractice(cipher);
+    if (shouldCountQuoteCompleted(res)) {
+      saveCompletedQuoteId(quote.id);
+      recordCipherPractice(cipher);
+    }
   }, [cipher, quote, userInputs, isSubmitted, isAllFilled]);
 
   const handleChangeUserInputs = useCallback((nextInputs: string[]) => {

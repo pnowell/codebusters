@@ -399,6 +399,10 @@
   text-transform: uppercase;
 }
 
+.char-tile.punct-tile {
+  cursor: default;
+}
+
 .tile-punct {
   width: 14px;
   height: 28px;
@@ -411,6 +415,7 @@
 }
 
 .correct-tile {
+  z-index: 2;
   border-color: var(--accent-emerald) !important;
   background: rgba(16, 185, 129, 0.12);
 }
@@ -429,6 +434,7 @@
 }
 
 .wrong-tile {
+  z-index: 3;
   border-color: var(--accent-rose) !important;
   background: rgba(244, 63, 94, 0.12);
 }

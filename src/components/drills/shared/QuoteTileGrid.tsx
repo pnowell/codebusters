@@ -109,15 +109,15 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
             <div key={wIdx} className="word-cluster">
               {word.map(({ char, index }) => {
                 const isAlpha = isLetter(char);
-                const isActive = !disabled && activeIdx === index;
+                const isActive = !disabled && isAlpha && activeIdx === index;
                 const userVal = userInputs[index] || '';
-                const isCorrect = showEvaluation && userVal === char;
-                const isWrong =
-                  showEvaluation && isAlpha && userVal !== '' && userVal !== char;
-                const isFilled = !showEvaluation && Boolean(userVal);
+                const isCorrect = showEvaluation && isAlpha && userVal === char;
+                const isWrong = showEvaluation && isAlpha && userVal !== char;
+                const isFilled = !showEvaluation && isAlpha && Boolean(userVal);
 
                 const tileClasses = [
                   'char-tile',
+                  !isAlpha ? 'punct-tile' : '',
                   isActive ? 'active-tile' : '',
                   isCorrect ? 'correct-tile' : '',
                   isWrong ? 'wrong-tile' : '',

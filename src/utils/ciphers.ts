@@ -101,6 +101,18 @@ export function evaluateSolution(target: string, studentInput: string): Evaluati
 }
 
 /**
+ * Maximum fraction of letter errors allowed for a submitted quote puzzle
+ * to count as a genuine attempt and be added to `completedQuotes`.
+ * If more than 60% of the letters are errors (e.g. keyboard mashing), the quote is not consumed.
+ */
+export const MAX_QUOTE_COMPLETION_ERROR_RATE = 0.6;
+
+export function shouldCountQuoteCompleted(result: EvaluationResult): boolean {
+  if (result.totalChars <= 0) return false;
+  return result.errorCount / result.totalChars <= MAX_QUOTE_COMPLETION_ERROR_RATE;
+}
+
+/**
  * Standard Beker & Piper (1982) English letter frequencies.
  * Matches the Science Olympiad spreadsheet frequency table.
  */
