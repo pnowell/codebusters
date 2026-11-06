@@ -35,3 +35,16 @@ export function getCipherBucket(id: CipherType): CipherBucket | null {
   if (drill.kind === 'offsets') return null;
   return drill.kind === 'analysis' ? 'analysis' : 'speed';
 }
+
+/**
+ * Tunable wrong-answer lockout timing for flashcard speed drills
+ * (Offsets, Atbash, Pigpen, Galactic).
+ *
+ * Random guessing math (1/26 hit rate per card):
+ *   Expected 60s hits ≈ 60_000 / (25 * wrongAnswerLockoutMs)
+ *   At 1500ms lockout: ~1.6 expected hits per 60s.
+ */
+export const DRILL_LOCKOUT_CONFIG = {
+  /** Mandatory delay (ms) on a wrong answer while showing the mistake and disabling input. */
+  wrongAnswerLockoutMs: 1500,
+} as const;

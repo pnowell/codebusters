@@ -5,6 +5,7 @@ import { useSpacedDeck } from '../../hooks/useSpacedDeck';
 import { useVelocityTracker } from '../../hooks/useVelocityTracker';
 import { useFloatingGhosts } from '../../hooks/useFloatingGhosts';
 import { useWarmupTimer } from '../../hooks/useWarmupTimer';
+import { useWrongAnswerLockout } from '../../hooks/useWrongAnswerLockout';
 import { DrillHeader } from './shared/DrillHeader';
 import { WarmupHeaderRight } from './shared/WarmupHeaderRight';
 import { CollapsibleReference } from './shared/CollapsibleReference';
@@ -42,6 +43,16 @@ const CIPHER_INFO = {
   },
 } as const;
 
+const NON_ANSWER_KEYS = new Set([
+  'Shift',
+  'Control',
+  'Alt',
+  'Meta',
+  'CapsLock',
+  'Tab',
+  'Escape',
+]);
+
 export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workoutContext }) => {
   const { isAllowed } = useAuth();
   const info = CIPHER_INFO[cipher];
@@ -71,16 +82,26 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
   } = useVelocityTracker(cipher);
 
   const { ghosts, spawnGhost, removeGhost } = useFloatingGhosts();
+  const {
+    wrongAnswer,
+    correctAnswer,
+    isWrong,
+    isLockedRef,
+    lockoutDurationMs,
+    lockoutId,
+    shakeCycle,
+    triggerWrongLockout,
+    registerBlockedInput,
+    clearWrongLockout,
+  } = useWrongAnswerLockout();
 
   const [isMasteryOpen, setIsMasteryOpen] = useState<boolean>(false);
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState<boolean>(false);
   const [inputVal, setInputVal] = useState<string>('');
-  const [wrongFeedback, setWrongFeedback] = useState<string | null>(null);
   const [totalQuestions, setTotalQuestions] = useState<number>(0);
   const [correctQuestions, setCorrectQuestions] = useState<number>(0);
 
   const answerInputRef = useRef<HTMLInputElement | null>(null);
-  const wrongTimerRef = useRef<number | null>(null);
 
   const focusAnswerInput = useCallback(() => {
     setTimeout(() => {
@@ -89,40 +110,26 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
   }, []);
 
   useEffect(() => {
-    return () => {
-      if (wrongTimerRef.current !== null) {
-        window.clearTimeout(wrongTimerRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
     answerInputRef.current?.focus();
   }, [currentLetter]);
 
   const handleResetProgress = () => {
+    clearWrongLockout();
     resetProgress();
     setIsMasteryOpen(false);
     setInputVal('');
-    setWrongFeedback(null);
     focusAnswerInput();
   };
 
   const confirmAnswerWithChar = useCallback(
     (answeredChar: string) => {
-      const cleanAnswer = answeredChar.trim().toUpperCase();
-      if (!cleanAnswer || !/^[A-Z]$/.test(cleanAnswer)) return;
-
-      // If currently displaying wrong feedback, typing any key immediately skips to the next card
-      if (wrongTimerRef.current !== null) {
-        window.clearTimeout(wrongTimerRef.current);
-        wrongTimerRef.current = null;
-        setWrongFeedback(null);
-        setInputVal('');
-        advanceCard();
-        focusAnswerInput();
+      if (isLockedRef.current) {
+        registerBlockedInput();
         return;
       }
+
+      const cleanAnswer = answeredChar.trim().toUpperCase();
+      if (!cleanAnswer || !/^[A-Z]$/.test(cleanAnswer)) return;
 
       setTotalQuestions((prev) => prev + 1);
 
@@ -138,20 +145,17 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
             : `${currentLetter} ✓`
         );
         setInputVal('');
-        setWrongFeedback(null);
         focusAnswerInput();
       } else {
-        setWrongFeedback(currentLetter);
+        setInputVal('');
         recordMiss();
         recordAttempt(false, false);
 
-        wrongTimerRef.current = window.setTimeout(() => {
-          wrongTimerRef.current = null;
-          setWrongFeedback(null);
+        triggerWrongLockout(cleanAnswer, currentLetter, () => {
           setInputVal('');
           advanceCard();
           focusAnswerInput();
-        }, 1200);
+        });
       }
     },
     [
@@ -159,10 +163,13 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
       cipher,
       currentLetter,
       focusAnswerInput,
+      isLockedRef,
       recordAttempt,
       recordHit,
       recordMiss,
+      registerBlockedInput,
       spawnGhost,
+      triggerWrongLockout,
     ]
   );
 
@@ -170,35 +177,45 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
     confirmAnswerWithChar(inputVal);
   }, [confirmAnswerWithChar, inputVal]);
 
-  const latestRef = useRef({ confirmAnswerWithChar, wrongFeedback });
+  const latestRef = useRef({ confirmAnswerWithChar, registerBlockedInput });
   useEffect(() => {
-    latestRef.current = { confirmAnswerWithChar, wrongFeedback };
-  }, [confirmAnswerWithChar, wrongFeedback]);
+    latestRef.current = { confirmAnswerWithChar, registerBlockedInput };
+  }, [confirmAnswerWithChar, registerBlockedInput]);
 
-  // Global typing listener: single keypress immediately answers
+  // Global typing listener: single keypress immediately answers when unlocked
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (document.querySelector('[role="dialog"]')) return;
       if (e.target instanceof HTMLInputElement && e.target !== answerInputRef.current) return;
       if (e.target instanceof HTMLTextAreaElement) return;
       if (e.target instanceof HTMLButtonElement && (e.key === 'Enter' || e.key === ' ')) return;
 
-      const { confirmAnswerWithChar: handleChar, wrongFeedback: isWrong } = latestRef.current;
+      if (e.repeat && (/^[a-zA-Z0-9]$/.test(e.key) || e.key === 'Enter' || e.key === 'Backspace')) {
+        e.preventDefault();
+        return;
+      }
 
-      if (isWrong !== null) {
-        if (['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Tab'].includes(e.key)) {
+      const {
+        confirmAnswerWithChar: handleChar,
+        registerBlockedInput: handleBlocked,
+      } = latestRef.current;
+
+      if (isLockedRef.current) {
+        if (NON_ANSWER_KEYS.has(e.key)) {
           return;
         }
         e.preventDefault();
-        handleChar('A');
+        handleBlocked();
         return;
       }
 
       if (/^[a-zA-Z]$/.test(e.key)) {
         e.preventDefault();
-        setInputVal(e.key.toUpperCase());
-        handleChar(e.key.toUpperCase());
+        const upper = e.key.toUpperCase();
+        setInputVal(upper);
+        handleChar(upper);
       } else if (e.key === 'Backspace') {
         e.preventDefault();
         setInputVal('');
@@ -207,7 +224,7 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [isLockedRef]);
 
   const handleAdvanceWarmup = useCallback(() => {
     flushSession(true);
@@ -257,17 +274,6 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
     </div>
   );
 
-  const wrongHintContent = wrongFeedback ? (
-    <>
-      Answer: <strong>{wrongFeedback}</strong>
-      {cipher === 'atbash' && (
-        <span className="answer-hint-pair">
-          · {atbashChar(wrongFeedback)} ↔ {wrongFeedback}
-        </span>
-      )}
-    </>
-  ) : undefined;
-
   return (
     <div className="drill-container symbol-drill-container">
       <DrillHeader title={headerTitle} onBack={onBack} right={headerRight} />
@@ -306,8 +312,12 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
                   }
                 : undefined
             }
-            isWrong={wrongFeedback !== null}
-            wrongHintContent={wrongHintContent}
+            isWrong={isWrong}
+            wrongAnswer={wrongAnswer}
+            correctAnswer={correctAnswer}
+            lockoutDurationMs={lockoutDurationMs}
+            lockoutId={lockoutId}
+            shakeCycle={shakeCycle}
             promptContent={promptContent}
             inputRef={answerInputRef}
             inputVal={inputVal}
@@ -315,6 +325,10 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
             autoCapitalize="characters"
             maxLength={1}
             onInputChange={(e) => {
+              if (isLockedRef.current) {
+                registerBlockedInput();
+                return;
+              }
               const char = e.target.value.replace(/[^A-Za-z]/g, '').slice(-1).toUpperCase();
               setInputVal(char);
               if (char) {
@@ -322,6 +336,17 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
               }
             }}
             onInputKeyDown={(e) => {
+              if (e.repeat && (e.key === 'Enter' || e.key === 'Backspace')) {
+                e.preventDefault();
+                return;
+              }
+              if (isLockedRef.current) {
+                if (!NON_ANSWER_KEYS.has(e.key)) {
+                  e.preventDefault();
+                  registerBlockedInput();
+                }
+                return;
+              }
               if (e.key === 'Enter') {
                 e.preventDefault();
                 confirmAnswer();

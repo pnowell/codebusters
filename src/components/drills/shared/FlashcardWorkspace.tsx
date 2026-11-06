@@ -27,7 +27,11 @@ export interface FlashcardWorkspaceProps {
   stats: FlashcardStats;
   stageActions?: FlashcardStageActions;
   isWrong: boolean;
-  wrongHintContent?: React.ReactNode;
+  wrongAnswer?: string | null;
+  correctAnswer?: string | null;
+  lockoutDurationMs?: number;
+  lockoutId?: number;
+  shakeCycle?: number;
   promptContent: React.ReactNode;
   inputRef: React.RefObject<HTMLInputElement | null>;
   inputVal: string;
@@ -52,7 +56,11 @@ export const FlashcardWorkspace: React.FC<FlashcardWorkspaceProps> = ({
   stats,
   stageActions,
   isWrong,
-  wrongHintContent,
+  wrongAnswer = null,
+  correctAnswer = null,
+  lockoutDurationMs = 1500,
+  lockoutId = 0,
+  shakeCycle = 0,
   promptContent,
   inputRef,
   inputVal,
@@ -67,6 +75,17 @@ export const FlashcardWorkspace: React.FC<FlashcardWorkspaceProps> = ({
   const clampedPercent = Number.isFinite(barPercent)
     ? Math.max(0, Math.min(100, barPercent))
     : 0;
+
+  const safeLockoutMs =
+    Number.isFinite(lockoutDurationMs) && lockoutDurationMs > 0
+      ? Math.round(lockoutDurationMs)
+      : 1500;
+
+  const shakeClass = isWrong
+    ? shakeCycle % 2 === 1
+      ? 'wrong-shake-a'
+      : 'wrong-shake-b'
+    : '';
 
   const accuracyPct =
     stats.totalQuestions > 0
@@ -132,33 +151,61 @@ export const FlashcardWorkspace: React.FC<FlashcardWorkspaceProps> = ({
             </div>
 
             <div className="workspace-input-side">
-              <div
-                className="user-answer-box-wrapper"
-                onClick={() => inputRef.current?.focus()}
-              >
-                <input
-                  ref={inputRef}
-                  type="text"
-                  inputMode={inputMode}
-                  pattern={pattern}
-                  autoCapitalize={autoCapitalize}
-                  autoCorrect="off"
-                  autoComplete="off"
-                  spellCheck="false"
-                  enterKeyHint="done"
-                  maxLength={maxLength}
-                  className="user-answer-native-input"
-                  value={inputVal}
-                  placeholder="?"
-                  onChange={onInputChange}
-                  onKeyDown={onInputKeyDown}
-                />
+              <div className="user-answer-box-slot">
+                <div
+                  className={`user-answer-box-wrapper ${isWrong ? 'is-locked' : ''} ${shakeClass}`.trim()}
+                  onClick={() => {
+                    if (!isWrong) {
+                      inputRef.current?.focus();
+                    }
+                  }}
+                >
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    inputMode={inputMode}
+                    pattern={pattern}
+                    autoCapitalize={autoCapitalize}
+                    autoCorrect="off"
+                    autoComplete="off"
+                    spellCheck="false"
+                    enterKeyHint="done"
+                    maxLength={maxLength}
+                    aria-disabled={isWrong}
+                    className={`user-answer-native-input ${isWrong ? 'is-hidden-for-reveal' : ''}`.trim()}
+                    value={inputVal}
+                    placeholder="?"
+                    onChange={onInputChange}
+                    onKeyDown={onInputKeyDown}
+                  />
+
+                  {isWrong && correctAnswer !== null && (
+                    <span
+                      key={`correct-${lockoutId}`}
+                      className="wrong-correct-reveal"
+                      aria-live="polite"
+                      aria-label={`Correct answer ${correctAnswer}`}
+                    >
+                      {correctAnswer}
+                    </span>
+                  )}
+                </div>
+
+                {isWrong && wrongAnswer !== null && (
+                  <span
+                    key={`wrong-${lockoutId}`}
+                    className="wrong-user-echo"
+                    aria-hidden="true"
+                  >
+                    {wrongAnswer}
+                  </span>
+                )}
               </div>
 
               {inlineSubmit && (
                 <button
                   type="button"
-                  className="btn-inline-submit"
+                  className={`btn-inline-submit ${isWrong ? 'is-hidden-for-reveal' : ''}`.trim()}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={inlineSubmit.onSubmit}
                   disabled={inlineSubmit.disabled}
@@ -172,8 +219,17 @@ export const FlashcardWorkspace: React.FC<FlashcardWorkspaceProps> = ({
           </div>
 
           <div className="workspace-hint-slot" aria-live="polite">
-            {isWrong && wrongHintContent ? (
-              <div className="answer-hint">{wrongHintContent}</div>
+            {isWrong ? (
+              <div
+                key={lockoutId}
+                className="wrong-lockout-bar"
+                aria-hidden="true"
+              >
+                <div
+                  className="wrong-lockout-fill"
+                  style={{ animationDuration: `${safeLockoutMs}ms` }}
+                />
+              </div>
             ) : newRecordAlert ? (
               <div className="workspace-new-best-pill" role="status">
                 ★ NEW 60s BEST: {stats.best60s}

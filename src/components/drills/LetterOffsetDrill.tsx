@@ -5,6 +5,7 @@ import { useSpacedDeck } from '../../hooks/useSpacedDeck';
 import { useVelocityTracker } from '../../hooks/useVelocityTracker';
 import { useFloatingGhosts } from '../../hooks/useFloatingGhosts';
 import { useWarmupTimer } from '../../hooks/useWarmupTimer';
+import { useWrongAnswerLockout } from '../../hooks/useWrongAnswerLockout';
 import { DrillHeader } from './shared/DrillHeader';
 import { WarmupHeaderRight } from './shared/WarmupHeaderRight';
 import { AlphabetMasteryModal } from './shared/AlphabetMasteryModal';
@@ -24,6 +25,16 @@ const MODES: readonly { readonly id: OffsetsMode; readonly label: string }[] = [
   { id: 'letterToNum', label: 'Letter → #' },
   { id: 'numToLetter', label: '# → Letter' },
 ];
+
+const NON_ANSWER_KEYS = new Set([
+  'Shift',
+  'Control',
+  'Alt',
+  'Meta',
+  'CapsLock',
+  'Tab',
+  'Escape',
+]);
 
 interface OffsetsSessionProps {
   mode: OffsetsMode;
@@ -76,14 +87,24 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
   } = useVelocityTracker(drillId);
 
   const { ghosts, spawnGhost, removeGhost } = useFloatingGhosts();
+  const {
+    wrongAnswer,
+    correctAnswer,
+    isWrong,
+    isLockedRef,
+    lockoutDurationMs,
+    lockoutId,
+    shakeCycle,
+    triggerWrongLockout,
+    registerBlockedInput,
+    clearWrongLockout,
+  } = useWrongAnswerLockout();
 
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState<boolean>(false);
   const [inputVal, setInputVal] = useState<string>('');
-  const [wrongFeedback, setWrongFeedback] = useState<string | null>(null);
 
   const answerInputRef = useRef<HTMLInputElement | null>(null);
-  const wrongTimerRef = useRef<number | null>(null);
 
   const focusAnswerInput = useCallback(() => {
     setTimeout(() => {
@@ -93,39 +114,27 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
 
   useEffect(() => {
     focusAnswerInput();
-    return () => {
-      if (wrongTimerRef.current !== null) {
-        window.clearTimeout(wrongTimerRef.current);
-      }
-    };
   }, [focusAnswerInput]);
 
   const handleResetProgress = () => {
+    clearWrongLockout();
     resetProgress();
     setIsModalOpen(false);
     setInputVal('');
-    setWrongFeedback(null);
     focusAnswerInput();
   };
 
-  const skipWrongFeedback = useCallback((): boolean => {
-    if (wrongTimerRef.current === null) return false;
-    window.clearTimeout(wrongTimerRef.current);
-    wrongTimerRef.current = null;
-    setWrongFeedback(null);
-    setInputVal('');
-    advanceCard();
-    focusAnswerInput();
-    return true;
-  }, [advanceCard, focusAnswerInput]);
-
   const submitAnswerValue = useCallback(
     (rawVal: string) => {
-      if (wrongTimerRef.current !== null) return;
+      if (isLockedRef.current) {
+        registerBlockedInput();
+        return;
+      }
 
       const trimmed = rawVal.trim().toUpperCase();
       if (!trimmed) return;
       if (promptType === 'number' && !/^[A-Z]$/.test(trimmed)) return;
+      if (promptType === 'letter' && !/^[0-9]{1,2}$/.test(trimmed)) return;
 
       const isCorrect =
         promptType === 'letter'
@@ -139,20 +148,21 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
         recordAttempt(true, true);
         spawnGhost(`${currentLetter} = ${currentOffset} ✓`);
         setInputVal('');
-        setWrongFeedback(null);
         focusAnswerInput();
       } else {
-        setWrongFeedback(promptType === 'letter' ? `${currentOffset}` : currentLetter);
+        setInputVal('');
         recordMiss();
         recordAttempt(false, false);
 
-        wrongTimerRef.current = window.setTimeout(() => {
-          wrongTimerRef.current = null;
-          setWrongFeedback(null);
-          setInputVal('');
-          advanceCard();
-          focusAnswerInput();
-        }, 1200);
+        triggerWrongLockout(
+          trimmed,
+          promptType === 'letter' ? `${currentOffset}` : currentLetter,
+          () => {
+            setInputVal('');
+            advanceCard();
+            focusAnswerInput();
+          }
+        );
       }
     },
     [
@@ -160,12 +170,15 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
       currentLetter,
       currentOffset,
       focusAnswerInput,
+      isLockedRef,
       onRecordAnswer,
       promptType,
       recordAttempt,
       recordHit,
       recordMiss,
+      registerBlockedInput,
       spawnGhost,
+      triggerWrongLockout,
     ]
   );
 
@@ -176,47 +189,50 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
   const latestRef = useRef({
     confirmAnswer,
     submitAnswerValue,
-    skipWrongFeedback,
+    registerBlockedInput,
     promptType,
-    wrongFeedback,
   });
   useEffect(() => {
     latestRef.current = {
       confirmAnswer,
       submitAnswerValue,
-      skipWrongFeedback,
+      registerBlockedInput,
       promptType,
-      wrongFeedback,
     };
-  }, [confirmAnswer, promptType, skipWrongFeedback, submitAnswerValue, wrongFeedback]);
+  }, [confirmAnswer, promptType, registerBlockedInput, submitAnswerValue]);
 
   // Global typing listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (document.querySelector('[role="dialog"]')) return;
       if (e.target instanceof HTMLInputElement && e.target !== answerInputRef.current) return;
       if (e.target instanceof HTMLTextAreaElement) return;
       if (e.target instanceof HTMLButtonElement && (e.key === 'Enter' || e.key === ' ')) return;
 
+      if (e.repeat && (/^[a-zA-Z0-9]$/.test(e.key) || e.key === 'Enter' || e.key === 'Backspace')) {
+        e.preventDefault();
+        return;
+      }
+
       const {
         confirmAnswer: handleConfirm,
         submitAnswerValue: handleSubmitVal,
-        skipWrongFeedback: handleSkipWrong,
+        registerBlockedInput: handleBlocked,
         promptType: currentPromptType,
-        wrongFeedback: isWrong,
       } = latestRef.current;
 
-      if (currentPromptType === 'number') {
-        if (isWrong !== null) {
-          if (['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Tab'].includes(e.key)) {
-            return;
-          }
-          e.preventDefault();
-          handleSkipWrong();
+      if (isLockedRef.current) {
+        if (NON_ANSWER_KEYS.has(e.key)) {
           return;
         }
+        e.preventDefault();
+        handleBlocked();
+        return;
+      }
 
+      if (currentPromptType === 'number') {
         if (/^[a-zA-Z]$/.test(e.key)) {
           e.preventDefault();
           const ch = e.key.toUpperCase();
@@ -229,19 +245,17 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
         return;
       }
 
-      // Letter -> # mode: let focused native input handle digit entry & Enter
+      // Letter -> # mode: let focused native input handle digit entry & Enter when unlocked
       if (document.activeElement === answerInputRef.current) return;
 
       if (e.key === 'Enter') {
         e.preventDefault();
-        if (!handleSkipWrong()) {
-          handleConfirm();
-        }
-      } else if (isWrong === null && e.key === 'Backspace') {
+        handleConfirm();
+      } else if (e.key === 'Backspace') {
         e.preventDefault();
         setInputVal((prev) => prev.slice(0, -1));
         answerInputRef.current?.focus();
-      } else if (isWrong === null && e.key >= '0' && e.key <= '9') {
+      } else if (e.key >= '0' && e.key <= '9') {
         e.preventDefault();
         setInputVal((prev) => (prev.length < 2 ? prev + e.key : e.key));
         answerInputRef.current?.focus();
@@ -250,7 +264,7 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [isLockedRef]);
 
   const handleAdvanceWarmup = useCallback(() => {
     flushSession(true);
@@ -315,14 +329,12 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
                   }
                 : undefined
             }
-            isWrong={wrongFeedback !== null}
-            wrongHintContent={
-              wrongFeedback ? (
-                <>
-                  Answer: <strong>{wrongFeedback}</strong>
-                </>
-              ) : undefined
-            }
+            isWrong={isWrong}
+            wrongAnswer={wrongAnswer}
+            correctAnswer={correctAnswer}
+            lockoutDurationMs={lockoutDurationMs}
+            lockoutId={lockoutId}
+            shakeCycle={shakeCycle}
             promptContent={
               <span className="prompt-value">
                 {promptType === 'letter' ? currentLetter : currentOffset}
@@ -335,16 +347,15 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
             autoCapitalize={promptType === 'number' ? 'characters' : 'off'}
             maxLength={promptType === 'number' ? 1 : 2}
             onInputChange={(e) => {
+              if (isLockedRef.current) {
+                registerBlockedInput();
+                return;
+              }
               const val = e.target.value.toUpperCase();
               if (promptType === 'letter') {
-                if (wrongTimerRef.current !== null) return;
                 setInputVal(val.replace(/[^0-9]/g, '').slice(0, 2));
               } else {
                 const ch = val.replace(/[^A-Z]/g, '').slice(-1);
-                if (wrongTimerRef.current !== null) {
-                  skipWrongFeedback();
-                  return;
-                }
                 setInputVal(ch);
                 if (ch) {
                   submitAnswerValue(ch);
@@ -352,22 +363,33 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
               }
             }}
             onInputKeyDown={(e) => {
+              if (e.repeat && (e.key === 'Enter' || e.key === 'Backspace')) {
+                e.preventDefault();
+                return;
+              }
+              if (isLockedRef.current) {
+                if (!NON_ANSWER_KEYS.has(e.key)) {
+                  e.preventDefault();
+                  registerBlockedInput();
+                }
+                return;
+              }
               if (e.key === 'Enter') {
                 e.preventDefault();
-                if (!skipWrongFeedback()) {
-                  confirmAnswer();
-                }
+                confirmAnswer();
               }
             }}
             inlineSubmit={
               promptType === 'letter'
                 ? {
                     onSubmit: () => {
-                      if (!skipWrongFeedback()) {
-                        confirmAnswer();
+                      if (isLockedRef.current) {
+                        registerBlockedInput();
+                        return;
                       }
+                      confirmAnswer();
                     },
-                    disabled: !inputVal && wrongFeedback === null,
+                    disabled: isWrong || !inputVal,
                   }
                 : undefined
             }
