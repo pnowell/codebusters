@@ -8,7 +8,6 @@ interface OptionsModalProps {
   isOpen: boolean;
   onClose: () => void;
   settings: UserSettings;
-  onSaveSettings: (newSettings: UserSettings) => void;
   generalPracticeCiphers: GeneralPracticeCiphers;
   onSaveGeneralPracticeCiphers?: (ciphers: GeneralPracticeCiphers) => void;
 }
@@ -17,13 +16,11 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
   isOpen,
   onClose,
   settings,
-  onSaveSettings,
   generalPracticeCiphers,
   onSaveGeneralPracticeCiphers,
 }) => {
   const { user, allowedUser, isAllowed, isConfigured, signIn, signOut } = useAuth();
   const isTeacher = Boolean(isAllowed && allowedUser?.role === 'teacher');
-  const [studentName, setStudentName] = useState<string>(settings.studentName);
   const [cipherFlags, setCipherFlags] = useState<GeneralPracticeCiphers>(generalPracticeCiphers);
 
   const toggleCipher = (id: CipherType) => {
@@ -34,10 +31,6 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
   };
 
   const handleSave = () => {
-    onSaveSettings({
-      ...settings,
-      studentName,
-    });
     if (isTeacher && onSaveGeneralPracticeCiphers) {
       onSaveGeneralPracticeCiphers(cipherFlags);
     }
@@ -103,13 +96,13 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
         </div>
 
         <div className="form-group">
-          <label>Name / Nickname:</label>
+          <label htmlFor="options-nickname-input">Name / Nickname:</label>
           <input
+            id="options-nickname-input"
             type="text"
             className="text-input"
-            value={studentName}
-            placeholder="e.g. Alex"
-            onChange={(e) => setStudentName(e.target.value)}
+            value={settings.studentName}
+            readOnly
           />
         </div>
 
@@ -139,12 +132,20 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
       </div>
 
       <div className="modal-footer">
-        <button className="btn-simple" onClick={onClose}>
-          Cancel
-        </button>
-        <button className="btn-primary" onClick={handleSave}>
-          Save Settings
-        </button>
+        {isTeacher ? (
+          <>
+            <button type="button" className="btn-simple" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="button" className="btn-primary" onClick={handleSave}>
+              Save Settings
+            </button>
+          </>
+        ) : (
+          <button type="button" className="btn-simple" onClick={onClose}>
+            Close
+          </button>
+        )}
       </div>
     </Modal>
   );

@@ -26,6 +26,11 @@ service cloud.firestore {
         && get(allowlistPath()).data.role == 'teacher';
     }
 
+    function expectedAllowlistName() {
+      let raw = get(allowlistPath()).data.get('displayName', '');
+      return (raw is string && raw.trim().size() > 0) ? raw.trim() : 'Decoder';
+    }
+
     // Roster allowlist keyed by normalized lowercase email
     match /allowed_users/{email} {
       allow get: if (isSignedIn() && normalizedEmail() == email) || isTeacher();
@@ -42,7 +47,18 @@ service cloud.firestore {
     // Team public profiles (displayName, role, leaderboard high scores)
     match /profiles/{uid} {
       allow read: if isAllowedUser();
-      allow create, update: if isAllowedUser() && request.auth.uid == uid;
+      allow create: if isTeacher() || (
+        isAllowedUser()
+        && request.auth.uid == uid
+        && request.resource.data.get('role', 'student') == 'student'
+        && request.resource.data.displayName == expectedAllowlistName()
+      );
+      allow update: if isTeacher() || (
+        isAllowedUser()
+        && request.auth.uid == uid
+        && request.resource.data.displayName == resource.data.displayName
+        && request.resource.data.get('role', 'student') == resource.data.get('role', 'student')
+      );
       allow delete: if isTeacher();
     }
 

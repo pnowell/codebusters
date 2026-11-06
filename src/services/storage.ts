@@ -39,7 +39,6 @@ const DEFAULT_SETTINGS: UserSettings = {
 };
 
 type SyncEventType =
-  | 'settings'
   | 'completedQuotes'
   | 'drillProgress'
   | 'drillScores'
@@ -131,7 +130,6 @@ export function loadSettings(): UserSettings {
 
 export const saveSettings = (s: UserSettings) => {
   localStorage.setItem(KEYS.settings, JSON.stringify(s));
-  dispatchSync('settings', s);
 };
 
 export function loadCompletedQuoteIds(): number[] {

@@ -56,6 +56,11 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
+      - name: Deploy Firestore security rules
+        run: npm run deploy:rules
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
       - name: Prune orphaned quote flags
         run: npm run prune:flags
         env:

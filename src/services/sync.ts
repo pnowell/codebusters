@@ -143,11 +143,6 @@ function normalizeCloudDrillProgress(data: Partial<UserProfile>): DrillProgressR
 registerSyncDispatcher((type, data) => {
   if (!currentSyncedUid) return;
   switch (type) {
-    case 'settings': {
-      const s = data as UserSettings;
-      upsertPublicProfile(currentSyncedUid, { displayName: s.studentName });
-      break;
-    }
     case 'completedQuotes':
       pushCloudUpdate({ completedQuotes: data as number[] });
       break;
@@ -230,11 +225,14 @@ export async function mergeAndInitializeCloudUser(
   ]);
 
   const cloudData = (snap && snap.exists() ? snap.data() : {}) as Partial<UserProfile>;
-  const profileData = (profileSnap && profileSnap.exists()
-    ? normalizePublicProfile(profileSnap.data() as Record<string, unknown>, uid)
+  const rawProfileData =
+    profileSnap && profileSnap.exists()
+      ? (profileSnap.data() as Record<string, unknown>)
+      : null;
+  const profileData = (rawProfileData
+    ? normalizePublicProfile(rawProfileData, uid)
     : {}) as Partial<PublicProfile>;
 
-  const localSettings = loadSettings();
   const localCompleted = loadCompletedQuoteIds();
   const localDrillProgress = loadAllDrillProgress();
   const localDrillScores = loadAllDrillScores();
@@ -295,19 +293,18 @@ export async function mergeAndInitializeCloudUser(
   };
   const hasQuoteBrowserPrefs = Object.keys(mergedQuoteBrowserPrefs).length > 0;
 
-  // 6. Name: Existing profile displayName -> allowed_users displayName -> Guest custom name -> 'Decoder'
+  // 6. Name: Existing /profiles/{uid} displayName -> seed from /allowed_users displayName on first login -> 'Decoder'
+  const existingProfileName =
+    rawProfileData &&
+    typeof rawProfileData.displayName === 'string' &&
+    rawProfileData.displayName.trim().length > 0
+      ? rawProfileData.displayName.trim()
+      : undefined;
   const cleanDefaultName =
-    defaultName && defaultName.trim() && defaultName.trim() !== 'Decoder'
+    defaultName && defaultName.trim().length > 0
       ? defaultName.trim()
       : undefined;
-  const cleanLocalName =
-    localSettings.studentName &&
-    localSettings.studentName.trim() &&
-    localSettings.studentName.trim() !== 'Decoder'
-      ? localSettings.studentName.trim()
-      : undefined;
-  const finalName =
-    profileData.displayName || cleanDefaultName || cleanLocalName || 'Decoder';
+  const finalName = existingProfileName || cleanDefaultName || 'Decoder';
 
   // Update local storage with merged state (suppress sync broadcast to prevent loop)
   const updatedLocalSettings: UserSettings = {
@@ -348,10 +345,13 @@ export async function mergeAndInitializeCloudUser(
   );
 
   // Sync to Public Profile (public roster & leaderboards)
-  const profilePayload: Partial<PublicProfile> = {
-    displayName: finalName,
-    role,
-  };
+  // Seed displayName & role only when creating /profiles/{uid} (or if displayName was missing),
+  // so manual teacher edits to /profiles/{uid}.displayName in Firestore Console are never overwritten.
+  const profilePayload: Partial<PublicProfile> = {};
+  if (profileSnap !== null && !existingProfileName) {
+    profilePayload.displayName = finalName;
+    profilePayload.role = role;
+  }
   const hasScores = Object.values(mergedDrillScores).some(
     (s) => s && (s.best60s > 0 || s.bestStreak > 0)
   );
@@ -360,7 +360,9 @@ export async function mergeAndInitializeCloudUser(
     profilePayload.drillScores = mergedDrillScores;
   }
 
-  await upsertPublicProfile(uid, profilePayload);
+  if (Object.keys(profilePayload).length > 0) {
+    await upsertPublicProfile(uid, profilePayload);
+  }
 
   notifySyncListeners();
 }

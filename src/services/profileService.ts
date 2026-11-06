@@ -219,10 +219,12 @@ export async function upsertPublicProfileScore(
   try {
     const docRef = doc(db, 'profiles', uid);
     let existing = profilesCache.get(uid);
+    let docExists = Boolean(existing);
 
     if (!existing) {
       const snap = await getDoc(docRef);
       if (snap.exists()) {
+        docExists = true;
         existing = normalizePublicProfile(snap.data() as Record<string, unknown>, uid);
         profilesCache.set(uid, existing);
       }
@@ -231,14 +233,13 @@ export async function upsertPublicProfileScore(
     const currentScore = existing?.drillScores?.[drillId];
     const targetScore = Math.max(currentScore?.best60s ?? 0, score);
     const targetStreak = Math.max(currentScore?.bestStreak ?? 0, bestStreak);
-    const targetName = displayName || existing?.displayName || 'Decoder';
+    const targetName = existing?.displayName || displayName || 'Decoder';
 
-    // If already >= target and name is the same, no need to rewrite
+    // If already >= target, no need to rewrite
     if (
       currentScore &&
       currentScore.best60s === targetScore &&
-      currentScore.bestStreak === targetStreak &&
-      existing?.displayName === targetName
+      currentScore.bestStreak === targetStreak
     ) {
       return { score: targetScore, bestStreak: targetStreak };
     }
@@ -264,7 +265,7 @@ export async function upsertPublicProfileScore(
       docRef,
       {
         uid,
-        displayName: targetName,
+        ...(docExists ? {} : { displayName: targetName, role: 'student' }),
         drillScores: updatedDrillScores,
         updatedAt: serverTimestamp(),
       },

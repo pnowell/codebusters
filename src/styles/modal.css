@@ -124,6 +124,14 @@
   font-size: 0.95rem;
 }
 
+.text-input[readonly] {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: rgba(226, 232, 240, 0.78);
+  cursor: default;
+  outline: none;
+}
+
 .cipher-checkbox-list {
   display: flex;
   flex-direction: column;

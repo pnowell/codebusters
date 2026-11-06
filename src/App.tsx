@@ -879,11 +879,6 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleSaveSettings = (newSettings: UserSettings) => {
-    setSettings(newSettings);
-    saveSettings(newSettings);
-  };
-
   const handleSaveGeneralPracticeCiphers = (nextCiphers: GeneralPracticeCiphers) => {
     if (!isTeacher) return;
     const sanitized = sanitizeGeneralPracticeCiphers(nextCiphers);
@@ -1063,7 +1058,6 @@ export const App: React.FC = () => {
           isOpen={true}
           onClose={closeOptions}
           settings={settings}
-          onSaveSettings={handleSaveSettings}
           generalPracticeCiphers={generalPracticeCiphers}
           onSaveGeneralPracticeCiphers={
             isTeacher ? handleSaveGeneralPracticeCiphers : undefined

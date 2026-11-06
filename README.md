@@ -35,9 +35,10 @@ VITE_FIREBASE_MEASUREMENT_ID=...
 
 ## Deployment
 
-Deployments to **GitHub Pages** are fully automated:
+Deployments to **GitHub Pages** and **Firestore Security Rules** are fully automated:
 - Any push to the `main` branch triggers `.github/workflows/deploy.yml`.
 - Build artifacts from `./dist` are served with relative paths (`base: './'`).
+- Post-deploy steps automatically publish `firestore.rules` (`npm run deploy:rules`) and prune orphaned quote flags (`npm run prune:flags`) when `FIREBASE_SERVICE_ACCOUNT` is configured (requires `Cloud Datastore User` and `Firebase Rules Admin` IAM roles).
 - Note: Pair programming commits should remain local until ready for deployment.
 
 ---
