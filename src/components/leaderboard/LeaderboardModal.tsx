@@ -102,9 +102,9 @@ const LeaderboardModalContent: React.FC<LeaderboardModalContentProps> = ({
     >
       <div className="modal-header">
         <div className="leaderboard-title-group">
-          <h3 id="leaderboard-modal-title">🏆 Team Leaderboards</h3>
+          <h3 id="leaderboard-modal-title">🏆 Leaderboards</h3>
         </div>
-        <button className="close-btn" onClick={onClose} aria-label="Close leaderboard">
+        <button className="close-btn" onClick={onClose} aria-label="Close leaderboards">
           ✕
         </button>
       </div>
@@ -156,7 +156,7 @@ const LeaderboardModalContent: React.FC<LeaderboardModalContentProps> = ({
           {isLoading ? (
             <div className="leaderboard-loading">
               <span className="spinner-dots">•••</span>
-              <p>Loading team standings...</p>
+              <p>Loading standings...</p>
             </div>
           ) : error ? (
             <div className="leaderboard-error">

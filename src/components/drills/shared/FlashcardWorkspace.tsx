@@ -204,7 +204,7 @@ export const FlashcardWorkspace: React.FC<FlashcardWorkspaceProps> = ({
               onMouseDown={(e) => e.preventDefault()}
               onClick={stageActions.onOpenLeaderboard}
             >
-              <span>🏆 Team Leaderboard</span>
+              <span>🏆 Leaderboards</span>
               <span className="popover-action-chevron">›</span>
             </button>
           )}

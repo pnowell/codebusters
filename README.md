@@ -19,7 +19,7 @@ Inside the `app/` directory:
 
 ## Optional Firebase Setup (Cloud Sync, Leaderboards, & Practice Tests)
 
-The app runs out-of-the-box in **Guest Mode** using `localStorage`. To enable Google Sign-In, classroom roster gating, cross-device progress sync, team leaderboards, and timed practice tests, create an `app/.env.local` file with your Firebase web config:
+The app runs out-of-the-box in **Guest Mode** using `localStorage`. To enable Google Sign-In, classroom roster gating, cross-device progress sync, leaderboards, and timed practice tests, create an `app/.env.local` file with your Firebase web config:
 
 ```env
 VITE_FIREBASE_API_KEY=...
@@ -69,7 +69,7 @@ app/
       auth/            # Google Sign-In badge and allowlist notice modal
       common/          # Shared accessible UI primitives (Modal)
       drills/          # Drill workspaces (LetterOffsetDrill, SymbolDrill, LookupCipherDrill) & shared subcomponents
-      leaderboard/     # Real-time team leaderboards modal
+      leaderboard/     # Real-time leaderboards modal
       menu/            # Main Menu dashboard & header
       options/         # Classroom Options & Settings modal
       symbols/         # SVG glyph renderers (Pigpen, Galactic)

@@ -77,7 +77,7 @@ export const DrillOverflowMenu: React.FC<DrillOverflowMenuProps> = ({
   const buttonTitle =
     hasModeSection && !hasActionsSection
       ? 'Switch Drill Mode'
-      : 'Mastery & Leaderboard';
+      : 'Mastery & Leaderboards';
 
   return (
     <div className="drill-overflow-wrapper" ref={wrapperRef}>
@@ -166,7 +166,7 @@ export const DrillOverflowMenu: React.FC<DrillOverflowMenuProps> = ({
                     onOpenLeaderboard();
                   }}
                 >
-                  <span>🏆 Team Leaderboard</span>
+                  <span>🏆 Leaderboards</span>
                   <span className="popover-action-chevron">›</span>
                 </button>
               )}

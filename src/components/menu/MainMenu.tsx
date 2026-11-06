@@ -37,8 +37,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({
             type="button"
             className="btn-simple btn-icon-square"
             onClick={onOpenLeaderboard}
-            title="Team Leaderboard"
-            aria-label="Team Leaderboard"
+            title="Leaderboards"
+            aria-label="Leaderboards"
           >
             <span className="btn-icon">🏆</span>
           </button>
