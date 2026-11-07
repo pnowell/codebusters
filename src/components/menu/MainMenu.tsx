@@ -25,9 +25,18 @@ export const MainMenu: React.FC<MainMenuProps> = ({
 }) => (
   <>
     <header className="main-header">
-      <div className="brand-text">
-        <h1>DaVinci Decoders</h1>
-        <div className="subtitle">Science Olympiad Division A Trainer</div>
+      <div className="brand-lockup">
+        <img
+          src={`${import.meta.env.BASE_URL}favicon.svg`}
+          alt="DaVinci Decoders logo"
+          className="brand-logo"
+          width={42}
+          height={42}
+        />
+        <div className="brand-text">
+          <h1>DaVinci Decoders</h1>
+          <div className="subtitle">Science Olympiad Division A Trainer</div>
+        </div>
       </div>
 
       <div className="header-user-actions">
