@@ -206,8 +206,7 @@ export const PracticeTestsList: React.FC<PracticeTestsListProps> = ({
                     <span className="test-card-meta-item">⭐ {totalPoints} Pts</span>
                     {isCollaborative && (
                       <span className="test-card-meta-item meta-team-chip">
-                        👥 {teamName ? `${teamName}: ` : ''}
-                        {getDisplayNamesForUids(memberUids)}
+                        👥 {teamName || getDisplayNamesForUids(memberUids)}
                       </span>
                     )}
                   </div>
