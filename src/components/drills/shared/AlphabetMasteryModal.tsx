@@ -8,8 +8,6 @@ interface AlphabetMasteryModalProps {
   onClose: () => void;
   progress: DrillProgress;
   onResetProgress: () => void;
-  currentOffset?: number;
-  currentLetter?: string;
   mode?: OffsetsMode;
   title?: string;
 }
@@ -23,8 +21,6 @@ export const AlphabetMasteryModal: React.FC<AlphabetMasteryModalProps> = ({
   onClose,
   progress,
   onResetProgress,
-  currentOffset,
-  currentLetter,
   mode,
   title,
 }) => {
@@ -50,7 +46,6 @@ export const AlphabetMasteryModal: React.FC<AlphabetMasteryModalProps> = ({
   const renderBadge = (offset: number) => {
     const letter = offsetToLetter(offset);
     const p = progress[letter];
-    const isCurrent = currentLetter !== undefined ? currentLetter === letter : currentOffset === offset;
 
     let statusClass = 'status-unseen';
     let statusLabel = 'Unseen';
@@ -68,15 +63,8 @@ export const AlphabetMasteryModal: React.FC<AlphabetMasteryModalProps> = ({
       }
     }
 
-    const classes = [
-      'mastery-badge',
-      statusClass,
-      isCurrent ? 'is-current' : '',
-    ]
-      .filter(Boolean)
-      .join(' ');
-
-    const badgeTitle = `${letter} (${offset}): ${statusLabel}`;
+    const classes = ['mastery-badge', statusClass].join(' ');
+    const badgeTitle = `${letter}: ${statusLabel}`;
 
     return (
       <div key={letter} className={classes} title={badgeTitle}>

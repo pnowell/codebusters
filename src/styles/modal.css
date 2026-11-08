@@ -22,10 +22,19 @@
   padding: 1rem;
 }
 
+.modal-backdrop.version-update-backdrop {
+  z-index: 2000;
+  background: rgba(3, 7, 18, 0.88);
+}
+
 .modal-surface {
   max-height: 90vh;
   overflow-y: auto;
   animation: modalPop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.modal-surface:focus {
+  outline: none;
 }
 
 .modal-dialog {
@@ -336,13 +345,6 @@
   background: rgba(244, 63, 94, 0.2);
   color: #fb7185;
   border: 1px solid rgba(244, 63, 94, 0.55);
-}
-
-.mastery-badge.is-current {
-  box-shadow: 0 0 0 2px var(--accent-blue);
-  font-weight: 900;
-  transform: scale(1.08);
-  z-index: 2;
 }
 
 .modal-danger-zone {

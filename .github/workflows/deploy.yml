@@ -56,6 +56,11 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
+      - name: Sync criticalVersion in Firestore
+        run: npm run deploy:version
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
       - name: Deploy Firestore security rules
         run: npm run deploy:rules
         env:

@@ -83,8 +83,13 @@ const LeaderboardModalContent: React.FC<LeaderboardModalContentProps> = ({
   const userRank = userRankIndex !== -1 ? userRankIndex + 1 : null;
   const userEntry = userRankIndex !== -1 ? entries[userRankIndex] : null;
 
-  const displayMyScore = userEntry ? userEntry.score : localScore.best60s;
-  const displayMyStreak = userEntry ? userEntry.bestStreak : localScore.bestStreak;
+  const useAuthoritativeCloudScore = Boolean(user?.uid && !isLoading && !error);
+  const displayMyScore = useAuthoritativeCloudScore
+    ? (userEntry?.score ?? 0)
+    : (userEntry ? userEntry.score : localScore.best60s);
+  const displayMyStreak = useAuthoritativeCloudScore
+    ? (userEntry?.bestStreak ?? 0)
+    : (userEntry ? userEntry.bestStreak : localScore.bestStreak);
 
   const getRankBadge = (rank: number) => {
     if (rank === 1) return <span className="leaderboard-medal gold">🥇 1st</span>;

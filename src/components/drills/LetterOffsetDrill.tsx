@@ -103,11 +103,13 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState<boolean>(false);
   const [inputVal, setInputVal] = useState<string>('');
+  const isAnyDialogOpen = isModalOpen || isLeaderboardOpen;
 
   const answerInputRef = useRef<HTMLInputElement | null>(null);
 
   const focusAnswerInput = useCallback(() => {
     setTimeout(() => {
+      if (document.querySelector('[role="dialog"]')) return;
       answerInputRef.current?.focus();
     }, 40);
   }, []);
@@ -126,6 +128,9 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
 
   const submitAnswerValue = useCallback(
     (rawVal: string) => {
+      if (isAnyDialogOpen || document.querySelector('[role="dialog"]')) {
+        return;
+      }
       if (isLockedRef.current) {
         registerBlockedInput();
         return;
@@ -170,6 +175,7 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
       currentLetter,
       currentOffset,
       focusAnswerInput,
+      isAnyDialogOpen,
       isLockedRef,
       onRecordAnswer,
       promptType,
@@ -347,6 +353,9 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
             autoCapitalize={promptType === 'number' ? 'characters' : 'off'}
             maxLength={promptType === 'number' ? 1 : 2}
             onInputChange={(e) => {
+              if (isAnyDialogOpen || document.querySelector('[role="dialog"]')) {
+                return;
+              }
               if (isLockedRef.current) {
                 registerBlockedInput();
                 return;
@@ -363,6 +372,10 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
               }
             }}
             onInputKeyDown={(e) => {
+              if (isAnyDialogOpen || document.querySelector('[role="dialog"]')) {
+                e.preventDefault();
+                return;
+              }
               if (e.repeat && (e.key === 'Enter' || e.key === 'Backspace')) {
                 e.preventDefault();
                 return;
@@ -383,6 +396,9 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
               promptType === 'letter'
                 ? {
                     onSubmit: () => {
+                      if (isAnyDialogOpen || document.querySelector('[role="dialog"]')) {
+                        return;
+                      }
                       if (isLockedRef.current) {
                         registerBlockedInput();
                         return;
@@ -405,7 +421,6 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
         }}
         progress={progress}
         onResetProgress={handleResetProgress}
-        currentOffset={currentOffset}
         mode={mode}
       />
 

@@ -31,99 +31,163 @@ service cloud.firestore {
       return (raw is string && raw.trim().size() > 0) ? raw.trim() : 'Decoder';
     }
 
+    function appVersionPath() {
+      return /databases/$(database)/documents/classroom_config/app_version;
+    }
+
+    function requiredCriticalVersion() {
+      return !exists(appVersionPath())
+        ? 0
+        : (get(appVersionPath()).data.get('criticalVersion', 0) is number
+            ? get(appVersionPath()).data.get('criticalVersion', 0)
+            : 0);
+    }
+
+    function callerUserPath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
+    }
+
+    // Cuts off ALL read access unless the caller's session has stamped an up-to-date
+    // integer criticalVersion onto /users/{uid}.
+    function hasValidReadVersion() {
+      return isSignedIn()
+        && exists(callerUserPath())
+        && (get(callerUserPath()).data.get('criticalVersion', -1) is int)
+        && get(callerUserPath()).data.get('criticalVersion', -1) >= requiredCriticalVersion();
+    }
+
+    // Cuts off ALL create/update writes unless THIS individual write request carries
+    // an up-to-date integer criticalVersion AND a live serverTimestamp() versionWriteAt.
+    function isValidVersionedWrite() {
+      return ('criticalVersion' in request.resource.data)
+        && (request.resource.data.criticalVersion is int)
+        && request.resource.data.criticalVersion >= requiredCriticalVersion()
+        && request.resource.data.get('versionWriteAt', null) == request.time;
+    }
+
     // Roster allowlist keyed by normalized lowercase email
+    // (own-email get is allowed during initial sign-in before /users/{uid} is stamped)
     match /allowed_users/{email} {
-      allow get: if (isSignedIn() && normalizedEmail() == email) || isTeacher();
-      allow list, write: if isTeacher();
+      allow get: if (isSignedIn() && normalizedEmail() == email)
+        || (isTeacher() && hasValidReadVersion());
+      allow list: if isTeacher() && hasValidReadVersion();
+      allow create, update: if isTeacher() && isValidVersionedWrite();
+      allow delete: if isTeacher() && hasValidReadVersion();
     }
 
     // Private per-student / per-teacher drill history and settings
     // (teachers have read-only access to aggregate student quote completion counts)
     match /users/{uid} {
-      allow read: if isAllowedUser() && (request.auth.uid == uid || isTeacher());
-      allow write: if isAllowedUser() && request.auth.uid == uid;
+      allow read: if isAllowedUser()
+        && hasValidReadVersion()
+        && (request.auth.uid == uid || isTeacher());
+      allow create, update: if isAllowedUser()
+        && request.auth.uid == uid
+        && isValidVersionedWrite();
+      allow delete: if isTeacher() && hasValidReadVersion();
     }
 
     // Team public profiles (displayName, role, leaderboard high scores)
     match /profiles/{uid} {
-      allow read: if isAllowedUser();
-      allow create: if isTeacher() || (
-        isAllowedUser()
-        && request.auth.uid == uid
-        && request.resource.data.get('role', 'student') == 'student'
-        && request.resource.data.displayName == expectedAllowlistName()
+      allow read: if isAllowedUser() && hasValidReadVersion();
+      allow create: if isValidVersionedWrite() && (
+        isTeacher() || (
+          isAllowedUser()
+          && request.auth.uid == uid
+          && request.resource.data.get('role', 'student') == 'student'
+          && request.resource.data.displayName == expectedAllowlistName()
+        )
       );
-      allow update: if isTeacher() || (
-        isAllowedUser()
-        && request.auth.uid == uid
-        && request.resource.data.displayName == resource.data.displayName
-        && request.resource.data.get('role', 'student') == resource.data.get('role', 'student')
+      allow update: if isValidVersionedWrite() && (
+        isTeacher() || (
+          isAllowedUser()
+          && request.auth.uid == uid
+          && request.resource.data.displayName == resource.data.displayName
+          && request.resource.data.get('role', 'student') == resource.data.get('role', 'student')
+        )
       );
-      allow delete: if isTeacher();
+      allow delete: if isTeacher() && hasValidReadVersion();
     }
 
     // Practice test packets (students see active tests; teachers author, edit, delete & configure cohorts)
     match /tests/{testId} {
-      allow read: if isTeacher() || (isAllowedUser() && resource.data.active == true);
+      allow read: if hasValidReadVersion()
+        && (isTeacher() || (isAllowedUser() && resource.data.active == true));
       allow create, update: if isTeacher()
+        && isValidVersionedWrite()
         && request.resource.data.title is string
         && request.resource.data.title.size() > 0
         && request.resource.data.title.size() <= 120
         && request.resource.data.timeLimitSeconds is int
         && request.resource.data.timeLimitSeconds >= 60
         && request.resource.data.questions is list;
-      allow delete: if isTeacher();
+      allow delete: if isTeacher() && hasValidReadVersion();
     }
 
     // Teacher-curated quote flags for QA inspection & live student drill exclusion
     match /quote_flags/{quoteId} {
-      allow read: if isAllowedUser();
+      allow read: if isAllowedUser() && hasValidReadVersion();
       allow create, update: if isTeacher()
+        && isValidVersionedWrite()
         && request.resource.data.quoteId is int
         && request.resource.data.quoteId >= 0
         && (!('note' in request.resource.data)
             || (request.resource.data.note is string
                 && request.resource.data.note.size() <= 500));
-      allow delete: if isTeacher();
+      allow delete: if isTeacher() && hasValidReadVersion();
+    }
+
+    // Public read-only minimum required criticalVersion sentinel (managed via CI / Firestore Console)
+    match /classroom_config/app_version {
+      allow get: if true;
+      allow list, write: if false;
     }
 
     // Global classroom configuration (e.g. ciphers included in General Practice)
     match /classroom_config/{configId} {
-      allow read: if isAllowedUser();
+      allow read: if configId != 'app_version' && isAllowedUser() && hasValidReadVersion();
       allow create, update: if isTeacher()
         && configId == 'general_practice'
-        && request.resource.data.keys().hasOnly(['ciphers', 'updatedAt'])
+        && isValidVersionedWrite()
+        && request.resource.data.keys().hasOnly([
+             'ciphers',
+             'updatedAt',
+             'criticalVersion',
+             'versionWriteAt'
+           ])
         && request.resource.data.ciphers is map
         && request.resource.data.ciphers.size() <= 20;
-      allow delete: if isTeacher();
+      allow delete: if isTeacher() && configId != 'app_version' && hasValidReadVersion();
     }
 
     // Collaborative & solo test attempts
     match /test_attempts/{attemptId} {
       // Allow single-doc get when resource == null so transactions and lobby listeners
       // can observe deterministic attempt IDs prior to creation.
-      allow get: if isAllowedUser() && (
+      allow get: if isAllowedUser() && hasValidReadVersion() && (
         resource == null
         || request.auth.uid in resource.data.studentUids
         || isTeacher()
       );
 
-      allow list: if isAllowedUser() && (
+      allow list: if isAllowedUser() && hasValidReadVersion() && (
         request.auth.uid in resource.data.studentUids
         || isTeacher()
       );
 
       allow create: if isAllowedUser()
+        && isValidVersionedWrite()
         && request.resource.data.studentUids is list
         && request.resource.data.studentUids.size() >= 1
         && request.auth.uid in request.resource.data.studentUids;
 
       allow update: if isAllowedUser()
+        && isValidVersionedWrite()
         && (request.auth.uid in resource.data.studentUids || isTeacher())
         && request.resource.data.testId == resource.data.testId
         && request.resource.data.studentUids == resource.data.studentUids;
 
-      allow delete: if isTeacher();
+      allow delete: if isTeacher() && hasValidReadVersion();
     }
 
     match /{document=**} {

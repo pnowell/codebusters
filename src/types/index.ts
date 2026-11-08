@@ -129,6 +129,8 @@ export interface UserProfile {
   completedQuotes?: number[];
   practiceHistory?: Record<string, { count: number; lastPracticed: number }>;
   quoteBrowserPrefs?: QuoteBrowserPrefsMap;
+  criticalVersion?: number;
+  versionWriteAt?: unknown;
   lastActiveAt?: unknown;
 }
 

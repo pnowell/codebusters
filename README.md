@@ -38,7 +38,9 @@ VITE_FIREBASE_MEASUREMENT_ID=...
 Deployments to **GitHub Pages** and **Firestore Security Rules** are fully automated:
 - Any push to the `main` branch triggers `.github/workflows/deploy.yml`.
 - Build artifacts from `./dist` are served with relative paths (`base: './'`).
-- Post-deploy steps automatically publish `firestore.rules` (`npm run deploy:rules`) and prune orphaned quote flags (`npm run prune:flags`) when `FIREBASE_SERVICE_ACCOUNT` is configured (requires the `Firebase Rules API` enabled on the GCP project plus `Cloud Datastore User` and `Firebase Rules Admin` IAM roles).
+- Post-deploy steps automatically sync `/classroom_config/app_version` (`npm run deploy:version`), publish `firestore.rules` (`npm run deploy:rules`), and prune orphaned quote flags (`npm run prune:flags`) when `FIREBASE_SERVICE_ACCOUNT` is configured (requires the `Firebase Rules API` enabled on the GCP project plus `Cloud Datastore User` and `Firebase Rules Admin` IAM roles).
+- **Forcing Open Tabs to Reload (`criticalVersion` Sentinel):** Routine deploys keep `"criticalVersion": 0` in `app/package.json` and do not interrupt open tabs. When shipping a critical fix that must kick off all older tabs, increment `"criticalVersion"` (e.g. `0` → `1`) in `app/package.json` before deploying (or bump `criticalVersion` directly on `/classroom_config/app_version` in the Firestore Web Console). Open tabs listen in real time to `/classroom_config/app_version` and display a non-dismissible reload modal when outdated, while `firestore.rules` immediately cuts off both reads and writes for clients below the required `criticalVersion`.
+- **Resetting Leaderboard Scores:** `/profiles/{uid}.drillScores` in Firestore is authoritative over `localStorage` for signed-in users. Deleting or editing a drill entry inside `/profiles/{uid}.drillScores` in the Firestore Web Console automatically clears/updates the student's local score cache on reload and via live profile snapshots.
 - Note: Pair programming commits should remain local until ready for deployment.
 
 ---

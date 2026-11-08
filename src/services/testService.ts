@@ -14,6 +14,7 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { withVersionStamp } from './versionService';
 import { isLookupCipher } from '../data/drills';
 import type {
   CipherType,
@@ -438,13 +439,16 @@ export async function setLobbyReadyState(
 
       if (allReady) {
         const startedAt = Date.now();
-        tx.update(docRef, {
-          readyUids: nextReady,
-          submitReadyUids: [],
-          status: 'in_progress',
-          startedAt,
-          updatedAt: serverTimestamp(),
-        });
+        tx.update(
+          docRef,
+          withVersionStamp({
+            readyUids: nextReady,
+            submitReadyUids: [],
+            status: 'in_progress',
+            startedAt,
+            updatedAt: serverTimestamp(),
+          })
+        );
         return {
           ...existing,
           readyUids: nextReady,
@@ -454,10 +458,13 @@ export async function setLobbyReadyState(
         };
       }
 
-      tx.update(docRef, {
-        readyUids: nextReady,
-        updatedAt: serverTimestamp(),
-      });
+      tx.update(
+        docRef,
+        withVersionStamp({
+          readyUids: nextReady,
+          updatedAt: serverTimestamp(),
+        })
+      );
       return {
         ...existing,
         readyUids: nextReady,
@@ -474,7 +481,7 @@ export async function setLobbyReadyState(
     const startedAt = allReady ? Date.now() : 0;
     const status = allReady ? 'in_progress' : 'lobby';
 
-    const payload: Record<string, unknown> = {
+    const payload: Record<string, unknown> = withVersionStamp({
       attemptId,
       testId: testPacket.testId,
       studentUids: memberUids,
@@ -485,7 +492,7 @@ export async function setLobbyReadyState(
       status,
       workspaces: {},
       updatedAt: serverTimestamp(),
-    };
+    });
 
     tx.set(docRef, payload);
 
@@ -540,7 +547,7 @@ export async function flushWorkspaceCellOps(
       }
     }
 
-    await updateDoc(docRef, payload);
+    await updateDoc(docRef, withVersionStamp(payload));
     return true;
   } catch (err) {
     console.warn('[TestService] Failed to flush workspace cell edits:', err);
@@ -559,12 +566,15 @@ export async function updateMemberPresence(
   if (!db || !attemptId || !uid || uid === 'student') return;
   try {
     const docRef = doc(db, 'test_attempts', attemptId);
-    await updateDoc(docRef, {
-      [`presence.${uid}`]: {
-        activeQIndex,
-        updatedAt: Date.now(),
-      },
-    });
+    await updateDoc(
+      docRef,
+      withVersionStamp({
+        [`presence.${uid}`]: {
+          activeQIndex,
+          updatedAt: Date.now(),
+        },
+      })
+    );
   } catch {
     // Ignore transient or deleted-attempt presence errors
   }
@@ -645,13 +655,16 @@ export async function setEarlySubmitReadyState(
         getQuote,
         submittedAt
       );
-      tx.update(docRef, {
-        status: 'submitted',
-        submittedAt,
-        submitReadyUids: nextVotes,
-        results: evaluated,
-        updatedAt: serverTimestamp(),
-      });
+      tx.update(
+        docRef,
+        withVersionStamp({
+          status: 'submitted',
+          submittedAt,
+          submitReadyUids: nextVotes,
+          results: evaluated,
+          updatedAt: serverTimestamp(),
+        })
+      );
       return {
         ...existing,
         status: 'submitted',
@@ -661,10 +674,13 @@ export async function setEarlySubmitReadyState(
       };
     }
 
-    tx.update(docRef, {
-      submitReadyUids: nextVotes,
-      updatedAt: serverTimestamp(),
-    });
+    tx.update(
+      docRef,
+      withVersionStamp({
+        submitReadyUids: nextVotes,
+        updatedAt: serverTimestamp(),
+      })
+    );
     return {
       ...existing,
       submitReadyUids: nextVotes,
@@ -729,12 +745,15 @@ export async function expireTestAttemptTransaction(
       submittedAt
     );
 
-    tx.update(docRef, {
-      status: 'expired',
-      submittedAt,
-      results: evaluated,
-      updatedAt: serverTimestamp(),
-    });
+    tx.update(
+      docRef,
+      withVersionStamp({
+        status: 'expired',
+        submittedAt,
+        results: evaluated,
+        updatedAt: serverTimestamp(),
+      })
+    );
 
     return {
       ...existing,
@@ -854,24 +873,27 @@ export async function saveTestPacket(
       }
 
       const createRef = doc(db, 'tests', resolvedTestId);
-      await setDoc(createRef, {
-        testId: resolvedTestId,
-        title: trimmedTitle,
-        description: cleanDescription,
-        timeLimitSeconds,
-        active: Boolean(packet.active),
-        questions: sanitizedQuestions,
-        cohorts: sanitizedCohorts,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      await setDoc(
+        createRef,
+        withVersionStamp({
+          testId: resolvedTestId,
+          title: trimmedTitle,
+          description: cleanDescription,
+          timeLimitSeconds,
+          active: Boolean(packet.active),
+          questions: sanitizedQuestions,
+          cohorts: sanitizedCohorts,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        })
+      );
       return { ok: true, testId: resolvedTestId };
     }
 
     const docRef = doc(db, 'tests', resolvedTestId);
     await setDoc(
       docRef,
-      {
+      withVersionStamp({
         testId: resolvedTestId,
         title: trimmedTitle,
         description: cleanDescription,
@@ -880,7 +902,7 @@ export async function saveTestPacket(
         questions: sanitizedQuestions,
         cohorts: sanitizedCohorts,
         updatedAt: serverTimestamp(),
-      },
+      }),
       { merge: true }
     );
     return { ok: true, testId: resolvedTestId };
@@ -983,13 +1005,13 @@ export async function saveTestAttemptToFirestore(attempt: TestAttempt): Promise<
   if (!db) return false;
   try {
     const docRef = doc(db, 'test_attempts', attempt.attemptId);
-    const cleaned = JSON.parse(JSON.stringify(attempt));
+    const cleaned = JSON.parse(JSON.stringify(attempt)) as Record<string, unknown>;
     await setDoc(
       docRef,
-      {
+      withVersionStamp({
         ...cleaned,
         updatedAt: serverTimestamp(),
-      },
+      }),
       { merge: true }
     );
     return true;

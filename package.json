@@ -2,12 +2,14 @@
   "name": "codebusters",
   "private": true,
   "version": "1.0.0",
+  "criticalVersion": 0,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
+    "deploy:version": "node scripts/deployCriticalVersion.mjs",
     "deploy:rules": "node scripts/deployFirestoreRules.mjs",
     "prune:flags": "node scripts/pruneOrphanedQuoteFlags.mjs"
   },

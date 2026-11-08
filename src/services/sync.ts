@@ -8,7 +8,7 @@ import {
   loadAllDrillProgress,
   saveAllDrillProgress,
   loadAllDrillScores,
-  saveDrillScore,
+  replaceAllDrillScores,
   loadAllDrillHistory,
   saveAllDrillHistory,
   sanitizeDrillHistoryRecord,
@@ -44,6 +44,7 @@ import {
   clearProfilesCache,
 } from './profileService';
 import { updateLeaderboardScore } from './leaderboard';
+import { withVersionStamp } from './versionService';
 
 let activeSyncUnsubscribe: Unsubscribe | null = null;
 let currentSyncedUid: string | null = null;
@@ -191,7 +192,9 @@ const notifySyncListeners = () => {
 };
 
 /**
- * Merges local storage data into the user's cloud Firestore document on sign-in
+ * Stamps `/users/{uid}` with the client's `criticalVersion` first (so `firestore.rules`
+ * grants read access), then merges private drill history into `/users/{uid}` while
+ * treating `/profiles/{uid}.drillScores` as authoritative over `localStorage`.
  */
 export async function mergeAndInitializeCloudUser(
   uid: string,
@@ -210,8 +213,20 @@ export async function mergeAndInitializeCloudUser(
     });
   }
 
+  const normalizedEmail = email.trim().toLowerCase();
   const userDocRef = doc(db, 'users', uid);
   const profileDocRef = doc(db, 'profiles', uid);
+
+  // Stamp /users/{uid}.criticalVersion BEFORE any read so firestore.rules hasValidReadVersion()
+  // succeeds for this session (and rejects outdated clients immediately).
+  await setDoc(
+    userDocRef,
+    withVersionStamp({
+      uid,
+      email: normalizedEmail,
+    }),
+    { merge: true }
+  );
 
   const [snap, profileSnap] = await Promise.all([
     getDoc(userDocRef).catch((err) => {
@@ -225,6 +240,7 @@ export async function mergeAndInitializeCloudUser(
   ]);
 
   const cloudData = (snap && snap.exists() ? snap.data() : {}) as Partial<UserProfile>;
+  const profileExists = Boolean(profileSnap && profileSnap.exists());
   const rawProfileData =
     profileSnap && profileSnap.exists()
       ? (profileSnap.data() as Record<string, unknown>)
@@ -245,22 +261,21 @@ export async function mergeAndInitializeCloudUser(
   const cloudCompleted = cloudData.completedQuotes ?? [];
   const mergedCompleted = Array.from(new Set([...localCompleted, ...cloudCompleted]));
 
-  // 2. Drill Scores: Max scores across Local and Cloud Profile
-  const profileScores = profileData.drillScores ?? {};
-  const allScoreDrillIds = new Set([
-    ...Object.keys(localDrillScores),
-    ...Object.keys(profileScores),
-  ]) as Set<DrillId>;
-
-  const mergedDrillScores: DrillScoresRecord = {};
-  for (const id of allScoreDrillIds) {
-    const localS = localDrillScores[id] || { best60s: 0, bestStreak: 0 };
-    const profS = profileScores[id] || { best60s: 0, bestStreak: 0 };
-    mergedDrillScores[id] = {
-      best60s: Math.max(localS.best60s, profS.best60s),
-      bestStreak: Math.max(localS.bestStreak, profS.bestStreak),
-    };
-  }
+  // 2. Drill Scores: Once /profiles/{uid} exists in Firestore (or localStorage already belonged
+  //    to this cloud account), /profiles/{uid}.drillScores is strictly authoritative so manual
+  //    resets/edits in the Firestore Web Console are never overwritten by localStorage.
+  //    Local scores only seed /profiles/{uid} when upgrading an anonymous Guest Mode session
+  //    to a brand-new cloud profile for the very first time.
+  const shouldSeedScoresFromGuest =
+    profileSnap !== null && !profileExists && !previousOwnerUid;
+  const authoritativeScores: DrillScoresRecord | null =
+    profileSnap === null
+      ? null
+      : profileExists
+        ? (profileData.drillScores ?? {})
+        : shouldSeedScoresFromGuest
+          ? localDrillScores
+          : {};
 
   // 3. Drill Progress: Merge per-card stats per drill
   const cloudDrillProgress = normalizeCloudDrillProgress(cloudData);
@@ -321,43 +336,42 @@ export async function mergeAndInitializeCloudUser(
     if (hasQuoteBrowserPrefs) {
       saveQuoteBrowserPrefsMap(mergedQuoteBrowserPrefs);
     }
-    for (const [id, score] of Object.entries(mergedDrillScores)) {
-      if (score) {
-        saveDrillScore(id as DrillId, score);
-      }
+    if (authoritativeScores !== null) {
+      replaceAllDrillScores(authoritativeScores);
     }
   });
 
   // Sync to Cloud User (private)
   await setDoc(
     userDocRef,
-    {
+    withVersionStamp({
       uid,
-      email: email.trim().toLowerCase(),
+      email: normalizedEmail,
       completedQuotes: mergedCompleted,
       drillProgress: mergedProgress,
       drillHistory: mergedDrillHistory,
       practiceHistory: mergedHistory,
       ...(hasQuoteBrowserPrefs ? { quoteBrowserPrefs: mergedQuoteBrowserPrefs } : {}),
       lastActiveAt: serverTimestamp(),
-    },
+    }),
     { merge: true }
   );
 
   // Sync to Public Profile (public roster & leaderboards)
   // Seed displayName & role only when creating /profiles/{uid} (or if displayName was missing),
-  // so manual teacher edits to /profiles/{uid}.displayName in Firestore Console are never overwritten.
+  // and seed drillScores ONLY when creating a brand-new profile from Guest Mode.
   const profilePayload: Partial<PublicProfile> = {};
   if (profileSnap !== null && !existingProfileName) {
     profilePayload.displayName = finalName;
     profilePayload.role = role;
   }
-  const hasScores = Object.values(mergedDrillScores).some(
-    (s) => s && (s.best60s > 0 || s.bestStreak > 0)
-  );
-
-  if (hasScores) {
-    profilePayload.drillScores = mergedDrillScores;
+  if (shouldSeedScoresFromGuest && authoritativeScores) {
+    const hasGuestScores = Object.values(authoritativeScores).some(
+      (s) => s && (s.best60s > 0 || s.bestStreak > 0)
+    );
+    if (hasGuestScores) {
+      profilePayload.drillScores = authoritativeScores;
+    }
   }
 
   if (Object.keys(profilePayload).length > 0) {
@@ -504,17 +518,18 @@ function pushCloudUpdate(partial: Partial<UserProfile>): void {
 
     try {
       const userDocRef = doc(db, 'users', currentSyncedUid);
+      const stampedPayload = withVersionStamp({
+        ...toWrite,
+        lastActiveAt: serverTimestamp(),
+      });
       if (toWrite.drillProgress) {
         try {
-          await updateDoc(userDocRef, {
-            ...toWrite,
-            lastActiveAt: serverTimestamp(),
-          });
+          await updateDoc(userDocRef, stampedPayload);
         } catch {
-          await setDoc(userDocRef, { ...toWrite, lastActiveAt: serverTimestamp() }, { merge: true });
+          await setDoc(userDocRef, stampedPayload, { merge: true });
         }
       } else {
-        await setDoc(userDocRef, { ...toWrite, lastActiveAt: serverTimestamp() }, { merge: true });
+        await setDoc(userDocRef, stampedPayload, { merge: true });
       }
     } catch (err) {
       console.warn('[Sync] Failed to push update to cloud:', err);

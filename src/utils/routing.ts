@@ -73,6 +73,7 @@ export function parseUrlRoute(search = window.location.search): Route {
 export function buildRouteUrl(route: Route): string {
   const p = new URLSearchParams(window.location.search);
   p.delete('unlocked');
+  p.delete('_v');
   if (route.drill) {
     if (route.section === 'cipher') {
       p.set('cipher', route.drill);

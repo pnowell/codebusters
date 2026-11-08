@@ -1,6 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { loadDrillScore, recordDrillSession, saveDrillScore } from '../services/storage';
-import type { DrillId, DrillScore } from '../types';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import {
+  loadDrillScore,
+  recordDrillSession,
+  saveDrillScore,
+  subscribeToDrillScoreChanges,
+} from '../services/storage';
+import type { DrillId } from '../types';
 
 export interface HeatTierInfo {
   tier: 'idle' | 'cruise' | 'fast' | 'overdrive' | 'onfire';
@@ -17,7 +22,19 @@ export function getHeatTier(cpm: number): HeatTierInfo {
 }
 
 export function useVelocityTracker(drillId: DrillId) {
-  const [scores, setScores] = useState<DrillScore>(() => loadDrillScore(drillId));
+  const [scoreRevision, setScoreRevision] = useState<number>(0);
+
+  useEffect(() => {
+    return subscribeToDrillScoreChanges(() => {
+      setScoreRevision((prev) => prev + 1);
+    });
+  }, []);
+
+  const scores = useMemo(() => {
+    void scoreRevision;
+    return loadDrillScore(drillId);
+  }, [drillId, scoreRevision]);
+
   const [current60s, setCurrent60s] = useState<number>(0);
   const [sessionBest60s, setSessionBest60s] = useState<number>(0);
   const [cadence, setCadence] = useState<number>(0);
@@ -108,8 +125,7 @@ export function useVelocityTracker(drillId: DrillId) {
 
     // High Score checks
     if (updated60s > scores.best60s) {
-      const updated = saveDrillScore(drillId, { best60s: updated60s });
-      setScores((prev) => ({ ...prev, best60s: updated.best60s }));
+      saveDrillScore(drillId, { best60s: updated60s });
       setNewRecordAlert(true);
       if (recordAlertTimerRef.current !== null) {
         window.clearTimeout(recordAlertTimerRef.current);
@@ -121,8 +137,7 @@ export function useVelocityTracker(drillId: DrillId) {
     }
 
     if (newStreak > scores.bestStreak) {
-      const updated = saveDrillScore(drillId, { bestStreak: newStreak });
-      setScores((prev) => ({ ...prev, bestStreak: updated.bestStreak }));
+      saveDrillScore(drillId, { bestStreak: newStreak });
     }
 
     // Calculate instantaneous cadence (CPM) with responsive blend

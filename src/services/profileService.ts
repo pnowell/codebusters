@@ -4,15 +4,21 @@ import {
   getDoc,
   onSnapshot,
   setDoc,
+  updateDoc,
   serverTimestamp,
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import type { PublicProfile, DrillId, DrillScore } from '../types';
 import { offsetsModeToDrillId, type OffsetsMode } from './storage';
+import { withVersionStamp } from './versionService';
+
+export interface ProfilesSnapshotMeta {
+  hasPendingWrites: boolean;
+}
 
 interface ProfileListenerEntry {
-  onUpdate: (profiles: PublicProfile[]) => void;
+  onUpdate: (profiles: PublicProfile[], meta: ProfilesSnapshotMeta) => void;
   onError?: (err: Error) => void;
 }
 
@@ -20,6 +26,7 @@ interface ProfileListenerEntry {
 const profilesCache = new Map<string, PublicProfile>();
 const profileListeners = new Set<ProfileListenerEntry>();
 let activeProfilesUnsubscribe: Unsubscribe | null = null;
+let inFlightProfileWrites = 0;
 
 /**
  * Formats an array of names into a human-friendly English list (e.g., "Alice", "Alice & Bob", "Alice, Bob & Charlie")
@@ -96,7 +103,7 @@ export function normalizePublicProfile(raw: Record<string, unknown>, uid: string
  * Subscribes to real-time changes across all team public profiles in `/profiles`
  */
 export function subscribeTeamProfiles(
-  onUpdate: (profiles: PublicProfile[]) => void,
+  onUpdate: (profiles: PublicProfile[], meta: ProfilesSnapshotMeta) => void,
   onError?: (err: Error) => void
 ): Unsubscribe {
   const entry: ProfileListenerEntry = { onUpdate, onError };
@@ -104,7 +111,9 @@ export function subscribeTeamProfiles(
 
   // If we already have cached profiles, emit immediately
   if (profilesCache.size > 0) {
-    onUpdate(Array.from(profilesCache.values()));
+    onUpdate(Array.from(profilesCache.values()), {
+      hasPendingWrites: inFlightProfileWrites > 0,
+    });
   }
 
   if (!db) {
@@ -128,9 +137,13 @@ export function subscribeTeamProfiles(
           list.push(profile);
         });
 
+        const meta: ProfilesSnapshotMeta = {
+          hasPendingWrites: snap.metadata.hasPendingWrites || inFlightProfileWrites > 0,
+        };
+
         profileListeners.forEach((listener) => {
           try {
-            listener.onUpdate(list);
+            listener.onUpdate(list, meta);
           } catch (e) {
             console.warn('[ProfileService] Listener error:', e);
           }
@@ -174,6 +187,7 @@ export async function upsertPublicProfile(
 ): Promise<void> {
   if (!db || !uid) return;
 
+  inFlightProfileWrites += 1;
   try {
     const docRef = doc(db, 'profiles', uid);
     const existing = profilesCache.get(uid);
@@ -187,21 +201,24 @@ export async function upsertPublicProfile(
 
     profilesCache.set(uid, merged);
 
-    const payload: Record<string, unknown> = {
+    const payload: Record<string, unknown> = withVersionStamp({
       ...profile,
       uid,
       updatedAt: serverTimestamp(),
-    };
+    });
 
     await setDoc(docRef, payload, { merge: true });
   } catch (err) {
     console.warn(`[ProfileService] Failed to upsert profile for ${uid}:`, err);
+  } finally {
+    inFlightProfileWrites = Math.max(0, inFlightProfileWrites - 1);
   }
 }
 
 /**
- * Updates a student's personal best drill scores in `/profiles/{uid}`.
- * Enforces Math.max high-water mark so scores never downgrade.
+ * Updates a student's personal best score for a single drill in `/profiles/{uid}`
+ * using dot-notation (`drillScores.<drillId>`) so updating one drill never overwrites
+ * or resurrects another drill's score that was manually cleared in Firestore.
  */
 export async function upsertPublicProfileScore(
   uid: string,
@@ -216,6 +233,7 @@ export async function upsertPublicProfileScore(
   const drillId: DrillId =
     drill === 'letterToNum' || drill === 'numToLetter' ? offsetsModeToDrillId(drill) : drill;
 
+  inFlightProfileWrites += 1;
   try {
     const docRef = doc(db, 'profiles', uid);
     let existing = profilesCache.get(uid);
@@ -261,14 +279,45 @@ export async function upsertPublicProfileScore(
 
     profilesCache.set(uid, updatedProfile);
 
+    if (docExists) {
+      try {
+        await updateDoc(
+          docRef,
+          withVersionStamp({
+            [`drillScores.${drillId}`]: {
+              best60s: targetScore,
+              bestStreak: targetStreak,
+            },
+            updatedAt: serverTimestamp(),
+          })
+        );
+        return { score: targetScore, bestStreak: targetStreak };
+      } catch (updateErr) {
+        const code =
+          updateErr && typeof updateErr === 'object' && 'code' in updateErr
+            ? updateErr.code
+            : '';
+        if (code !== 'not-found') {
+          throw updateErr;
+        }
+        // Fall through to setDoc if the profile document was deleted while cached
+      }
+    }
+
     await setDoc(
       docRef,
-      {
+      withVersionStamp({
         uid,
-        ...(docExists ? {} : { displayName: targetName, role: 'student' }),
-        drillScores: updatedDrillScores,
+        displayName: targetName,
+        role: existing?.role || 'student',
+        drillScores: {
+          [drillId]: {
+            best60s: targetScore,
+            bestStreak: targetStreak,
+          },
+        },
         updatedAt: serverTimestamp(),
-      },
+      }),
       { merge: true }
     );
 
@@ -276,5 +325,7 @@ export async function upsertPublicProfileScore(
   } catch (err) {
     console.warn(`[ProfileService] Failed to update score for ${uid}:`, err);
     return null;
+  } finally {
+    inFlightProfileWrites = Math.max(0, inFlightProfileWrites - 1);
   }
 }

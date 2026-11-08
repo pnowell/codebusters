@@ -6,6 +6,7 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { withVersionStamp } from './versionService';
 import { GENERAL_PRACTICE_DRILLS, type CipherType } from '../data/drills';
 import type { GeneralPracticeCiphers } from '../types';
 
@@ -141,10 +142,13 @@ export async function saveGeneralPracticeCiphers(
   if (!db) return false;
 
   try {
-    await setDoc(doc(db, CLASSROOM_CONFIG_COLLECTION, GENERAL_PRACTICE_DOC_ID), {
-      ciphers: sanitized,
-      updatedAt: serverTimestamp(),
-    });
+    await setDoc(
+      doc(db, CLASSROOM_CONFIG_COLLECTION, GENERAL_PRACTICE_DOC_ID),
+      withVersionStamp({
+        ciphers: sanitized,
+        updatedAt: serverTimestamp(),
+      })
+    );
     return true;
   } catch {
     console.warn(

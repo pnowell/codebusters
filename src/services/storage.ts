@@ -50,6 +50,24 @@ type SyncDispatcher = (type: SyncEventType, data: unknown) => void;
 
 let globalSyncDispatcher: SyncDispatcher | null = null;
 let isSyncSuppressed = false;
+const drillScoreListeners: Set<() => void> = new Set();
+
+function notifyDrillScoreListeners(): void {
+  drillScoreListeners.forEach((listener) => {
+    try {
+      listener();
+    } catch {
+      // Ignore listener errors
+    }
+  });
+}
+
+export function subscribeToDrillScoreChanges(listener: () => void): () => void {
+  drillScoreListeners.add(listener);
+  return () => {
+    drillScoreListeners.delete(listener);
+  };
+}
 
 export function registerSyncDispatcher(dispatcher: SyncDispatcher): void {
   globalSyncDispatcher = dispatcher;
@@ -110,6 +128,7 @@ export function clearAllLocalUserData(): void {
   } catch {
     // Ignore storage errors
   }
+  notifyDrillScoreListeners();
 }
 
 export function loadSettings(): UserSettings {
@@ -236,6 +255,7 @@ export function saveDrillScore(
     all[drillId] = merged;
     localStorage.setItem(KEYS.drillScores, JSON.stringify(all));
 
+    notifyDrillScoreListeners();
     dispatchSync('drillScores', { drillId, score: merged, allScores: all });
     return merged;
   } catch {
@@ -243,6 +263,42 @@ export function saveDrillScore(
       best60s: update.best60s ?? 0,
       bestStreak: update.bestStreak ?? 0,
     };
+  }
+}
+
+/**
+ * Replaces the entire local `davinci_drill_scores` cache with the authoritative
+ * server `/profiles/{uid}.drillScores` map so manually cleared or edited scores
+ * in Firestore are reflected locally and never merged back into the leaderboard.
+ */
+export function replaceAllDrillScores(scores: DrillScoresRecord | undefined): void {
+  try {
+    const clean: DrillScoresRecord = {};
+    if (scores && typeof scores === 'object') {
+      for (const [k, v] of Object.entries(scores)) {
+        if (!VALID_DRILL_IDS.has(k) || !v || typeof v !== 'object') continue;
+        const best60s =
+          typeof v.best60s === 'number' && Number.isFinite(v.best60s) && v.best60s > 0
+            ? Math.round(v.best60s)
+            : 0;
+        const bestStreak =
+          typeof v.bestStreak === 'number' && Number.isFinite(v.bestStreak) && v.bestStreak > 0
+            ? Math.round(v.bestStreak)
+            : 0;
+        if (best60s > 0 || bestStreak > 0) {
+          clean[k as DrillId] = { best60s, bestStreak };
+        }
+      }
+    }
+
+    const serialized = JSON.stringify(clean);
+    const existingRaw = localStorage.getItem(KEYS.drillScores);
+    if (existingRaw !== serialized) {
+      localStorage.setItem(KEYS.drillScores, serialized);
+      notifyDrillScoreListeners();
+    }
+  } catch {
+    // Ignore storage errors
   }
 }
 

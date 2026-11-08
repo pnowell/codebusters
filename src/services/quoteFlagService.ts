@@ -8,6 +8,7 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { withVersionStamp } from './versionService';
 import type { QuoteFlag } from '../types';
 
 const MAX_FLAG_NOTE_LENGTH = 500;
@@ -107,7 +108,7 @@ export async function saveQuoteFlag(quoteId: number, note?: string): Promise<boo
       payload.note = cleanNote;
     }
 
-    await setDoc(doc(db, 'quote_flags', String(quoteId)), payload);
+    await setDoc(doc(db, 'quote_flags', String(quoteId)), withVersionStamp(payload));
     return true;
   } catch {
     console.warn('[QuoteFlags] Failed to save quote flag');

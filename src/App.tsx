@@ -17,9 +17,11 @@ import { TestBriefingModal } from './components/test/TestBriefingModal';
 import { PracticeTestsList } from './components/test/PracticeTestsList';
 import { WorkoutSummaryModal } from './components/workout/WorkoutSummaryModal';
 import { NotAllowedModal } from './components/auth/NotAllowedModal';
+import { VersionUpdateModal } from './components/common/VersionUpdateModal';
 import { isLookupCipher } from './data/drills';
 import {
   loadSettings,
+  replaceAllDrillScores,
   saveCompletedQuoteIds,
   saveSettings,
   withoutSyncDispatch,
@@ -50,6 +52,7 @@ import {
 import { useVisualViewportHeight } from './hooks/useVisualViewportHeight';
 import { useOuterMarginScroll } from './hooks/useOuterMarginScroll';
 import { useWorkoutCircuit } from './hooks/useWorkoutCircuit';
+import { useRequiredVersion } from './hooks/useRequiredVersion';
 import { useAuth } from './context/useAuth';
 
 const LookupCipherDrill = lazy(() =>
@@ -165,6 +168,8 @@ export const App: React.FC = () => {
   useVisualViewportHeight();
   useOuterMarginScroll();
 
+  const requiredCriticalVersion = useRequiredVersion();
+
   const navigateToDrill = useCallback(
     (
       drill: CipherType,
@@ -265,10 +270,10 @@ export const App: React.FC = () => {
     );
   }, [isAllowed, isTeacher]);
 
-  // Subscribe to Team Public Profiles (in-memory name lookup and high score sync)
+  // Subscribe to Team Public Profiles (in-memory name lookup and authoritative high score sync)
   useEffect(() => {
     if (!isAllowed) return;
-    return subscribeTeamProfiles((profiles) => {
+    return subscribeTeamProfiles((profiles, meta) => {
       if (user?.uid) {
         const myProfile = profiles.find((p) => p.uid === user.uid);
         if (myProfile?.displayName) {
@@ -280,6 +285,11 @@ export const App: React.FC = () => {
             });
             setSettings(next);
           }
+        }
+        if (!meta.hasPendingWrites && myProfile) {
+          withoutSyncDispatch(() => {
+            replaceAllDrillScores(myProfile.drillScores ?? {});
+          });
         }
       }
     });
@@ -1096,6 +1106,8 @@ export const App: React.FC = () => {
       )}
 
       <NotAllowedModal />
+
+      <VersionUpdateModal requiredCriticalVersion={requiredCriticalVersion} />
     </div>
   );
 };

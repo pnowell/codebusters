@@ -62,7 +62,6 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
     progress,
     masteredCount,
     currentLetter,
-    currentOffset,
     recordAttempt,
     advanceCard,
     resetProgress,
@@ -100,16 +99,19 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
   const [inputVal, setInputVal] = useState<string>('');
   const [totalQuestions, setTotalQuestions] = useState<number>(0);
   const [correctQuestions, setCorrectQuestions] = useState<number>(0);
+  const isAnyDialogOpen = isMasteryOpen || isLeaderboardOpen;
 
   const answerInputRef = useRef<HTMLInputElement | null>(null);
 
   const focusAnswerInput = useCallback(() => {
     setTimeout(() => {
+      if (document.querySelector('[role="dialog"]')) return;
       answerInputRef.current?.focus();
     }, 40);
   }, []);
 
   useEffect(() => {
+    if (document.querySelector('[role="dialog"]')) return;
     answerInputRef.current?.focus();
   }, [currentLetter]);
 
@@ -123,6 +125,9 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
 
   const confirmAnswerWithChar = useCallback(
     (answeredChar: string) => {
+      if (isAnyDialogOpen || document.querySelector('[role="dialog"]')) {
+        return;
+      }
       if (isLockedRef.current) {
         registerBlockedInput();
         return;
@@ -163,6 +168,7 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
       cipher,
       currentLetter,
       focusAnswerInput,
+      isAnyDialogOpen,
       isLockedRef,
       recordAttempt,
       recordHit,
@@ -325,6 +331,9 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
             autoCapitalize="characters"
             maxLength={1}
             onInputChange={(e) => {
+              if (isAnyDialogOpen || document.querySelector('[role="dialog"]')) {
+                return;
+              }
               if (isLockedRef.current) {
                 registerBlockedInput();
                 return;
@@ -336,6 +345,10 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
               }
             }}
             onInputKeyDown={(e) => {
+              if (isAnyDialogOpen || document.querySelector('[role="dialog"]')) {
+                e.preventDefault();
+                return;
+              }
               if (e.repeat && (e.key === 'Enter' || e.key === 'Backspace')) {
                 e.preventDefault();
                 return;
@@ -364,8 +377,6 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
         }}
         progress={progress}
         onResetProgress={handleResetProgress}
-        currentLetter={currentLetter}
-        currentOffset={currentOffset}
         title={`${info.shortTitle} Alphabet Mastery`}
       />
 
