@@ -11,6 +11,8 @@ interface TestResultsViewProps {
   testPacket: TestPacket;
   results: TestEvaluationResult;
   studentUids?: string[];
+  backLabel?: string;
+  backTitle?: string;
   onBack: () => void;
 }
 
@@ -161,6 +163,8 @@ export const TestResultsView: React.FC<TestResultsViewProps> = ({
   testPacket,
   results,
   studentUids,
+  backLabel = '← Practice Tests',
+  backTitle = 'Return to Practice Tests List',
   onBack,
 }) => {
   const liveTeamName = resolveTeamNameForMembers(testPacket, studentUids);
@@ -207,9 +211,9 @@ export const TestResultsView: React.FC<TestResultsViewProps> = ({
         <button
           className="btn-simple btn-tests-back"
           onClick={onBack}
-          title="Return to Practice Tests List"
+          title={backTitle}
         >
-          ← Practice Tests
+          {backLabel}
         </button>
         <div className="test-results-header-title">
           <h2>Test Results</h2>

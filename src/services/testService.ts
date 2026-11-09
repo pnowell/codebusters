@@ -14,6 +14,7 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { getCachedProfileForUid } from './profileService';
 import { withVersionStamp } from './versionService';
 import { isLookupCipher } from '../data/drills';
 import type {
@@ -27,6 +28,7 @@ import type {
 } from '../types';
 import {
   evaluateTestPacket,
+  getCohortAttemptId,
   normalizeTestAttempt,
   normalizeUidList,
   resolveUserCohort,
@@ -34,6 +36,21 @@ import {
 } from '../utils/testSync';
 
 const LOCAL_ATTEMPT_PREFIX = 'davinci_test_attempt_';
+
+/**
+ * Returns true once an attempt has actually started or finished
+ * (`'in_progress' | 'submitted' | 'expired'`), excluding pre-start `'lobby'` records.
+ */
+export function isAttemptStartedOrCompleted(
+  attempt: TestAttempt | null | undefined
+): boolean {
+  return Boolean(
+    attempt &&
+      (attempt.status === 'in_progress' ||
+        attempt.status === 'submitted' ||
+        attempt.status === 'expired')
+  );
+}
 
 /**
  * Loads an ongoing or completed test attempt from localStorage (used for Guest / non-cloud fallback).
@@ -372,6 +389,33 @@ export async function fetchTestById(testId: string): Promise<TestPacket | null> 
     return normalizeTestPacket(snap.data() as Record<string, unknown>, snap.id);
   } catch (err) {
     console.warn('[TestService] Failed to fetch test:', err);
+    return null;
+  }
+}
+
+/**
+ * Fetches a single `/test_attempts/{attemptId}` document from Firestore.
+ */
+export async function fetchTestAttemptById(
+  attemptId: string,
+  options?: {
+    questions?: readonly TestQuestion[];
+    getQuote?: (quoteId: number) => Quote | undefined;
+  }
+): Promise<TestAttempt | null> {
+  if (!db || !attemptId) return null;
+  try {
+    const docRef = doc(db, 'test_attempts', attemptId);
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) return null;
+    return normalizeTestAttempt(
+      snap.data() as Record<string, unknown>,
+      snap.id,
+      options?.questions,
+      options?.getQuote
+    );
+  } catch (err) {
+    console.warn('[TestService] Failed to fetch test attempt:', err);
     return null;
   }
 }
@@ -891,16 +935,83 @@ export async function saveTestPacket(
     }
 
     const docRef = doc(db, 'tests', resolvedTestId);
+    const [existingSnap, attemptsSnap] = await Promise.all([
+      getDoc(docRef),
+      getDocs(
+        query(collection(db, 'test_attempts'), where('testId', '==', resolvedTestId))
+      ),
+    ]);
+
+    let finalTitle = trimmedTitle;
+    let finalDescription = cleanDescription;
+    let finalTimeLimitSeconds = timeLimitSeconds;
+    let finalQuestions = sanitizedQuestions;
+    let finalActive = Boolean(packet.active);
+    let finalCohorts = sanitizedCohorts;
+
+    const lockedAttempts: TestAttempt[] = [];
+    attemptsSnap.forEach((attDoc) => {
+      const att = normalizeTestAttempt(
+        attDoc.data() as Record<string, unknown>,
+        attDoc.id
+      );
+      if (isAttemptStartedOrCompleted(att)) {
+        lockedAttempts.push(att);
+      }
+    });
+
+    if (existingSnap.exists() && lockedAttempts.length > 0) {
+      const existingTest = normalizeTestPacket(
+        existingSnap.data() as Record<string, unknown>,
+        resolvedTestId
+      );
+
+      // Content is strictly read-only while any attempt is started or completed
+      finalTitle = existingTest.title;
+      finalDescription = existingTest.description;
+      finalTimeLimitSeconds = existingTest.timeLimitSeconds;
+      finalQuestions = existingTest.questions;
+
+      // Active tests cannot be deactivated once any non-teacher has started/completed an attempt
+      const hasNonTeacherAttempt = lockedAttempts.some((att) =>
+        att.studentUids.some((uid) => getCachedProfileForUid(uid)?.role !== 'teacher')
+      );
+      if (existingTest.active && hasNonTeacherAttempt) {
+        finalActive = true;
+      }
+
+      // Preserve any cohort whose attempt has started or completed
+      const lockedAttemptIds = new Set(lockedAttempts.map((att) => att.attemptId));
+      const preservedLockedCohorts = (existingTest.cohorts ?? []).filter((c) =>
+        lockedAttemptIds.has(getCohortAttemptId(resolvedTestId, c.studentUids))
+      );
+      const lockedStudentUids = new Set<string>();
+      preservedLockedCohorts.forEach((c) =>
+        c.studentUids.forEach((uid) => lockedStudentUids.add(uid))
+      );
+      const lockedCohortIds = new Set(preservedLockedCohorts.map((c) => c.id));
+
+      const unlockedClientCohorts = sanitizedCohorts
+        .filter((c) => !lockedCohortIds.has(c.id))
+        .map((c) => ({
+          ...c,
+          studentUids: c.studentUids.filter((uid) => !lockedStudentUids.has(uid)),
+        }))
+        .filter((c) => c.studentUids.length > 0);
+
+      finalCohorts = [...preservedLockedCohorts, ...unlockedClientCohorts];
+    }
+
     await setDoc(
       docRef,
       withVersionStamp({
         testId: resolvedTestId,
-        title: trimmedTitle,
-        description: cleanDescription,
-        timeLimitSeconds,
-        active: Boolean(packet.active),
-        questions: sanitizedQuestions,
-        cohorts: sanitizedCohorts,
+        title: finalTitle,
+        description: finalDescription,
+        timeLimitSeconds: finalTimeLimitSeconds,
+        active: finalActive,
+        questions: finalQuestions,
+        cohorts: finalCohorts,
         updatedAt: serverTimestamp(),
       }),
       { merge: true }
@@ -957,7 +1068,11 @@ export async function deleteTestPacketAndAttempts(
 export function subscribeAttemptsForTest(
   testId: string,
   onUpdate: (attemptsByAttemptId: Record<string, TestAttempt>) => void,
-  onError?: (err: Error) => void
+  onError?: (err: Error) => void,
+  options?: {
+    questions?: readonly TestQuestion[];
+    getQuote?: (quoteId: number) => Quote | undefined;
+  }
 ): Unsubscribe {
   if (!db || !testId) {
     onUpdate({});
@@ -971,7 +1086,12 @@ export function subscribeAttemptsForTest(
       const map: Record<string, TestAttempt> = {};
       snap.forEach((docSnap) => {
         const raw = docSnap.data() as Record<string, unknown>;
-        const att = normalizeTestAttempt(raw, docSnap.id);
+        const att = normalizeTestAttempt(
+          raw,
+          docSnap.id,
+          options?.questions,
+          options?.getQuote
+        );
         map[att.attemptId] = att;
       });
       onUpdate(map);

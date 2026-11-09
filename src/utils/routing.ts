@@ -10,6 +10,7 @@ export interface Route {
   offsetsMode?: OffsetsMode;
   quoteId?: number;
   testId?: string;
+  spectateAttemptId?: string;
   testsList?: boolean;
   resultsTestId?: string;
   editTest?: string;
@@ -26,6 +27,11 @@ function isTestEditorTab(val: string | null): val is TestEditorTab {
 }
 
 const SAFE_TEST_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
+const SAFE_ATTEMPT_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,240}$/;
+
+export function getDefaultEditorTab(editTarget: string): TestEditorTab {
+  return editTarget === 'new' ? 'questions' : 'teams';
+}
 
 export function parseUrlRoute(search = window.location.search): Route {
   const p = new URLSearchParams(search);
@@ -33,9 +39,10 @@ export function parseUrlRoute(search = window.location.search): Route {
   const drillParam = p.get('drill');
   const modeParam = p.get('mode');
   const q = p.get('q');
-  const test = p.get('test');
+  const testRaw = p.get('test');
+  const spectateRaw = p.get('spectate');
   const tests = p.get('tests');
-  const results = p.get('results');
+  const resultsRaw = p.get('results');
   const editTestRaw = p.get('editTest');
   const tabParam = p.get('tab');
   const quotesParam = p.get('quotes');
@@ -52,6 +59,14 @@ export function parseUrlRoute(search = window.location.search): Route {
     section = 'memorize';
   }
 
+  const testId =
+    testRaw && SAFE_TEST_ID_RE.test(testRaw) ? testRaw : undefined;
+  const spectateAttemptId =
+    testId && spectateRaw && SAFE_ATTEMPT_ID_RE.test(spectateRaw)
+      ? spectateRaw
+      : undefined;
+  const resultsTestId =
+    resultsRaw && SAFE_TEST_ID_RE.test(resultsRaw) ? resultsRaw : undefined;
   const editTest =
     editTestRaw && SAFE_TEST_ID_RE.test(editTestRaw) ? editTestRaw : undefined;
 
@@ -60,16 +75,21 @@ export function parseUrlRoute(search = window.location.search): Route {
     section,
     offsetsMode: drill === 'offsets' && isOffsetsMode(modeParam) ? modeParam : undefined,
     quoteId: Number.isNaN(quoteId) ? undefined : quoteId,
-    testId: test || undefined,
-    testsList: tests === 'true' || tests === '1' || Boolean(results),
-    resultsTestId: results || undefined,
+    testId,
+    spectateAttemptId,
+    testsList: tests === 'true' || tests === '1' || Boolean(resultsTestId),
+    resultsTestId,
     editTest,
-    editTab: editTest && isTestEditorTab(tabParam) ? tabParam : undefined,
+    editTab: editTest
+      ? isTestEditorTab(tabParam)
+        ? tabParam
+        : getDefaultEditorTab(editTest)
+      : undefined,
     quotesBrowser: quotesParam === 'true' || quotesParam === '1',
   };
 }
 
-/** Returns a URL for the current path with drill/cipher/mode/q/test/tests/results/editTest/quotes set (or removed). */
+/** Returns a URL for the current path with drill/cipher/mode/q/test/spectate/tests/results/editTest/quotes set (or removed). */
 export function buildRouteUrl(route: Route): string {
   const p = new URLSearchParams(window.location.search);
   p.delete('unlocked');
@@ -94,13 +114,19 @@ export function buildRouteUrl(route: Route): string {
   else p.delete('q');
   if (route.testId) p.set('test', route.testId);
   else p.delete('test');
+  if (route.testId && route.spectateAttemptId) p.set('spectate', route.spectateAttemptId);
+  else p.delete('spectate');
   if (route.testsList) p.set('tests', 'true');
   else p.delete('tests');
   if (route.resultsTestId) p.set('results', route.resultsTestId);
   else p.delete('results');
   if (route.editTest) p.set('editTest', route.editTest);
   else p.delete('editTest');
-  if (route.editTest && route.editTab && route.editTab !== 'questions') {
+  if (
+    route.editTest &&
+    route.editTab &&
+    route.editTab !== getDefaultEditorTab(route.editTest)
+  ) {
     p.set('tab', route.editTab);
   } else {
     p.delete('tab');

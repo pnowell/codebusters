@@ -41,6 +41,14 @@ function formatNamesList(names: string[]): string {
 const HONORIFIC_PREFIXES = new Set(['mr', 'mrs', 'ms', 'mx', 'dr', 'prof', 'coach']);
 
 /**
+ * Gets the cached PublicProfile for a single UID if loaded.
+ */
+export function getCachedProfileForUid(uid: string): PublicProfile | undefined {
+  if (!uid) return undefined;
+  return profilesCache.get(uid);
+}
+
+/**
  * Gets a display name for a single UID from the in-memory cache
  */
 export function getDisplayNameForUid(uid: string, fallback: string = 'Decoder'): string {

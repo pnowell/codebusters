@@ -29,6 +29,7 @@ import {
   deleteTestAttempt,
   deleteTestPacketAndAttempts,
   generateUniqueTestId,
+  isAttemptStartedOrCompleted,
   saveTestPacket,
   subscribeAttemptsForTest,
 } from '../../services/testService';
@@ -46,12 +47,18 @@ interface EditableQuestion {
   description: string;
 }
 
+type PendingExitAction =
+  | { kind: 'back' }
+  | { kind: 'duplicate' }
+  | { kind: 'inspect'; attempt: TestAttempt };
+
 export interface TestEditorViewProps {
   mode: 'create' | 'edit';
   initialPacket?: TestPacket;
   existingTests: TestPacket[];
   initialTab?: TestEditorTab;
   onTabChange?: (tab: TestEditorTab) => void;
+  onInspectAttempt?: (attempt: TestAttempt) => void;
   onBack: () => void;
   onSaved: (savedTestId: string) => void;
   onDuplicate?: (draftTemplate: TestPacket) => void;
@@ -165,8 +172,9 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
   mode,
   initialPacket,
   existingTests,
-  initialTab = 'questions',
+  initialTab,
   onTabChange,
+  onInspectAttempt,
   onBack,
   onSaved,
   onDuplicate,
@@ -175,11 +183,13 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
   const isEditMode = mode === 'edit' && Boolean(initialPacket?.testId);
   const editingTestId = isEditMode ? initialPacket!.testId : null;
 
-  const [activeTab, setActiveTab] = useState<TestEditorTab>(initialTab);
+  const [activeTab, setActiveTab] = useState<TestEditorTab>(
+    () => initialTab ?? (mode === 'create' ? 'questions' : 'teams')
+  );
   const qSeqRef = useRef<number>((initialPacket?.questions.length ?? 3) + 1);
   const cohortSeqRef = useRef<number>((initialPacket?.cohorts?.length ?? 0) + 1);
 
-  // Form state — Tab 1 (Details & Questions)
+  // Form state — Details & Questions
   const [title, setTitle] = useState<string>(() => initialPacket?.title ?? '');
   const [timeLimitMinutes, setTimeLimitMinutes] = useState<number>(() =>
     initialPacket?.timeLimitSeconds
@@ -203,7 +213,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
     return buildStarterQuestions(existingTests);
   });
 
-  // Form state — Tab 2 (Visibility, Teams & Attempts)
+  // Form state — Visibility, Teams & Attempts
   const [isActive, setIsActive] = useState<boolean>(() =>
     isEditMode ? Boolean(initialPacket?.active) : false
   );
@@ -223,7 +233,11 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
 
   // Subscriptions: Profiles, Attempts (edit mode), Quote Flags, and Student Completions
   const [profiles, setProfiles] = useState<PublicProfile[]>([]);
+  const [areProfilesLoaded, setAreProfilesLoaded] = useState<boolean>(false);
   const [attemptsMap, setAttemptsMap] = useState<Record<string, TestAttempt>>({});
+  const [areAttemptsLoaded, setAreAttemptsLoaded] = useState<boolean>(
+    () => !editingTestId
+  );
   const [flagsMap, setFlagsMap] = useState<ReadonlyMap<number, QuoteFlag>>(() =>
     getQuoteFlagsMap()
   );
@@ -245,10 +259,24 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
   }, [existingTests]);
 
   useEffect(() => {
-    const unsubProfiles = subscribeTeamProfiles((list) => setProfiles(list));
+    const unsubProfiles = subscribeTeamProfiles((list) => {
+      setProfiles(list);
+      setAreProfilesLoaded(true);
+    });
     const unsubFlags = subscribeQuoteFlags((map) => setFlagsMap(new Map(map)));
     const unsubAttempts = editingTestId
-      ? subscribeAttemptsForTest(editingTestId, (map) => setAttemptsMap(map))
+      ? subscribeAttemptsForTest(
+          editingTestId,
+          (map) => {
+            setAttemptsMap(map);
+            setAreAttemptsLoaded(true);
+          },
+          undefined,
+          {
+            questions: initialPacket?.questions,
+            getQuote: getQuoteById,
+          }
+        )
       : () => {};
 
     return () => {
@@ -256,20 +284,55 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
       unsubFlags();
       unsubAttempts();
     };
-  }, [editingTestId]);
+  }, [editingTestId, initialPacket?.questions]);
 
   // UI state: puzzle previews, quote picker overlay, confirmation modals, errors
   const [expandedPreviewUids, setExpandedPreviewUids] = useState<Set<string>>(
     () => new Set()
   );
   const [pickerQuestionUid, setPickerQuestionUid] = useState<string | null>(null);
-  const [showDiscardModal, setShowDiscardModal] = useState<boolean>(false);
+  const [pendingExitAction, setPendingExitAction] =
+    useState<PendingExitAction | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
   const [confirmResetId, setConfirmResetId] = useState<string | null>(null);
   const [confirmResetAllOrphans, setConfirmResetAllOrphans] = useState<boolean>(false);
+  const [confirmResetAllAttempts, setConfirmResetAllAttempts] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const profileByUid = useMemo(() => {
+    const map = new Map<string, PublicProfile>();
+    profiles.forEach((p) => map.set(p.uid, p));
+    return map;
+  }, [profiles]);
+
+  const lockedAttempts = useMemo(
+    () => Object.values(attemptsMap).filter(isAttemptStartedOrCompleted),
+    [attemptsMap]
+  );
+
+  // Lock test content whenever any attempt has started or completed (fail-closed until loaded)
+  const isContentLocked =
+    isEditMode && (!areAttemptsLoaded || lockedAttempts.length > 0);
+
+  // Lock Active -> Draft toggle if currently Active and any non-teacher has a started/completed attempt
+  const hasStudentLockedAttempt = useMemo(
+    () =>
+      lockedAttempts.length > 0 &&
+      (!areProfilesLoaded ||
+        lockedAttempts.some((att) =>
+          att.studentUids.some((uid) => profileByUid.get(uid)?.role !== 'teacher')
+        )),
+    [areProfilesLoaded, lockedAttempts, profileByUid]
+  );
+
+  const isVisibilityLocked =
+    isEditMode &&
+    Boolean(initialPacket?.active) &&
+    (!areAttemptsLoaded || hasStudentLockedAttempt);
+
+  const effectiveIsActive = isVisibilityLocked ? true : isActive;
 
   // Baseline snapshot for dirty-check
   const [initialSnapshot] = useState<string>(() =>
@@ -286,28 +349,44 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
   const currentSnapshot = useMemo(
     () =>
       serializeDraftSnapshot({
-        title,
-        description,
-        timeLimitMinutes,
-        isActive,
+        title: isContentLocked && initialPacket ? initialPacket.title : title,
+        description:
+          isContentLocked && initialPacket ? initialPacket.description : description,
+        timeLimitMinutes:
+          isContentLocked && initialPacket
+            ? Math.max(1, Math.round(initialPacket.timeLimitSeconds / 60))
+            : timeLimitMinutes,
+        isActive: effectiveIsActive,
         questions,
         cohorts,
       }),
-    [title, description, timeLimitMinutes, isActive, questions, cohorts]
+    [
+      cohorts,
+      description,
+      effectiveIsActive,
+      initialPacket,
+      isContentLocked,
+      questions,
+      timeLimitMinutes,
+      title,
+    ]
   );
 
   const isDirty =
-    mode === 'create' ? Boolean(title.trim()) || currentSnapshot !== initialSnapshot : currentSnapshot !== initialSnapshot;
+    mode === 'create'
+      ? Boolean(title.trim()) || currentSnapshot !== initialSnapshot
+      : currentSnapshot !== initialSnapshot;
 
-  // Detect whether cipher/quote/order changed relative to saved testPacket (for attempt safety warning)
-  const questionsStructureChanged = useMemo(() => {
-    if (!isEditMode || !initialPacket) return false;
-    if (questions.length !== initialPacket.questions.length) return true;
-    return questions.some((q, idx) => {
-      const orig = initialPacket.questions[idx];
-      return !orig || q.quoteId !== orig.quoteId || q.cipher !== orig.cipher;
-    });
-  }, [isEditMode, initialPacket, questions]);
+  // Browser tab close / refresh protection when there are unsaved changes
+  useEffect(() => {
+    if (!isDirty) return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty]);
 
   // Quote Picker browser-back integration
   useEffect(() => {
@@ -321,6 +400,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
   }, []);
 
   const openQuotePickerForQuestion = (questionUid: string) => {
+    if (isContentLocked) return;
     window.history.pushState(
       {
         ...(window.history.state || {}),
@@ -397,8 +477,9 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
     [questions]
   );
 
-  // Question CRUD helpers
+  // Question CRUD helpers (guarded by isContentLocked)
   const handleAddQuestion = () => {
+    if (isContentLocked) return;
     const cycleCiphers = CIPHER_OPTIONS.map((c) => c.id);
     const nextCipher = cycleCiphers[questions.length % cycleCiphers.length];
     const picked = pickRandomCleanLookupQuote(freshQuoteExcludeIds);
@@ -422,12 +503,14 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
     uid: string,
     patch: Partial<Omit<EditableQuestion, 'uid'>>
   ) => {
+    if (isContentLocked) return;
     setQuestions((prev) =>
       prev.map((q) => (q.uid === uid ? { ...q, ...patch } : q))
     );
   };
 
   const handleMoveQuestion = (index: number, direction: -1 | 1) => {
+    if (isContentLocked) return;
     const targetIdx = index + direction;
     if (targetIdx < 0 || targetIdx >= questions.length) return;
     setQuestions((prev) => {
@@ -439,7 +522,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
   };
 
   const handleRemoveQuestion = (uid: string) => {
-    if (questions.length <= 1) return;
+    if (isContentLocked || questions.length <= 1) return;
     setQuestions((prev) => prev.filter((q) => q.uid !== uid));
     setExpandedPreviewUids((prev) => {
       if (!prev.has(uid)) return prev;
@@ -450,6 +533,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
   };
 
   const handlePickRandomForQuestion = (question: EditableQuestion) => {
+    if (isContentLocked) return;
     const picked = pickRandomCleanLookupQuote(freshQuoteExcludeIds);
     const prevQuote = getQuoteById(question.quoteId);
     const prevDefault = buildAutoPrompt(
@@ -475,7 +559,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
   };
 
   const handleSelectQuoteFromPicker = (picked: Quote) => {
-    if (!pickerQuestionUid) return;
+    if (isContentLocked || !pickerQuestionUid) return;
     const targetQ = questions.find((q) => q.uid === pickerQuestionUid);
     if (targetQ) {
       const prevQuote = getQuoteById(targetQ.quoteId);
@@ -512,18 +596,39 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
     });
   };
 
-  // Tab 2: Cohort & Roster helpers
+  // Visibility, Teams & Attempts helpers
   const nextCohortId = () => {
     const id = createClientUid('cohort', cohortSeqRef.current);
     cohortSeqRef.current += 1;
     return id;
   };
 
-  const profileByUid = useMemo(() => {
-    const map = new Map<string, PublicProfile>();
-    profiles.forEach((p) => map.set(p.uid, p));
-    return map;
-  }, [profiles]);
+  const lockedCohortIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (!editingTestId) return ids;
+    cohorts.forEach((c) => {
+      if (
+        c.studentUids.length > 0 &&
+        isAttemptStartedOrCompleted(
+          attemptsMap[getCohortAttemptId(editingTestId, c.studentUids)]
+        )
+      ) {
+        ids.add(c.id);
+      }
+    });
+    return ids;
+  }, [attemptsMap, cohorts, editingTestId]);
+
+  const effectiveSelectedCohortId = useMemo(() => {
+    if (
+      selectedCohortId &&
+      !lockedCohortIds.has(selectedCohortId) &&
+      cohorts.some((c) => c.id === selectedCohortId)
+    ) {
+      return selectedCohortId;
+    }
+    return cohorts.find((c) => !lockedCohortIds.has(c.id))?.id ?? null;
+  }, [cohorts, lockedCohortIds, selectedCohortId]);
 
   const assignedUids = useMemo(() => {
     const set = new Set<string>();
@@ -549,31 +654,41 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
   };
 
   const handleRemoveCohort = (cohortId: string) => {
+    if (lockedCohortIds.has(cohortId)) return;
     setCohorts((prev) => {
       const filtered = prev.filter((c) => c.id !== cohortId);
       if (selectedCohortId === cohortId) {
-        setSelectedCohortId(filtered[0]?.id ?? null);
+        setSelectedCohortId(
+          filtered.find((c) => !lockedCohortIds.has(c.id))?.id ?? null
+        );
       }
       return filtered;
     });
   };
 
   const handleRenameCohort = (cohortId: string, name: string) => {
+    if (lockedCohortIds.has(cohortId)) return;
     setCohorts((prev) =>
       prev.map((c) => (c.id === cohortId ? { ...c, name } : c))
     );
   };
 
   const handleAssignUser = (uid: string) => {
-    if (cohorts.length === 0 || !selectedCohortId) {
+    if (!effectiveSelectedCohortId) {
       const newId = nextCohortId();
-      setCohorts([{ id: newId, name: 'Team 1', studentUids: [uid] }]);
+      const nextNum = cohorts.length + 1;
+      setCohorts((prev) => [
+        ...prev,
+        { id: newId, name: `Team ${nextNum}`, studentUids: [uid] },
+      ]);
       setSelectedCohortId(newId);
       return;
     }
     setCohorts((prev) =>
       prev.map((c) =>
-        c.id === selectedCohortId && !c.studentUids.includes(uid)
+        c.id === effectiveSelectedCohortId &&
+        !lockedCohortIds.has(c.id) &&
+        !c.studentUids.includes(uid)
           ? { ...c, studentUids: [...c.studentUids, uid] }
           : c
       )
@@ -581,6 +696,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
   };
 
   const handleUnassignUser = (cohortId: string, uid: string) => {
+    if (lockedCohortIds.has(cohortId)) return;
     setCohorts((prev) =>
       prev.map((c) =>
         c.id === cohortId
@@ -594,18 +710,21 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
     if (unassignedProfiles.length === 0) return;
     const newCohorts: TestCohort[] = [...cohorts];
     let baseIdx = newCohorts.length + 1;
+    let firstCreatedId: string | null = null;
     for (let i = 0; i < unassignedProfiles.length; i += 2) {
       const pair = unassignedProfiles.slice(i, i + 2).map((p) => p.uid);
+      const id = nextCohortId();
+      if (!firstCreatedId) firstCreatedId = id;
       newCohorts.push({
-        id: nextCohortId(),
+        id,
         name: `Team ${baseIdx}`,
         studentUids: pair,
       });
       baseIdx += 1;
     }
     setCohorts(newCohorts);
-    if (!selectedCohortId && newCohorts.length > 0) {
-      setSelectedCohortId(newCohorts[0].id);
+    if (!effectiveSelectedCohortId && firstCreatedId) {
+      setSelectedCohortId(firstCreatedId);
     }
   };
 
@@ -654,6 +773,20 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
     setConfirmResetId(null);
   };
 
+  const handleResetAllAttempts = async () => {
+    setErrorMsg(null);
+    const allAttempts = Object.values(attemptsMap);
+    const results = await Promise.all(
+      allAttempts.map((att) => deleteTestAttempt(att.attemptId))
+    );
+    if (results.some((ok) => !ok)) {
+      setErrorMsg('Failed to reset one or more attempts.');
+    }
+    setConfirmResetAllAttempts(false);
+    setConfirmResetAllOrphans(false);
+    setConfirmResetId(null);
+  };
+
   const getAttemptBadgeMeta = (attempt: TestAttempt, memberCount: number) => {
     if (attempt.status === 'lobby') {
       const readyCount = attempt.readyUids?.length ?? 0;
@@ -677,19 +810,29 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
   const renderResetControl = (attemptId: string) => {
     if (confirmResetId === attemptId) {
       return (
-        <div className="cohort-reset-confirm">
+        <div
+          className="cohort-reset-confirm"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
           <span>Reset run?</span>
           <button
             type="button"
             className="btn-cohort-danger"
-            onClick={() => void handleResetAttempt(attemptId)}
+            onClick={(e) => {
+              e.stopPropagation();
+              void handleResetAttempt(attemptId);
+            }}
           >
             Yes, Reset
           </button>
           <button
             type="button"
             className="btn-cohort-mini"
-            onClick={() => setConfirmResetId(null)}
+            onClick={(e) => {
+              e.stopPropagation();
+              setConfirmResetId(null);
+            }}
           >
             Cancel
           </button>
@@ -700,21 +843,16 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
       <button
         type="button"
         className="btn-cohort-mini"
-        onClick={() => setConfirmResetId(attemptId)}
+        onClick={(e) => {
+          e.stopPropagation();
+          setConfirmResetId(attemptId);
+        }}
+        onKeyDown={(e) => e.stopPropagation()}
         title="Delete this attempt so they can start fresh"
       >
         Reset Attempt
       </button>
     );
-  };
-
-  // Save / Duplicate / Delete / Back handlers
-  const handleBackClick = () => {
-    if (isDirty) {
-      setShowDiscardModal(true);
-    } else {
-      onBack();
-    }
   };
 
   const buildCurrentTestPacket = (targetTestId: string): TestPacket => {
@@ -725,6 +863,18 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
         studentUids: normalizeUidList(c.studentUids),
       }))
       .filter((c) => c.studentUids.length > 0);
+
+    if (isContentLocked && initialPacket) {
+      return {
+        testId: targetTestId,
+        title: initialPacket.title,
+        description: initialPacket.description,
+        timeLimitSeconds: initialPacket.timeLimitSeconds,
+        active: effectiveIsActive,
+        questions: initialPacket.questions,
+        cohorts: cleanedCohorts,
+      };
+    }
 
     const mappedQuestions: TestQuestion[] = questions.map((q, idx) => ({
       questionNumber: idx + 1,
@@ -739,28 +889,76 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
       testId: targetTestId,
       title: title.trim(),
       description: description.trim(),
-      timeLimitSeconds: Math.max(5, Math.min(180, Math.round(Number(timeLimitMinutes) || 35))) * 60,
-      active: isActive,
+      timeLimitSeconds:
+        Math.max(5, Math.min(180, Math.round(Number(timeLimitMinutes) || 35))) * 60,
+      active: effectiveIsActive,
       questions: mappedQuestions,
       cohorts: cleanedCohorts,
     };
   };
 
+  const performDuplicate = () => {
+    if (!onDuplicate) return;
+    const baseTitle = title.trim() || initialPacket?.title || 'Practice Test';
+    const copyTitle = `Copy of ${baseTitle}`.slice(0, 80);
+    const draft = buildCurrentTestPacket('new');
+    onDuplicate({
+      ...draft,
+      title: copyTitle,
+      active: false,
+      cohorts: [],
+    });
+  };
+
+  const executeExitAction = (action: PendingExitAction) => {
+    if (action.kind === 'back') {
+      onBack();
+    } else if (action.kind === 'duplicate') {
+      performDuplicate();
+    } else if (action.kind === 'inspect') {
+      onInspectAttempt?.(action.attempt);
+    }
+  };
+
+  const requestExitAction = (action: PendingExitAction) => {
+    if (isDirty) {
+      setPendingExitAction(action);
+      return;
+    }
+    executeExitAction(action);
+  };
+
+  const handleBackClick = () => {
+    requestExitAction({ kind: 'back' });
+  };
+
+  const handleDuplicateClick = () => {
+    if (!onDuplicate) return;
+    requestExitAction({ kind: 'duplicate' });
+  };
+
+  const handleInspectAttemptClick = (attempt: TestAttempt) => {
+    if (!onInspectAttempt || !isAttemptStartedOrCompleted(attempt)) return;
+    requestExitAction({ kind: 'inspect', attempt });
+  };
+
   const handleSave = async () => {
     setErrorMsg(null);
-    if (!title.trim()) {
-      setActiveTab('questions');
+    const checkTitle =
+      isContentLocked && initialPacket ? initialPacket.title : title;
+    if (!checkTitle.trim()) {
+      handleSwitchTab('questions');
       setErrorMsg('Please enter a test title before saving.');
       return;
     }
     if (questions.length === 0) {
-      setActiveTab('questions');
+      handleSwitchTab('questions');
       setErrorMsg('Add at least one question before saving.');
       return;
     }
 
     const existingIds = new Set(existingTests.map((t) => t.testId));
-    const targetTestId = editingTestId ?? generateUniqueTestId(title, existingIds);
+    const targetTestId = editingTestId ?? generateUniqueTestId(checkTitle, existingIds);
     const packet = buildCurrentTestPacket(targetTestId);
 
     setIsSaving(true);
@@ -793,19 +991,6 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
 
     setIsSaving(false);
     onSaved(result.testId ?? targetTestId);
-  };
-
-  const handleDuplicateClick = () => {
-    if (!onDuplicate) return;
-    const baseTitle = title.trim() || initialPacket?.title || 'Practice Test';
-    const copyTitle = `Copy of ${baseTitle}`.slice(0, 80);
-    const draft = buildCurrentTestPacket('new');
-    onDuplicate({
-      ...draft,
-      title: copyTitle,
-      active: false,
-      cohorts: [],
-    });
   };
 
   const handleConfirmDelete = async () => {
@@ -848,15 +1033,31 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
         <div className="editor-header-title-group">
           <div className="editor-header-title-row">
             <h2 className="editor-header-title">
-              {title.trim() || (isEditMode ? 'Edit Practice Test' : 'New Practice Test')}
+              {(isContentLocked && initialPacket ? initialPacket.title : title).trim() ||
+                (isEditMode ? 'Edit Practice Test' : 'New Practice Test')}
             </h2>
             <button
               type="button"
-              className={`editor-status-pill ${isActive ? 'active' : 'draft'}`}
-              onClick={() => setIsActive((prev) => !prev)}
-              title="Click to toggle Active / Draft visibility"
+              className={`editor-status-pill ${effectiveIsActive ? 'active' : 'draft'} ${
+                isVisibilityLocked ? 'is-locked' : ''
+              }`}
+              disabled={isVisibilityLocked}
+              onClick={() => {
+                if (!isVisibilityLocked) {
+                  setIsActive((prev) => !prev);
+                }
+              }}
+              title={
+                isVisibilityLocked
+                  ? 'Locked as Active while student attempts exist. Reset student attempts to return to Draft.'
+                  : 'Click to toggle Active / Draft visibility'
+              }
             >
-              {isActive ? '🟢 Active' : '🔒 Draft'}
+              {effectiveIsActive
+                ? isVisibilityLocked
+                  ? '🟢 Active 🔒'
+                  : '🟢 Active'
+                : '🔒 Draft'}
             </button>
           </div>
           <span className="editor-header-subtitle">
@@ -901,15 +1102,8 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
         </div>
       </header>
 
-      {/* 2. Tabs Bar */}
+      {/* 2. Tabs Bar (Visibility, Teams & Attempts first; Details & Questions second) */}
       <nav className="editor-tabs-bar" aria-label="Test Editor Sections">
-        <button
-          type="button"
-          className={`editor-tab-btn ${activeTab === 'questions' ? 'active' : ''}`}
-          onClick={() => handleSwitchTab('questions')}
-        >
-          📝 Details & Questions ({questions.length})
-        </button>
         <button
           type="button"
           className={`editor-tab-btn ${activeTab === 'teams' ? 'active' : ''}`}
@@ -919,6 +1113,14 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
           {cohorts.length > 0 ? ` (${cohorts.length})` : ''}
           {totalAttemptsCount > 0 ? ` · ${totalAttemptsCount} runs` : ''}
         </button>
+        <button
+          type="button"
+          className={`editor-tab-btn ${activeTab === 'questions' ? 'active' : ''}`}
+          onClick={() => handleSwitchTab('questions')}
+        >
+          {isContentLocked && lockedAttempts.length > 0 ? '🔒' : '📝'} Details & Questions (
+          {questions.length})
+        </button>
       </nav>
 
       {errorMsg && <div className="editor-error-banner">⚠️ {errorMsg}</div>}
@@ -926,14 +1128,20 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
       {/* 3. Main Scrollable Body */}
       <main className="test-editor-scroll-body">
         {activeTab === 'questions' ? (
+          /* Tab 2: Details & Questions */
           <div className="editor-tab-content">
-            {isEditMode && totalAttemptsCount > 0 && questionsStructureChanged && (
-              <div className="editor-attempts-warning">
+            {isContentLocked && lockedAttempts.length > 0 && (
+              <div className="editor-attempts-warning editor-locked-banner">
                 <div>
-                  <strong>⚠️ {totalAttemptsCount} existing attempt(s) recorded:</strong>{' '}
-                  Changing quotes, ciphers, or question order affects how existing
-                  student workspaces and results line up. Consider resetting attempts
-                  or duplicating into a new test.
+                  <strong>
+                    🔒 Read-Only — {lockedAttempts.length} attempt
+                    {lockedAttempts.length === 1 ? ' has' : 's have'} started or
+                    completed:
+                  </strong>{' '}
+                  Test details and questions are locked while attempts exist. To edit
+                  this test again, reset all attempts in{' '}
+                  <strong>Visibility, Teams & Attempts</strong>, or duplicate this
+                  test into a new draft.
                 </div>
                 <div className="editor-warning-actions">
                   <button
@@ -941,7 +1149,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                     className="btn-cohort-mini"
                     onClick={() => handleSwitchTab('teams')}
                   >
-                    Manage / Reset Attempts →
+                    ← Visibility, Teams & Attempts
                   </button>
                   {onDuplicate && (
                     <button
@@ -949,7 +1157,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                       className="btn-cohort-mini"
                       onClick={handleDuplicateClick}
                     >
-                      📋 Duplicate Instead
+                      📋 Duplicate Test
                     </button>
                   )}
                 </div>
@@ -957,7 +1165,11 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
             )}
 
             {/* Test Metadata Card */}
-            <section className="editor-section-card">
+            <section
+              className={`editor-section-card ${
+                isContentLocked ? 'editor-card-readonly' : ''
+              }`}
+            >
               <div className="editor-meta-grid">
                 <div className="editor-field editor-field-grow">
                   <label className="editor-label" htmlFor="test-title-input">
@@ -969,6 +1181,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                     className="editor-input"
                     placeholder="e.g., Invitational Practice Packet A"
                     maxLength={80}
+                    disabled={isContentLocked}
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                   />
@@ -985,6 +1198,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                     max={120}
                     step={5}
                     className="editor-input"
+                    disabled={isContentLocked}
                     value={timeLimitMinutes}
                     onChange={(e) =>
                       setTimeLimitMinutes(
@@ -1004,6 +1218,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                   className="editor-textarea"
                   rows={2}
                   maxLength={400}
+                  disabled={isContentLocked}
                   placeholder="Instructions displayed on the pre-test briefing screen..."
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -1020,13 +1235,15 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                 </span>
               </div>
 
-              <button
-                type="button"
-                className="btn-simple editor-btn-add-q"
-                onClick={handleAddQuestion}
-              >
-                + Add Question
-              </button>
+              {!isContentLocked && (
+                <button
+                  type="button"
+                  className="btn-simple editor-btn-add-q"
+                  onClick={handleAddQuestion}
+                >
+                  + Add Question
+                </button>
+              )}
             </div>
 
             {/* Question Cards List */}
@@ -1041,7 +1258,12 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                 const cat: QuoteCategory = quote?.category ?? 'general';
 
                 return (
-                  <article key={q.uid} className="editor-question-card">
+                  <article
+                    key={q.uid}
+                    className={`editor-question-card ${
+                      isContentLocked ? 'editor-card-readonly' : ''
+                    }`}
+                  >
                     {/* Card Header: Q# + Cipher Picker + Points + Tiebreaker + Reorder/Delete */}
                     <div className="editor-q-header">
                       <div className="editor-q-header-left">
@@ -1056,6 +1278,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                             <button
                               key={opt.id}
                               type="button"
+                              disabled={isContentLocked}
                               className={`editor-cipher-seg-btn ${
                                 q.cipher === opt.id ? 'active' : ''
                               }`}
@@ -1096,6 +1319,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                             min={0}
                             max={5000}
                             step={25}
+                            disabled={isContentLocked}
                             className="editor-pts-input"
                             value={q.points}
                             onChange={(e) =>
@@ -1109,6 +1333,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
 
                         <button
                           type="button"
+                          disabled={isContentLocked}
                           className={`editor-tb-toggle ${
                             q.isTiebreaker ? 'active' : ''
                           }`}
@@ -1140,42 +1365,44 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                           ★ TB
                         </button>
 
-                        <div className="editor-q-move-group">
-                          <button
-                            type="button"
-                            className="editor-icon-btn"
-                            disabled={idx === 0}
-                            onClick={() => handleMoveQuestion(idx, -1)}
-                            title="Move question up"
-                            aria-label={`Move question ${idx + 1} up`}
-                          >
-                            ↑
-                          </button>
-                          <button
-                            type="button"
-                            className="editor-icon-btn"
-                            disabled={idx === questions.length - 1}
-                            onClick={() => handleMoveQuestion(idx, 1)}
-                            title="Move question down"
-                            aria-label={`Move question ${idx + 1} down`}
-                          >
-                            ↓
-                          </button>
-                          <button
-                            type="button"
-                            className="editor-icon-btn danger"
-                            disabled={questions.length <= 1}
-                            onClick={() => handleRemoveQuestion(q.uid)}
-                            title={
-                              questions.length <= 1
-                                ? 'A test must have at least one question'
-                                : 'Remove question'
-                            }
-                            aria-label={`Remove question ${idx + 1}`}
-                          >
-                            🗑️
-                          </button>
-                        </div>
+                        {!isContentLocked && (
+                          <div className="editor-q-move-group">
+                            <button
+                              type="button"
+                              className="editor-icon-btn"
+                              disabled={idx === 0}
+                              onClick={() => handleMoveQuestion(idx, -1)}
+                              title="Move question up"
+                              aria-label={`Move question ${idx + 1} up`}
+                            >
+                              ↑
+                            </button>
+                            <button
+                              type="button"
+                              className="editor-icon-btn"
+                              disabled={idx === questions.length - 1}
+                              onClick={() => handleMoveQuestion(idx, 1)}
+                              title="Move question down"
+                              aria-label={`Move question ${idx + 1} down`}
+                            >
+                              ↓
+                            </button>
+                            <button
+                              type="button"
+                              className="editor-icon-btn danger"
+                              disabled={questions.length <= 1}
+                              onClick={() => handleRemoveQuestion(q.uid)}
+                              title={
+                                questions.length <= 1
+                                  ? 'A test must have at least one question'
+                                  : 'Remove question'
+                              }
+                              aria-label={`Remove question ${idx + 1}`}
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -1237,23 +1464,25 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                           )}
                         </div>
 
-                        <div className="editor-quote-actions">
-                          <button
-                            type="button"
-                            className="btn-simple editor-btn-quote-pick"
-                            onClick={() => openQuotePickerForQuestion(q.uid)}
-                          >
-                            🔍 Browse Quotes…
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-simple editor-btn-quote-rand"
-                            onClick={() => handlePickRandomForQuestion(q)}
-                            title="Pick a random clean, unflagged quote"
-                          >
-                            🎲 Random Quote
-                          </button>
-                        </div>
+                        {!isContentLocked && (
+                          <div className="editor-quote-actions">
+                            <button
+                              type="button"
+                              className="btn-simple editor-btn-quote-pick"
+                              onClick={() => openQuotePickerForQuestion(q.uid)}
+                            >
+                              🔍 Browse Quotes…
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-simple editor-btn-quote-rand"
+                              onClick={() => handlePickRandomForQuestion(q)}
+                              title="Pick a random clean, unflagged quote"
+                            >
+                              🎲 Random Quote
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                       {quote ? (
@@ -1276,28 +1505,31 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                         className="editor-input editor-prompt-input"
                         placeholder="Optional question prompt (e.g., Decode this Pigpen Cipher quote...)"
                         maxLength={200}
+                        disabled={isContentLocked}
                         value={q.description}
                         onChange={(e) =>
                           handleUpdateQuestion(q.uid, { description: e.target.value })
                         }
                         aria-label={`Question ${idx + 1} prompt`}
                       />
-                      <button
-                        type="button"
-                        className="btn-simple editor-btn-autoprompt"
-                        onClick={() =>
-                          handleUpdateQuestion(q.uid, {
-                            description: buildAutoPrompt(
-                              q.cipher,
-                              q.isTiebreaker,
-                              quote?.author
-                            ),
-                          })
-                        }
-                        title="Fill default prompt for selected cipher and author"
-                      >
-                        ✨ Auto-Prompt
-                      </button>
+                      {!isContentLocked && (
+                        <button
+                          type="button"
+                          className="btn-simple editor-btn-autoprompt"
+                          onClick={() =>
+                            handleUpdateQuestion(q.uid, {
+                              description: buildAutoPrompt(
+                                q.cipher,
+                                q.isTiebreaker,
+                                quote?.author
+                              ),
+                            })
+                          }
+                          title="Fill default prompt for selected cipher and author"
+                        >
+                          ✨ Auto-Prompt
+                        </button>
+                      )}
                       {quote && (
                         <button
                           type="button"
@@ -1327,36 +1559,50 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
               })}
             </div>
 
-            <div className="editor-bottom-add-row">
-              <button
-                type="button"
-                className="btn-simple editor-btn-add-q-wide"
-                onClick={handleAddQuestion}
-              >
-                + Add Another Question
-              </button>
-            </div>
+            {!isContentLocked && (
+              <div className="editor-bottom-add-row">
+                <button
+                  type="button"
+                  className="btn-simple editor-btn-add-q-wide"
+                  onClick={handleAddQuestion}
+                >
+                  + Add Another Question
+                </button>
+              </div>
+            )}
           </div>
         ) : (
-          /* Tab 2: Visibility, Teams & Attempts */
+          /* Tab 1: Visibility, Teams & Attempts */
           <div className="editor-tab-content">
-            <label className="cohort-visibility-row editor-visibility-card">
+            <label
+              className={`cohort-visibility-row editor-visibility-card ${
+                isVisibilityLocked ? 'cohort-visibility-locked' : ''
+              }`}
+            >
               <div className="cohort-visibility-info">
                 <span className="cohort-visibility-label">
-                  {isActive
-                    ? '🟢 Active — Visible to Students'
+                  {effectiveIsActive
+                    ? isVisibilityLocked
+                      ? '🟢 Active — Visible to Students (Locked)'
+                      : '🟢 Active — Visible to Students'
                     : '🔒 Draft — Hidden from Students'}
                 </span>
                 <span className="cohort-visibility-hint">
-                  Teachers can always view, preview, and test inactive drafts before
-                  publishing them to students.
+                  {isVisibilityLocked
+                    ? 'Cannot switch back to Draft while student attempts are in progress or completed. Reset student attempts first.'
+                    : 'Teachers can always view, preview, and test inactive drafts before publishing them to students.'}
                 </span>
               </div>
               <input
                 type="checkbox"
                 className="cohort-active-checkbox"
-                checked={isActive}
-                onChange={(e) => setIsActive(e.target.checked)}
+                disabled={isVisibilityLocked}
+                checked={effectiveIsActive}
+                onChange={(e) => {
+                  if (!isVisibilityLocked) {
+                    setIsActive(e.target.checked);
+                  }
+                }}
               />
             </label>
 
@@ -1366,6 +1612,36 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                   Student Teams ({cohorts.length})
                 </span>
                 <div className="cohort-toolbar-actions">
+                  {isEditMode &&
+                    totalAttemptsCount > 1 &&
+                    (confirmResetAllAttempts ? (
+                      <div className="cohort-reset-confirm">
+                        <span>Reset all {totalAttemptsCount} runs?</span>
+                        <button
+                          type="button"
+                          className="btn-cohort-danger"
+                          onClick={() => void handleResetAllAttempts()}
+                        >
+                          Yes, Reset All
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-cohort-mini"
+                          onClick={() => setConfirmResetAllAttempts(false)}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn-cohort-mini"
+                        onClick={() => setConfirmResetAllAttempts(true)}
+                        title="Delete all recorded attempts on this test to unlock editing"
+                      >
+                        Reset All Attempts ({totalAttemptsCount})
+                      </button>
+                    ))}
                   <button
                     type="button"
                     className="btn-simple btn-cohort-action"
@@ -1394,48 +1670,99 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
               ) : (
                 <div className="cohort-groups-list">
                   {cohorts.map((cohort, idx) => {
-                    const isSelected = cohort.id === selectedCohortId;
                     const attempt =
                       editingTestId && cohort.studentUids.length > 0
                         ? attemptsMap[
                             getCohortAttemptId(editingTestId, cohort.studentUids)
                           ]
                         : undefined;
+                    const isTeamLocked = isAttemptStartedOrCompleted(attempt);
+                    const canInspect = Boolean(
+                      attempt && isTeamLocked && onInspectAttempt
+                    );
+                    const isSelected =
+                      !isTeamLocked && cohort.id === effectiveSelectedCohortId;
+                    const teamDisplayName = cohort.name?.trim() || `Team ${idx + 1}`;
+
                     return (
                       <div
                         key={cohort.id}
                         className={`cohort-group-card ${
                           isSelected ? 'cohort-group-selected' : ''
+                        } ${isTeamLocked ? 'cohort-group-locked' : ''} ${
+                          canInspect ? 'cohort-group-clickable' : ''
                         }`}
-                        onClick={() => setSelectedCohortId(cohort.id)}
+                        role={canInspect ? 'button' : undefined}
+                        tabIndex={canInspect ? 0 : undefined}
+                        onClick={() => {
+                          if (canInspect && attempt) {
+                            handleInspectAttemptClick(attempt);
+                          } else if (!isTeamLocked) {
+                            setSelectedCohortId(cohort.id);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (
+                            canInspect &&
+                            attempt &&
+                            e.target === e.currentTarget &&
+                            (e.key === 'Enter' || e.key === ' ')
+                          ) {
+                            e.preventDefault();
+                            handleInspectAttemptClick(attempt);
+                          }
+                        }}
+                        title={
+                          canInspect && attempt
+                            ? attempt.status === 'in_progress'
+                              ? `Spectate ${teamDisplayName} live`
+                              : `View ${teamDisplayName} results`
+                            : undefined
+                        }
                       >
                         <div className="cohort-group-header">
-                          <input
-                            type="text"
-                            className="cohort-name-input"
-                            value={cohort.name ?? ''}
-                            placeholder={`Team ${idx + 1}`}
-                            maxLength={40}
-                            onChange={(e) =>
-                              handleRenameCohort(cohort.id, e.target.value)
-                            }
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedCohortId(cohort.id);
-                            }}
-                            aria-label={`Team ${idx + 1} name`}
-                          />
-                          <button
-                            type="button"
-                            className="btn-cohort-remove"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRemoveCohort(cohort.id);
-                            }}
-                            title="Remove team"
-                          >
-                            ✕
-                          </button>
+                          {isTeamLocked ? (
+                            <>
+                              <span className="cohort-name-locked">
+                                {teamDisplayName}
+                              </span>
+                              <span
+                                className="cohort-lock-tag"
+                                title="Roster is locked after starting the test. Reset the attempt to modify members."
+                              >
+                                🔒 Locked
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <input
+                                type="text"
+                                className="cohort-name-input"
+                                value={cohort.name ?? ''}
+                                placeholder={`Team ${idx + 1}`}
+                                maxLength={40}
+                                onChange={(e) =>
+                                  handleRenameCohort(cohort.id, e.target.value)
+                                }
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedCohortId(cohort.id);
+                                }}
+                                aria-label={`Team ${idx + 1} name`}
+                              />
+                              <button
+                                type="button"
+                                className="btn-cohort-remove"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveCohort(cohort.id);
+                                }}
+                                title="Remove team"
+                              >
+                                ✕
+                              </button>
+                            </>
+                          )}
                         </div>
 
                         <div className="cohort-members-chips">
@@ -1450,17 +1777,19 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                               return (
                                 <span key={uid} className="cohort-member-chip">
                                   <span>{name}</span>
-                                  <button
-                                    type="button"
-                                    className="chip-remove-btn"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleUnassignUser(cohort.id, uid);
-                                    }}
-                                    aria-label={`Remove ${name}`}
-                                  >
-                                    ✕
-                                  </button>
+                                  {!isTeamLocked && (
+                                    <button
+                                      type="button"
+                                      className="chip-remove-btn"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleUnassignUser(cohort.id, uid);
+                                      }}
+                                      aria-label={`Remove ${name}`}
+                                    >
+                                      ✕
+                                    </button>
+                                  )}
                                 </span>
                               );
                             })
@@ -1469,21 +1798,30 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
 
                         {attempt && (
                           <div className="cohort-attempt-bar">
-                            <span
-                              className={`cohort-attempt-badge ${
-                                getAttemptBadgeMeta(
-                                  attempt,
-                                  cohort.studentUids.length
-                                ).statusClass
-                              }`}
-                            >
-                              {
-                                getAttemptBadgeMeta(
-                                  attempt,
-                                  cohort.studentUids.length
-                                ).label
-                              }
-                            </span>
+                            <div className="cohort-attempt-meta">
+                              <span
+                                className={`cohort-attempt-badge ${
+                                  getAttemptBadgeMeta(
+                                    attempt,
+                                    cohort.studentUids.length
+                                  ).statusClass
+                                }`}
+                              >
+                                {
+                                  getAttemptBadgeMeta(
+                                    attempt,
+                                    cohort.studentUids.length
+                                  ).label
+                                }
+                              </span>
+                              {canInspect && (
+                                <span className="cohort-inspect-cta">
+                                  {attempt.status === 'in_progress'
+                                    ? '👁️ Spectate Live ➔'
+                                    : '📊 View Results ➔'}
+                                </span>
+                              )}
+                            </div>
                             {renderResetControl(attempt.attemptId)}
                           </div>
                         )}
@@ -1522,7 +1860,11 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                         type="button"
                         className="cohort-unassigned-chip"
                         onClick={() => handleAssignUser(prof.uid)}
-                        title="Add to selected team"
+                        title={
+                          effectiveSelectedCohortId
+                            ? 'Add to selected team'
+                            : 'Create a new team with this user'
+                        }
                       >
                         + {prof.displayName}
                         {prof.role === 'teacher' ? ' (Teacher)' : ''}
@@ -1532,14 +1874,17 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                 )}
               </div>
 
-              {/* Unmatched Solo or Previous Team Attempts */}
+              {/* Solo or Unmatched Attempts */}
               {isEditMode && unmatchedAttempts.length > 0 && (
                 <div className="cohort-orphan-section">
                   <div className="cohort-unassigned-header">
                     <span className="cohort-section-heading">
-                      Other / Previous Attempts ({unmatchedAttempts.length})
+                      {cohorts.length === 0
+                        ? `Individual Attempts (${unmatchedAttempts.length})`
+                        : `Solo / Other Attempts (${unmatchedAttempts.length})`}
                     </span>
                     {unmatchedAttempts.length > 1 &&
+                      matchedAttemptIds.size > 0 &&
                       (confirmResetAllOrphans ? (
                         <div className="cohort-reset-confirm">
                           <span>Reset all {unmatchedAttempts.length}?</span>
@@ -1564,7 +1909,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                           className="btn-cohort-mini"
                           onClick={() => setConfirmResetAllOrphans(true)}
                         >
-                          Reset All ({unmatchedAttempts.length})
+                          Reset Unmatched ({unmatchedAttempts.length})
                         </button>
                       ))}
                   </div>
@@ -1576,11 +1921,45 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                         att.studentUids.length
                       );
                       const isSolo = att.studentUids.length <= 1;
+                      const canInspect = Boolean(
+                        isAttemptStartedOrCompleted(att) && onInspectAttempt
+                      );
+                      const memberLabel = formatAttemptMembers(att.studentUids);
+
                       return (
-                        <div key={att.attemptId} className="cohort-orphan-row">
+                        <div
+                          key={att.attemptId}
+                          className={`cohort-orphan-row ${
+                            canInspect ? 'cohort-orphan-clickable' : ''
+                          }`}
+                          role={canInspect ? 'button' : undefined}
+                          tabIndex={canInspect ? 0 : undefined}
+                          onClick={() => {
+                            if (canInspect) {
+                              handleInspectAttemptClick(att);
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            if (
+                              canInspect &&
+                              e.target === e.currentTarget &&
+                              (e.key === 'Enter' || e.key === ' ')
+                            ) {
+                              e.preventDefault();
+                              handleInspectAttemptClick(att);
+                            }
+                          }}
+                          title={
+                            canInspect
+                              ? att.status === 'in_progress'
+                                ? `Spectate ${memberLabel} live`
+                                : `View ${memberLabel} results`
+                              : undefined
+                          }
+                        >
                           <div className="cohort-orphan-info">
                             <span className="cohort-orphan-names">
-                              {formatAttemptMembers(att.studentUids)}
+                              {memberLabel}
                             </span>
                             <span className="cohort-orphan-tag">
                               {isSolo ? 'Solo' : 'Previous Team'}
@@ -1597,6 +1976,13 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                             >
                               {label}
                             </span>
+                            {canInspect && (
+                              <span className="cohort-inspect-cta">
+                                {att.status === 'in_progress'
+                                  ? '👁️ Spectate Live ➔'
+                                  : '📊 View Results ➔'}
+                              </span>
+                            )}
                             {renderResetControl(att.attemptId)}
                           </div>
                         </div>
@@ -1611,7 +1997,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
       </main>
 
       {/* 4. Quote Picker Modal Overlay */}
-      {pickerTargetQuestion && (
+      {pickerTargetQuestion && !isContentLocked && (
         <Modal
           isOpen={true}
           onClose={closeQuotePicker}
@@ -1654,10 +2040,10 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
       )}
 
       {/* 5. Discard Unsaved Changes Confirmation Modal */}
-      {showDiscardModal && (
+      {pendingExitAction && (
         <Modal
           isOpen={true}
-          onClose={() => setShowDiscardModal(false)}
+          onClose={() => setPendingExitAction(null)}
           ariaLabelledBy="discard-changes-title"
           dialogClassName="confirm-modal"
         >
@@ -1665,14 +2051,17 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
             Discard Unsaved Changes?
           </h3>
           <p className="confirm-modal-text">
-            You have unsaved edits to this practice test. Leaving now will discard
-            your changes.
+            {pendingExitAction.kind === 'inspect'
+              ? 'You have unsaved edits to this practice test. Opening this attempt now will discard your unsaved changes.'
+              : pendingExitAction.kind === 'duplicate'
+                ? 'You have unsaved edits on this practice test. Duplicating into a new draft will leave unsaved changes behind on the original test.'
+                : 'You have unsaved edits to this practice test. Leaving now will discard your changes.'}
           </p>
           <div className="confirm-modal-buttons">
             <button
               type="button"
               className="btn-simple"
-              onClick={() => setShowDiscardModal(false)}
+              onClick={() => setPendingExitAction(null)}
             >
               Keep Editing
             </button>
@@ -1680,8 +2069,9 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
               type="button"
               className="btn-simple editor-btn-delete"
               onClick={() => {
-                setShowDiscardModal(false);
-                onBack();
+                const action = pendingExitAction;
+                setPendingExitAction(null);
+                executeExitAction(action);
               }}
             >
               Discard Changes

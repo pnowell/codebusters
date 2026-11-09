@@ -15,6 +15,7 @@ import {
   diffQuestionInputs,
   getActiveTeammateUidsForTab,
   PRESENCE_STALE_MS,
+  resolveTeamNameForMembers,
   resolveUserCohort,
   type PendingCellOp,
 } from '../../utils/testSync';
@@ -42,27 +43,30 @@ interface TestRunnerProps {
   testPacket: TestPacket;
   currentUid: string;
   isTeacher?: boolean;
+  isSpectator?: boolean;
   initialAttempt?: TestAttempt | null;
   onExitToMenu: () => void;
 }
 
 const CELL_FLUSH_DEBOUNCE_MS = 150;
 const PRESENCE_HEARTBEAT_MS = 30_000;
+const SPECTATOR_EXPIRE_GRACE_MS = 3_000;
 
 export const TestRunner: React.FC<TestRunnerProps> = ({
   testPacket,
   currentUid,
   isTeacher = false,
+  isSpectator = false,
   initialAttempt,
   onExitToMenu,
 }) => {
   useEffect(() => {
-    if (isTeacher) return;
+    if (isTeacher || isSpectator) return;
     const ids = testPacket.questions.map((q) => q.quoteId);
     if (ids.length > 0) {
       saveCompletedQuoteIds(ids);
     }
-  }, [isTeacher, testPacket.questions]);
+  }, [isSpectator, isTeacher, testPacket.questions]);
 
   const cohortInfo = useMemo(
     () => resolveUserCohort(testPacket, currentUid),
@@ -89,7 +93,23 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
     return Date.now();
   });
 
-  const [activeQIndex, setActiveQIndex] = useState<number>(0);
+  const [activeQIndex, setActiveQIndex] = useState<number>(() => {
+    if (isSpectator && initialAttempt?.presence) {
+      const initNow = Date.now();
+      for (const uid of memberUids) {
+        const entry = initialAttempt.presence[uid];
+        if (
+          entry &&
+          initNow - entry.updatedAt <= PRESENCE_STALE_MS &&
+          entry.activeQIndex >= 0 &&
+          entry.activeQIndex <= reviewIndex
+        ) {
+          return entry.activeQIndex;
+        }
+      }
+    }
+    return 0;
+  });
 
   const [workspaces, setWorkspaces] = useState<Record<number, QuestionWorkspace>>(() =>
     deserializeWorkspacesFromFirestore(
@@ -131,6 +151,7 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlightFlushRef = useRef<Promise<void> | null>(null);
   const hasTriggeredExpireRef = useRef<boolean>(false);
+  const hasSeededSpectatorTabRef = useRef<boolean>(Boolean(initialAttempt));
 
   const endTime = useMemo(
     () => startedAt + testPacket.timeLimitSeconds * 1000,
@@ -187,6 +208,7 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
   ]);
 
   const flushPendingEdits = useCallback(async (): Promise<void> => {
+    if (isSpectator) return;
     if (flushTimerRef.current) {
       clearTimeout(flushTimerRef.current);
       flushTimerRef.current = null;
@@ -232,7 +254,7 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
         inFlightFlushRef.current = null;
       }
     }
-  }, [attemptId, currentUid]);
+  }, [attemptId, currentUid, isSpectator]);
 
   // Subscribe to live Firestore updates for this attempt & team profile names
   useEffect(() => {
@@ -244,7 +266,7 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
       setPresenceNow(Date.now());
     }, 5000);
 
-    if (currentUid === 'student') {
+    if (currentUid === 'student' && !isSpectator) {
       return () => {
         unsubProfiles();
         clearInterval(staleTimer);
@@ -256,7 +278,7 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
       attemptId,
       (remoteAttempt) => {
         if (!remoteAttempt) {
-          if (seenInitialDoc) {
+          if (seenInitialDoc || isSpectator) {
             // Teacher reset/deleted the attempt while active
             onExitToMenu();
           }
@@ -267,9 +289,26 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
         if (remoteAttempt.startedAt > 0) {
           setStartedAt(remoteAttempt.startedAt);
         }
+        const snapNow = Date.now();
         setPresence(remoteAttempt.presence);
-        setPresenceNow(Date.now());
+        setPresenceNow(snapNow);
         setSubmitReadyUids(remoteAttempt.submitReadyUids ?? []);
+
+        if (isSpectator && !hasSeededSpectatorTabRef.current && remoteAttempt.presence) {
+          hasSeededSpectatorTabRef.current = true;
+          for (const uid of remoteAttempt.studentUids) {
+            const entry = remoteAttempt.presence[uid];
+            if (
+              entry &&
+              snapNow - entry.updatedAt <= PRESENCE_STALE_MS &&
+              entry.activeQIndex >= 0 &&
+              entry.activeQIndex <= reviewIndex
+            ) {
+              setActiveQIndex(entry.activeQIndex);
+              break;
+            }
+          }
+        }
 
         const mergedWorkspaces = applyPendingCellOps(
           remoteAttempt.workspaces,
@@ -301,11 +340,19 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
       clearInterval(staleTimer);
       unsubAttempt();
     };
-  }, [attemptId, currentUid, initialAttempt, onExitToMenu, testPacket.questions]);
+  }, [
+    attemptId,
+    currentUid,
+    initialAttempt,
+    isSpectator,
+    onExitToMenu,
+    reviewIndex,
+    testPacket.questions,
+  ]);
 
   // Broadcast active tab presence & periodic keepalive while solving
   useEffect(() => {
-    if (isFinished || currentUid === 'student') return;
+    if (isSpectator || isFinished || currentUid === 'student') return;
 
     void updateMemberPresence(attemptId, currentUid, activeQIndex);
     const heartbeat = setInterval(() => {
@@ -315,7 +362,7 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
     return () => {
       clearInterval(heartbeat);
     };
-  }, [activeQIndex, attemptId, currentUid, isFinished]);
+  }, [activeQIndex, attemptId, currentUid, isFinished, isSpectator]);
 
   // Flush pending edits & clear presence on unmount
   useEffect(() => {
@@ -324,18 +371,20 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
         clearTimeout(flushTimerRef.current);
         flushTimerRef.current = null;
       }
-      if (attemptRef.current.status === 'in_progress') {
+      if (!isSpectator && attemptRef.current.status === 'in_progress') {
         void flushPendingEdits();
         void updateMemberPresence(attemptId, currentUid, -1);
       }
     };
-  }, [attemptId, currentUid, flushPendingEdits]);
+  }, [attemptId, currentUid, flushPendingEdits, isSpectator]);
 
   const triggerExpire = useCallback(async () => {
     if (isFinished || hasTriggeredExpireRef.current) return;
     hasTriggeredExpireRef.current = true;
 
-    await flushPendingEdits();
+    if (!isSpectator) {
+      await flushPendingEdits();
+    }
     const expired = await expireTestAttemptTransaction(
       testPacket,
       attemptId,
@@ -349,11 +398,13 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
       setIsFinished(true);
       setShowSubmitModal(false);
     }
-  }, [attemptId, currentUid, flushPendingEdits, isFinished, testPacket]);
+  }, [attemptId, currentUid, flushPendingEdits, isFinished, isSpectator, testPacket]);
 
   // Wall-clock Countdown Timer
   useEffect(() => {
     if (isFinished) return;
+
+    let graceTimeout: ReturnType<typeof setTimeout> | null = null;
 
     const timer = setInterval(() => {
       const left = Math.max(0, Math.round((endTime - Date.now()) / 1000));
@@ -361,15 +412,26 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
 
       if (left <= 0) {
         clearInterval(timer);
-        void triggerExpire();
+        if (isSpectator) {
+          graceTimeout = setTimeout(() => {
+            void triggerExpire();
+          }, SPECTATOR_EXPIRE_GRACE_MS);
+        } else {
+          void triggerExpire();
+        }
       }
     }, 250);
 
-    return () => clearInterval(timer);
-  }, [endTime, isFinished, triggerExpire]);
+    return () => {
+      clearInterval(timer);
+      if (graceTimeout) {
+        clearTimeout(graceTimeout);
+      }
+    };
+  }, [endTime, isFinished, isSpectator, triggerExpire]);
 
   const handleUserInputsChange = (newInputs: string[]) => {
-    if (isFinished) return;
+    if (isFinished || isSpectator) return;
     const prevInputs = workspaces[activeQIndex]?.userInputs ?? [];
     const diffs = diffQuestionInputs(prevInputs, newInputs);
     if (diffs.length === 0) return;
@@ -446,6 +508,7 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
   };
 
   const handleOpenSubmitModal = () => {
+    if (isSpectator) return;
     if (pendingCellOpsRef.current.size > 0) {
       void flushPendingEdits();
     }
@@ -456,7 +519,7 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
 
   const handleKeepSolving = () => {
     setShowSubmitModal(false);
-    if (isCollaborative && isCurrentUserSubmitReady && !isFinished) {
+    if (!isSpectator && isCollaborative && isCurrentUserSubmitReady && !isFinished) {
       void setEarlySubmitReadyState(
         testPacket,
         attemptId,
@@ -469,7 +532,7 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
   };
 
   const handleConfirmOrToggleSubmit = async () => {
-    if (isSubmittingVote || isFinished) return;
+    if (isSpectator || isSubmittingVote || isFinished) return;
     setIsSubmittingVote(true);
 
     try {
@@ -502,7 +565,7 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
   };
 
   const handleExit = async () => {
-    if (!isFinished) {
+    if (!isFinished && !isSpectator) {
       await flushPendingEdits();
       void updateMemberPresence(attemptId, currentUid, -1);
     }
@@ -521,15 +584,24 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
   const otherSubmitReadyUids = useMemo(
     () =>
       memberUids.filter(
-        (uid) => uid !== currentUid && submitReadyUids.includes(uid)
+        (uid) =>
+          (isSpectator ? true : uid !== currentUid) &&
+          submitReadyUids.includes(uid)
       ),
-    [memberUids, currentUid, submitReadyUids]
+    [isSpectator, memberUids, currentUid, submitReadyUids]
   );
 
   const submitReadyCount = useMemo(
     () => memberUids.filter((uid) => submitReadyUids.includes(uid)).length,
     [memberUids, submitReadyUids]
   );
+
+  const spectatorHeaderTitle = useMemo(() => {
+    if (!isSpectator) return '';
+    const teamLabel = resolveTeamNameForMembers(testPacket, memberUids);
+    const namesLabel = getDisplayNamesForUids(memberUids);
+    return teamLabel ? `${teamLabel} (${namesLabel})` : namesLabel;
+  }, [isSpectator, memberUids, testPacket]);
 
   const formatTeammateLocation = (uid: string): string | null => {
     const entry = presence?.[uid];
@@ -545,6 +617,10 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
         testPacket={testPacket}
         results={results}
         studentUids={memberUids}
+        backLabel={isSpectator ? '← Back to Test' : undefined}
+        backTitle={
+          isSpectator ? 'Return to Visibility, Teams & Attempts' : undefined
+        }
         onBack={onExitToMenu}
       />
     );
@@ -558,9 +634,13 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
           <button
             className="btn-simple btn-test-exit"
             onClick={() => void handleExit()}
-            title="Pause and Exit to Practice Tests"
+            title={
+              isSpectator
+                ? 'Return to Visibility, Teams & Attempts'
+                : 'Pause and Exit to Practice Tests'
+            }
           >
-            ← Tests
+            {isSpectator ? '← Back to Test' : '← Tests'}
           </button>
           <button
             className="btn-simple btn-nav-step"
@@ -585,7 +665,9 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
                 )}
               </>
             ) : (
-              <span className="test-q-counter">Review & Submit</span>
+              <span className="test-q-counter">
+                {isSpectator ? 'Live Overview' : 'Review & Submit'}
+              </span>
             )}
           </div>
 
@@ -612,35 +694,84 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
               className="btn-simple btn-nav-step btn-review-cta"
               onClick={handleNext}
             >
-              Review 📋
+              {isSpectator ? 'Overview 📋' : 'Review 📋'}
             </button>
-          ) : (
+          ) : !isSpectator ? (
             <button
               className="btn-simple btn-nav-step btn-submit-cta"
               onClick={handleOpenSubmitModal}
             >
               Submit ✓
             </button>
-          )}
+          ) : null}
         </div>
       </header>
 
-      {/* 2. Question Navigator Strip with Teammate Presence */}
+      {/* 1b. Teacher Live Spectator Banner */}
+      {isSpectator && (
+        <div className="spectator-live-banner" role="status">
+          <div className="spectator-banner-left">
+            <span className="spectator-live-dot" aria-hidden="true" />
+            <span>
+              👁️ Spectating <strong>{spectatorHeaderTitle}</strong>
+            </span>
+            <span className="spectator-readonly-pill">Read-Only</span>
+          </div>
+
+          <div className="spectator-member-pills">
+            {memberUids.map((uid) => {
+              const entry = presence?.[uid];
+              const isFresh =
+                Boolean(entry) &&
+                presenceNow - entry!.updatedAt <= PRESENCE_STALE_MS &&
+                entry!.activeQIndex >= 0 &&
+                entry!.activeQIndex <= reviewIndex;
+              const shortName = getShortDisplayNameForUid(uid);
+              const tabText = isFresh
+                ? entry!.activeQIndex === reviewIndex
+                  ? 'Review'
+                  : `Q${entry!.activeQIndex + 1}`
+                : 'Idle';
+              return isFresh ? (
+                <button
+                  key={uid}
+                  type="button"
+                  className={`spectator-member-btn ${
+                    activeQIndex === entry!.activeQIndex ? 'is-following' : ''
+                  }`}
+                  onClick={() => switchTab(entry!.activeQIndex)}
+                  title={`Jump to ${getDisplayNameForUid(uid)}'s current tab (${tabText})`}
+                >
+                  <span>{shortName}</span>
+                  <span className="spectator-member-loc">{tabText}</span>
+                </button>
+              ) : (
+                <span key={uid} className="spectator-member-idle">
+                  {shortName} · {tabText}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 2. Question Navigator Strip with Teammate / Student Presence */}
       <nav className="test-navigator-strip" aria-label="Question Navigation">
         {testPacket.questions.map((q, idx) => {
           const { status } = getQuestionProgress(q, workspaces[idx]);
           const isComplete = status === 'complete';
           const isInProgress = status === 'in_progress';
           const isActive = activeQIndex === idx;
-          const viewers = isCollaborative
-            ? getActiveTeammateUidsForTab(
-                presence,
-                memberUids,
-                currentUid,
-                idx,
-                presenceNow
-              )
-            : [];
+          const viewers =
+            isSpectator || isCollaborative
+              ? getActiveTeammateUidsForTab(
+                  presence,
+                  memberUids,
+                  isSpectator ? '' : currentUid,
+                  idx,
+                  presenceNow
+                )
+              : [];
 
           return (
             <button
@@ -675,24 +806,27 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
         })}
 
         {(() => {
-          const reviewViewers = isCollaborative
-            ? getActiveTeammateUidsForTab(
-                presence,
-                memberUids,
-                currentUid,
-                reviewIndex,
-                presenceNow
-              )
-            : [];
+          const reviewViewers =
+            isSpectator || isCollaborative
+              ? getActiveTeammateUidsForTab(
+                  presence,
+                  memberUids,
+                  isSpectator ? '' : currentUid,
+                  reviewIndex,
+                  presenceNow
+                )
+              : [];
           return (
             <button
               className={`test-nav-tab tab-review ${
                 activeQIndex === reviewIndex ? 'tab-active' : ''
               }`}
               onClick={() => switchTab(reviewIndex)}
-              title="Review and Submit Test"
+              title={isSpectator ? 'Live Problem Overview' : 'Review and Submit Test'}
             >
-              <span className="tab-q-label">Review 📋</span>
+              <span className="tab-q-label">
+                {isSpectator ? 'Overview 📋' : 'Review 📋'}
+              </span>
               {reviewViewers.map((uid) => {
                 const shortName = getShortDisplayNameForUid(uid);
                 return (
@@ -714,13 +848,15 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
             {otherSubmitReadyUids.length === 1 ? 'is' : 'are'} ready to submit (
             {submitReadyCount}/{memberUids.length})
           </span>
-          <button
-            type="button"
-            className="btn-simple btn-banner-submit"
-            onClick={handleOpenSubmitModal}
-          >
-            Review & Confirm ✓
-          </button>
+          {!isSpectator && (
+            <button
+              type="button"
+              className="btn-simple btn-banner-submit"
+              onClick={handleOpenSubmitModal}
+            >
+              Review & Confirm ✓
+            </button>
+          )}
         </div>
       )}
 
@@ -736,7 +872,7 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
               quote={currentQuote}
               userInputs={currentWorkspace.userInputs}
               onChangeUserInputs={handleUserInputsChange}
-              disabled={isFinished}
+              disabled={isFinished || isSpectator}
             />
           )}
 
@@ -744,15 +880,16 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
           <TestReviewScreen
             testPacket={testPacket}
             workspaces={workspaces}
+            isSpectator={isSpectator}
             onJumpToQuestion={(idx) => switchTab(idx)}
-            onSubmitTest={handleOpenSubmitModal}
+            onSubmitTest={isSpectator ? undefined : handleOpenSubmitModal}
           />
         )}
       </main>
 
       {/* 4. Submit Confirmation Modal */}
       <Modal
-        isOpen={showSubmitModal}
+        isOpen={!isSpectator && showSubmitModal}
         onClose={handleKeepSolving}
         ariaLabelledBy="confirm-submit-title"
         backdropClassName="confirm-modal-backdrop"

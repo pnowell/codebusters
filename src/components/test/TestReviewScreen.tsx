@@ -6,13 +6,15 @@ import { getQuestionProgress } from '../../utils/testProgress';
 interface TestReviewScreenProps {
   testPacket: TestPacket;
   workspaces: Record<number, QuestionWorkspace>;
+  isSpectator?: boolean;
   onJumpToQuestion: (questionIndex: number) => void;
-  onSubmitTest: () => void;
+  onSubmitTest?: () => void;
 }
 
 export const TestReviewScreen: React.FC<TestReviewScreenProps> = ({
   testPacket,
   workspaces,
+  isSpectator = false,
   onJumpToQuestion,
   onSubmitTest,
 }) => {
@@ -44,9 +46,11 @@ export const TestReviewScreen: React.FC<TestReviewScreenProps> = ({
     <div className="test-review-screen">
       <div className="test-review-header">
         <div className="test-review-title-group">
-          <h2>Review & Submit Test</h2>
+          <h2>{isSpectator ? 'Live Problem Overview' : 'Review & Submit Test'}</h2>
           <p className="test-review-subtitle">
-            Check your progress below before submitting. You can jump back to any problem to review or make changes.
+            {isSpectator
+              ? 'Live progress across all problems for this attempt. Jump to any problem to watch its workspace.'
+              : 'Check your progress below before submitting. You can jump back to any problem to review or make changes.'}
           </p>
         </div>
 
@@ -109,7 +113,7 @@ export const TestReviewScreen: React.FC<TestReviewScreenProps> = ({
                     className="btn-simple btn-review-jump"
                     onClick={() => onJumpToQuestion(qs.index)}
                   >
-                    Edit ➔
+                    {isSpectator ? 'View ➔' : 'Edit ➔'}
                   </button>
                 </td>
               </tr>
@@ -119,17 +123,19 @@ export const TestReviewScreen: React.FC<TestReviewScreenProps> = ({
       </div>
 
       {/* Submission Footer */}
-      <div className="test-review-actions-bar">
-        {hasIncomplete && (
-          <div className="test-review-warning-note">
-            ⚠️ You have {inProgressCount + notStartedCount} incomplete question{inProgressCount + notStartedCount > 1 ? 's' : ''}. Unanswered letters are counted as errors.
-          </div>
-        )}
+      {!isSpectator && onSubmitTest && (
+        <div className="test-review-actions-bar">
+          {hasIncomplete && (
+            <div className="test-review-warning-note">
+              ⚠️ You have {inProgressCount + notStartedCount} incomplete question{inProgressCount + notStartedCount > 1 ? 's' : ''}. Unanswered letters are counted as errors.
+            </div>
+          )}
 
-        <button className="btn-main-action btn-submit-test-final" onClick={onSubmitTest}>
-          End Test & Submit Solutions ✓
-        </button>
-      </div>
+          <button className="btn-main-action btn-submit-test-final" onClick={onSubmitTest}>
+            End Test & Submit Solutions ✓
+          </button>
+        </div>
+      )}
     </div>
   );
 };

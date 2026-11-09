@@ -23,6 +23,7 @@ import {
   isCipherAccessible,
   isLookupCipher,
 } from './data/drills';
+import { getQuoteById } from './data/quotes';
 import {
   loadSettings,
   replaceAllDrillScores,
@@ -33,7 +34,9 @@ import {
 import {
   subscribeAvailableTests,
   subscribeStudentAttempts,
+  fetchTestAttemptById,
   fetchTestById,
+  isAttemptStartedOrCompleted,
   resolveAttemptForTest,
 } from './services/testService';
 import { subscribeToSyncUpdates } from './services/sync';
@@ -50,9 +53,11 @@ import {
 import {
   parseUrlRoute,
   buildRouteUrl,
+  getDefaultEditorTab,
   type DrillSection,
   type TestEditorTab,
 } from './utils/routing';
+import { evaluateTestPacket } from './utils/testSync';
 import { useVisualViewportHeight } from './hooks/useVisualViewportHeight';
 import { useOuterMarginScroll } from './hooks/useOuterMarginScroll';
 import { useWorkoutCircuit } from './hooks/useWorkoutCircuit';
@@ -107,12 +112,23 @@ type ActiveScreen =
       draftTemplate?: TestPacket;
       editorNonce: number;
     }
-  | { kind: 'testRunner'; testPacket: TestPacket; initialAttempt: TestAttempt | null }
+  | {
+      kind: 'spectateLoading';
+      testId: string;
+      attemptId: string;
+    }
+  | {
+      kind: 'testRunner';
+      testPacket: TestPacket;
+      initialAttempt: TestAttempt | null;
+      spectateAttemptId?: string;
+    }
   | {
       kind: 'testResults';
       testPacket: TestPacket;
       results: TestEvaluationResult;
       attempt?: TestAttempt;
+      returnToEditTestId?: string;
     };
 
 interface BriefingState {
@@ -138,8 +154,15 @@ function initScreen(): ActiveScreen {
     return {
       kind: 'testEditor',
       editTarget: route.editTest,
-      tab: route.editTab ?? 'questions',
+      tab: route.editTab ?? getDefaultEditorTab(route.editTest),
       editorNonce: 0,
+    };
+  }
+  if (route.testId && route.spectateAttemptId) {
+    return {
+      kind: 'spectateLoading',
+      testId: route.testId,
+      attemptId: route.spectateAttemptId,
     };
   }
   if (route.testsList) {
@@ -372,10 +395,17 @@ export const App: React.FC = () => {
         : drillScreenInfo.hasQuoteWorkspace)
   );
 
-  // Redirect non-teachers away from teacher-only routes (?editTest=... or ?quotes=true)
+  // Redirect non-teachers away from teacher-only routes (?editTest=..., ?quotes=true, or ?spectate=...)
   useEffect(() => {
     if (isAuthLoading || isTeacher) return;
-    if (screen.kind === 'testEditor' || screen.kind === 'quotesBrowser') {
+    const isTeacherScreen =
+      screen.kind === 'testEditor' ||
+      screen.kind === 'quotesBrowser' ||
+      screen.kind === 'spectateLoading' ||
+      (screen.kind === 'testRunner' && Boolean(screen.spectateAttemptId)) ||
+      (screen.kind === 'testResults' && Boolean(screen.returnToEditTestId));
+
+    if (isTeacherScreen) {
       queueMicrotask(() => {
         if (isAllowed) {
           const listUrl = buildRouteUrl({ drill: null, testsList: true });
@@ -388,7 +418,7 @@ export const App: React.FC = () => {
         }
       });
     }
-  }, [isAuthLoading, isAllowed, isTeacher, screen.kind]);
+  }, [isAuthLoading, isAllowed, isTeacher, screen]);
 
   // Redirect away from unimplemented, unsupported, or student-disabled drill/cipher routes
   useEffect(() => {
@@ -427,10 +457,105 @@ export const App: React.FC = () => {
     cancelWorkout,
   ]);
 
-  // Deep-link direct test launch if ?test=testId is provided
+  // Resolve teacher spectate / review route (?test=testId&spectate=attemptId)
+  useEffect(() => {
+    if (screen.kind !== 'spectateLoading') return;
+    if (isAuthLoading || !isTeacher || isTestsLoading) return;
+
+    let cancelled = false;
+    const { testId, attemptId } = screen;
+
+    const loadSpectateTarget = async () => {
+      const test =
+        availableTests.find((t) => t.testId === testId) ??
+        (await fetchTestById(testId));
+
+      if (cancelled) return;
+
+      if (!test) {
+        const listUrl = buildRouteUrl({ drill: null, testsList: true });
+        window.history.replaceState({ testsList: true }, '', listUrl);
+        setScreen({ kind: 'testsList' });
+        return;
+      }
+
+      const attempt = await fetchTestAttemptById(attemptId, {
+        questions: test.questions,
+        getQuote: getQuoteById,
+      });
+
+      if (cancelled) return;
+
+      if (
+        !attempt ||
+        attempt.testId !== test.testId ||
+        !isAttemptStartedOrCompleted(attempt)
+      ) {
+        const editUrl = buildRouteUrl({
+          drill: null,
+          editTest: test.testId,
+          editTab: 'teams',
+        });
+        window.history.replaceState(
+          { editTest: test.testId, editTab: 'teams' },
+          '',
+          editUrl
+        );
+        setScreen({
+          kind: 'testEditor',
+          editTarget: test.testId,
+          tab: 'teams',
+          editorNonce: Date.now(),
+        });
+        return;
+      }
+
+      if (attempt.status === 'in_progress') {
+        setScreen({
+          kind: 'testRunner',
+          testPacket: test,
+          initialAttempt: attempt,
+          spectateAttemptId: attempt.attemptId,
+        });
+      } else {
+        const evaluated =
+          attempt.results ??
+          evaluateTestPacket(
+            test,
+            attempt.workspaces,
+            attempt.startedAt,
+            getQuoteById,
+            attempt.submittedAt
+          );
+        setScreen({
+          kind: 'testResults',
+          testPacket: test,
+          results: evaluated,
+          attempt,
+          returnToEditTestId: test.testId,
+        });
+      }
+    };
+
+    void loadSpectateTarget();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [availableTests, isAuthLoading, isTeacher, isTestsLoading, screen]);
+
+  // Deep-link direct test launch if ?test=testId is provided (participant flow)
   useEffect(() => {
     const route = parseUrlRoute();
-    if (!route.testId || !isAllowed || isTestsLoading || !isAttemptsLoaded) return;
+    if (
+      !route.testId ||
+      route.spectateAttemptId ||
+      !isAllowed ||
+      isTestsLoading ||
+      !isAttemptsLoaded
+    ) {
+      return;
+    }
     if (
       screen.kind === 'testRunner' ||
       screen.kind === 'testResults' ||
@@ -576,19 +701,26 @@ export const App: React.FC = () => {
       } else if (route.quotesBrowser) {
         setScreen({ kind: 'quotesBrowser' });
       } else if (route.editTest) {
+        const nextTab = route.editTab ?? getDefaultEditorTab(route.editTest);
         setScreen((prev) => {
           if (
             prev.kind === 'testEditor' &&
             prev.editTarget === route.editTest
           ) {
-            return { ...prev, tab: route.editTab ?? prev.tab };
+            return { ...prev, tab: nextTab };
           }
           return {
             kind: 'testEditor',
             editTarget: route.editTest!,
-            tab: route.editTab ?? 'questions',
+            tab: nextTab,
             editorNonce: Date.now(),
           };
+        });
+      } else if (route.testId && route.spectateAttemptId) {
+        setScreen({
+          kind: 'spectateLoading',
+          testId: route.testId,
+          attemptId: route.spectateAttemptId,
         });
       } else if (route.testId) {
         const matched = availableTests.find((t) => t.testId === route.testId);
@@ -657,6 +789,25 @@ export const App: React.FC = () => {
       );
       window.history.pushState({ quotesBrowser: true }, '', currentUrl);
     } else if (
+      route.testId &&
+      route.spectateAttemptId &&
+      (!window.history.state || !('spectateAttemptId' in window.history.state))
+    ) {
+      window.history.replaceState(
+        { editTest: route.testId, editTab: 'teams' },
+        '',
+        buildRouteUrl({ drill: null, editTest: route.testId, editTab: 'teams' })
+      );
+      window.history.pushState(
+        {
+          testId: route.testId,
+          spectateAttemptId: route.spectateAttemptId,
+          returnToEditTestId: route.testId,
+        },
+        '',
+        currentUrl
+      );
+    } else if (
       route.editTest &&
       (!window.history.state || !('editTest' in window.history.state))
     ) {
@@ -666,7 +817,10 @@ export const App: React.FC = () => {
         buildRouteUrl({ drill: null, testsList: true })
       );
       window.history.pushState(
-        { editTest: route.editTest, editTab: route.editTab ?? 'questions' },
+        {
+          editTest: route.editTest,
+          editTab: route.editTab ?? getDefaultEditorTab(route.editTest),
+        },
         '',
         currentUrl
       );
@@ -711,11 +865,15 @@ export const App: React.FC = () => {
       tab: 'questions',
       editorNonce: Date.now(),
     });
-    const newUrl = buildRouteUrl({ drill: null, editTest: 'new' });
+    const newUrl = buildRouteUrl({
+      drill: null,
+      editTest: 'new',
+      editTab: 'questions',
+    });
     window.history.pushState({ editTest: 'new', editTab: 'questions' }, '', newUrl);
   };
 
-  const handleEditTest = (testId: string, tab: TestEditorTab = 'questions') => {
+  const handleEditTest = (testId: string, tab: TestEditorTab = 'teams') => {
     if (!isTeacher) return;
     setScreen({
       kind: 'testEditor',
@@ -736,12 +894,85 @@ export const App: React.FC = () => {
       draftTemplate,
       editorNonce: Date.now(),
     });
-    const newUrl = buildRouteUrl({ drill: null, editTest: 'new' });
+    const newUrl = buildRouteUrl({
+      drill: null,
+      editTest: 'new',
+      editTab: 'questions',
+    });
     window.history.replaceState(
       { editTest: 'new', editTab: 'questions', fromDuplicate: true },
       '',
       newUrl
     );
+  };
+
+  const handleInspectAttempt = (testPacket: TestPacket, attempt: TestAttempt) => {
+    if (!isTeacher || !isAttemptStartedOrCompleted(attempt)) return;
+    cancelWorkout();
+
+    const newUrl = buildRouteUrl({
+      drill: null,
+      testId: testPacket.testId,
+      spectateAttemptId: attempt.attemptId,
+    });
+    window.history.pushState(
+      {
+        testId: testPacket.testId,
+        spectateAttemptId: attempt.attemptId,
+        returnToEditTestId: testPacket.testId,
+      },
+      '',
+      newUrl
+    );
+
+    if (attempt.status === 'in_progress') {
+      setScreen({
+        kind: 'testRunner',
+        testPacket,
+        initialAttempt: attempt,
+        spectateAttemptId: attempt.attemptId,
+      });
+    } else {
+      const evaluated =
+        attempt.results ??
+        evaluateTestPacket(
+          testPacket,
+          attempt.workspaces,
+          attempt.startedAt,
+          getQuoteById,
+          attempt.submittedAt
+        );
+      setScreen({
+        kind: 'testResults',
+        testPacket,
+        results: evaluated,
+        attempt,
+        returnToEditTestId: testPacket.testId,
+      });
+    }
+  };
+
+  const handleExitFromSpectate = (testId: string) => {
+    if (window.history.state && window.history.state.spectateAttemptId) {
+      window.history.back();
+    } else {
+      setScreen({
+        kind: 'testEditor',
+        editTarget: testId,
+        tab: 'teams',
+        editorNonce: Date.now(),
+      });
+      const editUrl = buildRouteUrl({
+        drill: null,
+        editTest: testId,
+        editTab: 'teams',
+      });
+      window.history.replaceState(
+        { editTest: testId, editTab: 'teams' },
+        '',
+        editUrl
+      );
+    }
   };
 
   const handleEditorTabChange = useCallback((tab: TestEditorTab) => {
@@ -1000,17 +1231,25 @@ export const App: React.FC = () => {
         />
       )}
 
+      {screen.kind === 'spectateLoading' && suspenseFallback}
+
       {screen.kind === 'testRunner' && (
         <Suspense fallback={suspenseFallback}>
           <TestRunner
+            key={screen.spectateAttemptId ?? screen.testPacket.testId}
             testPacket={
               availableTests.find((t) => t.testId === screen.testPacket.testId) ??
               screen.testPacket
             }
             currentUid={currentUid}
             isTeacher={isTeacher}
+            isSpectator={Boolean(screen.spectateAttemptId)}
             initialAttempt={screen.initialAttempt}
-            onExitToMenu={handleExitTest}
+            onExitToMenu={
+              screen.spectateAttemptId
+                ? () => handleExitFromSpectate(screen.testPacket.testId)
+                : handleExitTest
+            }
           />
         </Suspense>
       )}
@@ -1059,7 +1298,17 @@ export const App: React.FC = () => {
             }
             results={screen.results}
             studentUids={screen.attempt?.studentUids}
-            onBack={handleBackFromTestResults}
+            backLabel={screen.returnToEditTestId ? '← Back to Test' : undefined}
+            backTitle={
+              screen.returnToEditTestId
+                ? 'Return to Visibility, Teams & Attempts'
+                : undefined
+            }
+            onBack={
+              screen.returnToEditTestId
+                ? () => handleExitFromSpectate(screen.returnToEditTestId!)
+                : handleBackFromTestResults
+            }
           />
         </Suspense>
       )}
@@ -1073,7 +1322,7 @@ export const App: React.FC = () => {
           isLoading={isTestsLoading}
           onSelectTest={handleSelectTest}
           onNewTest={handleNewTest}
-          onEditTest={(testId) => handleEditTest(testId, 'questions')}
+          onEditTest={(testId) => handleEditTest(testId, 'teams')}
           onOpenQuotesBrowser={handleOpenQuotesBrowser}
           onBack={handleBackFromTestsList}
         />
@@ -1139,6 +1388,9 @@ export const App: React.FC = () => {
                   existingTests={availableTests}
                   initialTab={screen.tab}
                   onTabChange={handleEditorTabChange}
+                  onInspectAttempt={(attempt) =>
+                    handleInspectAttempt(targetTest, attempt)
+                  }
                   onBack={handleBackFromTeacherScreen}
                   onSaved={() => handleBackFromTeacherScreen()}
                   onDuplicate={handleDuplicateFromEditor}
