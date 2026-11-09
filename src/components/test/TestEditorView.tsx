@@ -63,6 +63,7 @@ const CIPHER_OPTIONS: { id: LookupCipherType; label: string; promptName: string 
   { id: 'pigpen', label: 'Pigpen', promptName: 'Pigpen Cipher' },
   { id: 'galactic', label: 'Galactic', promptName: 'Standard Galactic Alphabet' },
   { id: 'tap', label: 'Tap Code', promptName: 'Tap Code Cipher' },
+  { id: 'knights', label: 'Knights', promptName: 'Knights Templar Cipher' },
 ];
 
 const CATEGORY_SHORT_LABELS: Record<QuoteCategory, string> = {

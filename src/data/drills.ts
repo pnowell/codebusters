@@ -60,7 +60,7 @@ export const DRILLS = [
     shortTitle: 'Knights',
     menuLabel: 'Knights Templar',
     kind: 'lookup',
-    implemented: false,
+    implemented: true,
     defaultEnabled: false,
     hasFlashcardDrill: true,
     hasQuoteWorkspace: true,

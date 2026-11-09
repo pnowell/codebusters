@@ -15,6 +15,10 @@ const REFERENCE_IMAGES = {
     src: 'references/galactic_table.png',
     alt: 'Standard Galactic Alphabet from Official Resource Sheet',
   },
+  knights: {
+    src: 'references/knights_templar_table.png',
+    alt: 'Knights Templar Decryption Table from Official Resource Sheet',
+  },
 } as const;
 
 export type ReferenceCipher = LookupCipherType;

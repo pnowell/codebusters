@@ -2,6 +2,7 @@ import React from 'react';
 import { PigpenGlyph } from '../../symbols/PigpenGlyph';
 import { GalacticGlyph } from '../../symbols/GalacticGlyph';
 import { TapCodeGlyph } from '../../symbols/TapCodeGlyph';
+import { KnightsTemplarGlyph } from '../../symbols/KnightsTemplarGlyph';
 import { atbashChar, isLetter } from '../../../utils/ciphers';
 import type { LookupCipherType } from '../../../types';
 
@@ -30,5 +31,7 @@ export const CipherGlyph: React.FC<CipherGlyphProps> = ({
       return <GalacticGlyph letter={upper} size={size} color={color} />;
     case 'tap':
       return <TapCodeGlyph letter={upper} size={size} color={color} />;
+    case 'knights':
+      return <KnightsTemplarGlyph letter={upper} size={size} color={color} />;
   }
 };

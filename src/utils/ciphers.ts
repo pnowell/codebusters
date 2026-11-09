@@ -91,6 +91,18 @@ export function isTapCodeEquivalentLetter(a: string, b: string): boolean {
 }
 
 /**
+ * Returns true if two letters share the exact same Knights Templar symbol
+ * (identical letters, or 'I' and 'J' which both map to the top undotted kite).
+ */
+export function isKnightsTemplarEquivalentLetter(a: string, b: string): boolean {
+  const ua = a.toUpperCase();
+  const ub = b.toUpperCase();
+  if (!isLetter(ua) || !isLetter(ub)) return false;
+  if (ua === ub) return true;
+  return (ua === 'I' && ub === 'J') || (ua === 'J' && ub === 'I');
+}
+
+/**
  * Evaluate student answer against target plaintext using official SoCal DaVinci scoring:
  * - 0 to 2 errors: Full credit
  * - 3 to 4 errors: Half credit

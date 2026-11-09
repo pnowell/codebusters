@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { atbashChar, isTapCodeEquivalentLetter } from '../../utils/ciphers';
+import {
+  atbashChar,
+  isKnightsTemplarEquivalentLetter,
+  isTapCodeEquivalentLetter,
+} from '../../utils/ciphers';
 import type { LookupCipherType, WorkoutStepContext } from '../../types';
 import { useSpacedDeck } from '../../hooks/useSpacedDeck';
 import { useVelocityTracker } from '../../hooks/useVelocityTracker';
@@ -49,9 +53,14 @@ const CIPHER_INFO: Record<
     shortTitle: 'Tap Code',
     sheetLabel: 'Tap Code Reference Grid',
   },
+  knights: {
+    title: 'Knights Templar Cipher',
+    shortTitle: 'Knights',
+    sheetLabel: 'Knights Templar Table',
+  },
 };
 
-const TAP_CK_CONFIRM_MS = 420;
+const DUAL_LETTER_CONFIRM_MS = 420;
 
 const NON_ANSWER_KEYS = new Set([
   'Shift',
@@ -170,22 +179,29 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
 
       setTotalQuestions((prev) => prev + 1);
 
-      const isTapCKPrompt =
-        cipher === 'tap' && (currentLetter === 'C' || currentLetter === 'K');
+      const dualPairLabel =
+        cipher === 'tap' && (currentLetter === 'C' || currentLetter === 'K')
+          ? 'C / K'
+          : cipher === 'knights' && (currentLetter === 'I' || currentLetter === 'J')
+          ? 'I / J'
+          : null;
+
       const isCorrect =
         cipher === 'tap'
           ? isTapCodeEquivalentLetter(cleanAnswer, currentLetter)
+          : cipher === 'knights'
+          ? isKnightsTemplarEquivalentLetter(cleanAnswer, currentLetter)
           : cleanAnswer === currentLetter;
 
       if (isCorrect) {
         setCorrectQuestions((prev) => prev + 1);
         recordHit();
 
-        if (isTapCKPrompt) {
+        if (dualPairLabel) {
           recordAttempt(true, false);
-          spawnGhost('C / K ✓');
+          spawnGhost(`${dualPairLabel} ✓`);
           isConfirmingRef.current = true;
-          setConfirmReveal('C / K');
+          setConfirmReveal(dualPairLabel);
           confirmTimerRef.current = window.setTimeout(() => {
             confirmTimerRef.current = null;
             isConfirmingRef.current = false;
@@ -193,7 +209,7 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
             setInputVal('');
             advanceCard();
             focusAnswerInput();
-          }, TAP_CK_CONFIRM_MS);
+          }, DUAL_LETTER_CONFIRM_MS);
         } else {
           recordAttempt(true, true);
           spawnGhost(
@@ -209,7 +225,7 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
         recordMiss();
         recordAttempt(false, false);
 
-        const expectedLabel = isTapCKPrompt ? 'C / K' : currentLetter;
+        const expectedLabel = dualPairLabel ?? currentLetter;
         triggerWrongLockout(cleanAnswer, expectedLabel, () => {
           setInputVal('');
           advanceCard();
