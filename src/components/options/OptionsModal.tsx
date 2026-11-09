@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import type { CipherType, GeneralPracticeCiphers, UserSettings } from '../../types';
-import { GENERAL_PRACTICE_DRILLS } from '../../data/drills';
+import {
+  GENERAL_PRACTICE_DRILLS,
+  isCipherEnabledForStudent,
+} from '../../data/drills';
 import { useAuth } from '../../context/useAuth';
 import { Modal } from '../common/Modal';
 
@@ -26,7 +29,7 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
   const toggleCipher = (id: CipherType) => {
     setCipherFlags((prev) => ({
       ...prev,
-      [id]: !(prev[id] ?? true),
+      [id]: !isCipherEnabledForStudent(id, prev),
     }));
   };
 
@@ -108,13 +111,13 @@ export const OptionsModal: React.FC<OptionsModalProps> = ({
 
         {isTeacher && (
           <div className="form-group">
-            <label>Ciphers included in General Practice:</label>
+            <label>Enabled Ciphers (Visible to Students):</label>
             <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.45rem' }}>
-              Applies globally to everyone. Letter Offsets is always included in the warm-up rotation.
+              Controls which drills, ciphers, leaderboards, and General Practice workouts are visible to students. Letter Offsets is always enabled, and teachers can always access all implemented features.
             </div>
             <div className="cipher-checkbox-list">
               {GENERAL_PRACTICE_DRILLS.map((c) => {
-                const isChecked = cipherFlags[c.id] !== false;
+                const isChecked = isCipherEnabledForStudent(c.id, cipherFlags);
                 return (
                   <label key={c.id} className="checkbox-row">
                     <input

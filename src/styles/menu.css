@@ -113,6 +113,25 @@
   transform: translateY(0);
 }
 
+.menu-drill-btn-with-badge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.menu-teacher-hidden-badge {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.14);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  border-radius: 999px;
+  padding: 0.14rem 0.52rem;
+  letter-spacing: 0.02em;
+}
+
 .menu-drill-group {
   background: rgba(15, 23, 42, 0.55);
   border: 1px solid var(--border-color);

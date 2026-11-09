@@ -7,20 +7,35 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { withVersionStamp } from './versionService';
-import { GENERAL_PRACTICE_DRILLS, type CipherType } from '../data/drills';
+import {
+  GENERAL_PRACTICE_DRILLS,
+  isCipherEnabledForStudent,
+  type CipherType,
+} from '../data/drills';
 import type { GeneralPracticeCiphers } from '../types';
 
 const CACHE_KEY = 'davinci_general_practice_ciphers';
 const CLASSROOM_CONFIG_COLLECTION = 'classroom_config';
 const GENERAL_PRACTICE_DOC_ID = 'general_practice';
 
+type ClassroomCiphersListener = (ciphers: GeneralPracticeCiphers) => void;
+const cacheListeners = new Set<ClassroomCiphersListener>();
+
+function notifyCacheListeners(ciphers: GeneralPracticeCiphers): void {
+  const snapshot = { ...ciphers };
+  for (const listener of cacheListeners) {
+    listener(snapshot);
+  }
+}
+
 /**
- * Builds the default global boolean map where all implemented non-offset ciphers are enabled.
+ * Builds the default global boolean map using each implemented cipher's `defaultEnabled` flag.
+ * Newly shipped ciphers (`defaultEnabled: false`) remain hidden from students until enabled.
  */
 export function createDefaultGeneralPracticeCiphers(): GeneralPracticeCiphers {
   const defaults: GeneralPracticeCiphers = {};
   for (const drill of GENERAL_PRACTICE_DRILLS) {
-    defaults[drill.id] = true;
+    defaults[drill.id] = drill.defaultEnabled;
   }
   return defaults;
 }
@@ -48,13 +63,15 @@ export function sanitizeGeneralPracticeCiphers(raw: unknown): GeneralPracticeCip
 /**
  * Converts the global boolean map into the active `CipherType[]` list consumed by
  * `useWorkoutCircuit` and `workoutWeights` (`'offsets'` is always included).
+ * When `isTeacher` is true, all implemented ciphers are included regardless of student checkboxes.
  */
 export function generalPracticeCiphersToList(
-  flags: GeneralPracticeCiphers
+  flags: GeneralPracticeCiphers,
+  isTeacher = false
 ): CipherType[] {
   const active: CipherType[] = ['offsets'];
   for (const drill of GENERAL_PRACTICE_DRILLS) {
-    if (flags[drill.id] !== false) {
+    if (isTeacher || isCipherEnabledForStudent(drill.id, flags)) {
       active.push(drill.id);
     }
   }
@@ -82,22 +99,41 @@ function persistCachedCiphers(ciphers: GeneralPracticeCiphers): void {
 let cachedCiphers: GeneralPracticeCiphers = loadCachedCiphers();
 
 /**
- * Returns a copy of the latest cached General Practice cipher booleans.
+ * Returns a copy of the latest cached classroom cipher visibility booleans.
  */
 export function getGeneralPracticeCiphers(): GeneralPracticeCiphers {
   return { ...cachedCiphers };
 }
 
 /**
- * Resets the in-memory classroom config cache to defaults on sign-out.
+ * Subscribes in-memory UI consumers (e.g. `LeaderboardModal`) to changes in the
+ * cached classroom cipher visibility map without opening duplicate Firestore listeners.
+ */
+export function subscribeCachedClassroomCiphers(
+  listener: ClassroomCiphersListener
+): () => void {
+  cacheListeners.add(listener);
+  return () => {
+    cacheListeners.delete(listener);
+  };
+}
+
+/**
+ * Resets the classroom config cache to defaults on sign-out.
  */
 export function resetClassroomConfigCache(): void {
   cachedCiphers = createDefaultGeneralPracticeCiphers();
+  try {
+    localStorage.removeItem(CACHE_KEY);
+  } catch {
+    // Ignore storage errors
+  }
+  notifyCacheListeners(cachedCiphers);
 }
 
 /**
  * Subscribes to `/classroom_config/general_practice` in Firestore so all students
- * and teachers receive real-time updates to the global General Practice cipher booleans.
+ * and teachers receive real-time updates to the global cipher visibility booleans.
  */
 export function subscribeGeneralPracticeCiphers(
   onUpdate?: (ciphers: GeneralPracticeCiphers) => void,
@@ -118,6 +154,7 @@ export function subscribeGeneralPracticeCiphers(
         cachedCiphers = createDefaultGeneralPracticeCiphers();
       }
       persistCachedCiphers(cachedCiphers);
+      notifyCacheListeners(cachedCiphers);
       onUpdate?.({ ...cachedCiphers });
     },
     (err) => {
@@ -129,7 +166,7 @@ export function subscribeGeneralPracticeCiphers(
 }
 
 /**
- * Teacher API: Saves the global General Practice cipher booleans to
+ * Teacher API: Saves the global student cipher visibility booleans to
  * `/classroom_config/general_practice`. Server-side RBAC is enforced in `firestore.rules`.
  */
 export async function saveGeneralPracticeCiphers(
@@ -138,6 +175,7 @@ export async function saveGeneralPracticeCiphers(
   const sanitized = sanitizeGeneralPracticeCiphers(ciphers);
   cachedCiphers = sanitized;
   persistCachedCiphers(sanitized);
+  notifyCacheListeners(sanitized);
 
   if (!db) return false;
 

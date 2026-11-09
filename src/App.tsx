@@ -18,7 +18,11 @@ import { PracticeTestsList } from './components/test/PracticeTestsList';
 import { WorkoutSummaryModal } from './components/workout/WorkoutSummaryModal';
 import { NotAllowedModal } from './components/auth/NotAllowedModal';
 import { VersionUpdateModal } from './components/common/VersionUpdateModal';
-import { isLookupCipher } from './data/drills';
+import {
+  getDrill,
+  isCipherAccessible,
+  isLookupCipher,
+} from './data/drills';
 import {
   loadSettings,
   replaceAllDrillScores,
@@ -146,13 +150,18 @@ function initScreen(): ActiveScreen {
 
 export const App: React.FC = () => {
   const { user, allowedUser, isAllowed, isLoading: isAuthLoading } = useAuth();
-  const isTeacher = allowedUser?.role === 'teacher';
+  const isTeacher = Boolean(isAllowed && allowedUser?.role === 'teacher');
   const currentUid = user?.uid || 'student';
+  const signedInUid = isAllowed && user?.uid ? user.uid : null;
 
   const [settings, setSettings] = useState<UserSettings>(loadSettings);
   const [generalPracticeCiphers, setGeneralPracticeCiphers] =
     useState<GeneralPracticeCiphers>(getGeneralPracticeCiphers);
+  const [loadedConfigForUid, setLoadedConfigForUid] = useState<string | null>(null);
   const [screen, setScreen] = useState<ActiveScreen>(initScreen);
+
+  const isClassroomConfigReady =
+    !isAuthLoading && (!signedInUid || loadedConfigForUid === signedInUid);
 
   const [isOptionsOpen, setIsOptionsOpen] = useState<boolean>(false);
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState<boolean>(false);
@@ -205,7 +214,12 @@ export const App: React.FC = () => {
   }, []);
 
   const activeGeneralPracticeCiphers = useMemo(
-    () => generalPracticeCiphersToList(generalPracticeCiphers),
+    () => generalPracticeCiphersToList(generalPracticeCiphers, isTeacher),
+    [generalPracticeCiphers, isTeacher]
+  );
+
+  const studentEnabledCiphersKey = useMemo(
+    () => generalPracticeCiphersToList(generalPracticeCiphers, false).join(','),
     [generalPracticeCiphers]
   );
 
@@ -233,19 +247,21 @@ export const App: React.FC = () => {
     });
   }, []);
 
-  // Subscribe to global teacher-configured General Practice cipher booleans
+  // Subscribe to global teacher-configured student cipher visibility booleans
   useEffect(() => {
-    if (!isAllowed) {
+    if (!signedInUid) {
       queueMicrotask(() => {
         setGeneralPracticeCiphers(createDefaultGeneralPracticeCiphers());
+        setLoadedConfigForUid(null);
       });
       return;
     }
 
     return subscribeGeneralPracticeCiphers((nextCiphers) => {
       setGeneralPracticeCiphers(nextCiphers);
+      setLoadedConfigForUid(signedInUid);
     });
-  }, [isAllowed]);
+  }, [signedInUid]);
 
   // Subscribe to practice tests in Firestore (teachers also see inactive drafts)
   useEffect(() => {
@@ -346,17 +362,70 @@ export const App: React.FC = () => {
     return subscribeQuoteFlags();
   }, [isAllowed]);
 
+  const drillScreenInfo = screen.kind === 'drill' ? getDrill(screen.drill) : null;
+  const isDrillStructurallyValid = Boolean(
+    screen.kind === 'drill' &&
+      drillScreenInfo &&
+      drillScreenInfo.implemented &&
+      (screen.section === 'memorize'
+        ? drillScreenInfo.hasFlashcardDrill
+        : drillScreenInfo.hasQuoteWorkspace)
+  );
+
   // Redirect non-teachers away from teacher-only routes (?editTest=... or ?quotes=true)
   useEffect(() => {
-    if (isAuthLoading || !isAllowed || isTeacher) return;
+    if (isAuthLoading || isTeacher) return;
     if (screen.kind === 'testEditor' || screen.kind === 'quotesBrowser') {
       queueMicrotask(() => {
-        const listUrl = buildRouteUrl({ drill: null, testsList: true });
-        window.history.replaceState({ testsList: true }, '', listUrl);
-        setScreen({ kind: 'testsList' });
+        if (isAllowed) {
+          const listUrl = buildRouteUrl({ drill: null, testsList: true });
+          window.history.replaceState({ testsList: true }, '', listUrl);
+          setScreen({ kind: 'testsList' });
+        } else {
+          const menuUrl = buildRouteUrl({ drill: null });
+          window.history.replaceState({ drill: null }, '', menuUrl);
+          setScreen({ kind: 'menu' });
+        }
       });
     }
   }, [isAuthLoading, isAllowed, isTeacher, screen.kind]);
+
+  // Redirect away from unimplemented, unsupported, or student-disabled drill/cipher routes
+  useEffect(() => {
+    if (screen.kind !== 'drill') return;
+    if (!isDrillStructurallyValid) {
+      queueMicrotask(() => {
+        cancelWorkout();
+        const menuUrl = buildRouteUrl({ drill: null });
+        window.history.replaceState({ drill: null }, '', menuUrl);
+        setScreen({ kind: 'menu' });
+      });
+      return;
+    }
+    if (!isClassroomConfigReady) return;
+    if (
+      !isCipherAccessible(
+        screen.drill,
+        screen.section,
+        generalPracticeCiphers,
+        isTeacher
+      )
+    ) {
+      queueMicrotask(() => {
+        cancelWorkout();
+        const menuUrl = buildRouteUrl({ drill: null });
+        window.history.replaceState({ drill: null }, '', menuUrl);
+        setScreen({ kind: 'menu' });
+      });
+    }
+  }, [
+    screen,
+    isDrillStructurallyValid,
+    isClassroomConfigReady,
+    generalPracticeCiphers,
+    isTeacher,
+    cancelWorkout,
+  ]);
 
   // Deep-link direct test launch if ?test=testId is provided
   useEffect(() => {
@@ -900,12 +969,27 @@ export const App: React.FC = () => {
     <div className="drill-loading-state">Loading cipher workspace...</div>
   );
 
+  const canRenderDrillScreen =
+    screen.kind === 'drill' &&
+    isDrillStructurallyValid &&
+    (screen.drill === 'offsets' ||
+      isTeacher ||
+      (isClassroomConfigReady &&
+        isCipherAccessible(
+          screen.drill,
+          screen.section,
+          generalPracticeCiphers,
+          false
+        )));
+
   return (
     <div className="app-container">
       {screen.kind === 'menu' && (
         <MainMenu
           studentName={settings.studentName}
           isAllowed={isAllowed}
+          isTeacher={isTeacher}
+          generalPracticeCiphers={generalPracticeCiphers}
           onStartWorkout={() => startWorkout(1)}
           onOpenTestsList={handleOpenTestsList}
           onOpenLeaderboard={openLeaderboard}
@@ -931,7 +1015,9 @@ export const App: React.FC = () => {
         </Suspense>
       )}
 
-      {screen.kind === 'drill' && screen.drill === 'offsets' && (
+      {screen.kind === 'drill' && !canRenderDrillScreen && suspenseFallback}
+
+      {screen.kind === 'drill' && canRenderDrillScreen && screen.drill === 'offsets' && (
         <LetterOffsetDrill
           key={workoutContext ? `workout-${workoutContext.round}-${workoutContext.stepIndex}` : 'standalone'}
           initialMode={screen.offsetsMode}
@@ -942,6 +1028,7 @@ export const App: React.FC = () => {
       )}
 
       {screen.kind === 'drill' &&
+        canRenderDrillScreen &&
         isLookupCipher(screen.drill) &&
         (screen.section === 'cipher' ? (
           <Suspense fallback={suspenseFallback}>
@@ -1064,7 +1151,7 @@ export const App: React.FC = () => {
 
       {isOptionsOpen && (
         <OptionsModal
-          key={`${user?.uid ?? 'guest'}:${isTeacher ? 'teacher' : 'student'}:${settings.studentName}:${activeGeneralPracticeCiphers.join(',')}`}
+          key={`${user?.uid ?? 'guest'}:${isTeacher ? 'teacher' : 'student'}:${settings.studentName}:${studentEnabledCiphersKey}`}
           isOpen={true}
           onClose={closeOptions}
           settings={settings}

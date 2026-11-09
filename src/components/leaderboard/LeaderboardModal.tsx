@@ -1,38 +1,61 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import type { DrillId, OffsetsMode, PublicProfile } from '../../types';
+import {
+  DRILLS,
+  isCipherEnabledForStudent,
+  type CipherType,
+} from '../../data/drills';
+import type {
+  DrillId,
+  GeneralPracticeCiphers,
+  OffsetsMode,
+  PublicProfile,
+} from '../../types';
 import { loadDrillScore } from '../../services/storage';
 import { computeLeaderboardEntries } from '../../services/leaderboard';
 import { subscribeTeamProfiles } from '../../services/profileService';
+import {
+  getGeneralPracticeCiphers,
+  subscribeCachedClassroomCiphers,
+} from '../../services/classroomConfigService';
 import { useAuth } from '../../context/useAuth';
 import { Modal } from '../common/Modal';
 
-export type LeaderboardBoardId =
-  | 'offsetsLetterToNum'
-  | 'offsetsNumToLetter'
-  | 'atbash'
-  | 'pigpen'
-  | 'galactic';
+export type LeaderboardBoardId = DrillId;
 
 interface LeaderboardTabConfig {
   id: LeaderboardBoardId;
   label: string;
+  cipherId: CipherType;
 }
 
-const LEADERBOARD_TABS: readonly LeaderboardTabConfig[] = [
-  { id: 'offsetsLetterToNum', label: 'Letter → #' },
-  { id: 'offsetsNumToLetter', label: '# → Letter' },
-  { id: 'atbash', label: 'Atbash' },
-  { id: 'pigpen', label: 'Pigpen' },
-  { id: 'galactic', label: 'Galactic' },
-] as const;
+const ALL_IMPLEMENTED_LEADERBOARD_TABS: readonly LeaderboardTabConfig[] = [
+  { id: 'offsetsLetterToNum', label: 'Letter → #', cipherId: 'offsets' },
+  { id: 'offsetsNumToLetter', label: '# → Letter', cipherId: 'offsets' },
+  ...DRILLS.filter(
+    (d) => d.id !== 'offsets' && d.implemented && d.hasFlashcardDrill
+  ).map((d) => ({
+    id: d.id as LeaderboardBoardId,
+    label: d.shortTitle,
+    cipherId: d.id,
+  })),
+];
 
 function resolveBoardId(drillOrMode?: DrillId | OffsetsMode): LeaderboardBoardId {
   if (drillOrMode === 'numToLetter' || drillOrMode === 'offsetsNumToLetter') {
     return 'offsetsNumToLetter';
   }
-  if (drillOrMode === 'atbash') return 'atbash';
-  if (drillOrMode === 'pigpen') return 'pigpen';
-  if (drillOrMode === 'galactic') return 'galactic';
+  if (drillOrMode === 'letterToNum' || drillOrMode === 'offsetsLetterToNum') {
+    return 'offsetsLetterToNum';
+  }
+  if (
+    drillOrMode === 'atbash' ||
+    drillOrMode === 'pigpen' ||
+    drillOrMode === 'galactic' ||
+    drillOrMode === 'tap' ||
+    drillOrMode === 'knights'
+  ) {
+    return drillOrMode;
+  }
   return 'offsetsLetterToNum';
 }
 
@@ -52,11 +75,19 @@ const LeaderboardModalContent: React.FC<LeaderboardModalContentProps> = ({
   onClose,
   initialBoard,
 }) => {
-  const { user } = useAuth();
+  const { user, allowedUser } = useAuth();
+  const isTeacher = allowedUser?.role === 'teacher';
   const [board, setBoard] = useState<LeaderboardBoardId>(initialBoard);
+  const [classroomCiphers, setClassroomCiphers] = useState<GeneralPracticeCiphers>(
+    getGeneralPracticeCiphers
+  );
   const [profiles, setProfiles] = useState<PublicProfile[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    return subscribeCachedClassroomCiphers(setClassroomCiphers);
+  }, []);
 
   // Subscribe once while the modal is open and derive each tab's standings via useMemo
   useEffect(() => {
@@ -73,12 +104,27 @@ const LeaderboardModalContent: React.FC<LeaderboardModalContentProps> = ({
     );
   }, []);
 
-  const entries = useMemo(
-    () => computeLeaderboardEntries(profiles, board),
-    [profiles, board]
+  const visibleTabs = useMemo(
+    () =>
+      ALL_IMPLEMENTED_LEADERBOARD_TABS.filter(
+        (tab) =>
+          tab.cipherId === 'offsets' ||
+          isTeacher ||
+          isCipherEnabledForStudent(tab.cipherId, classroomCiphers)
+      ),
+    [classroomCiphers, isTeacher]
   );
 
-  const localScore = loadDrillScore(board);
+  const activeBoard: LeaderboardBoardId = visibleTabs.some((t) => t.id === board)
+    ? board
+    : 'offsetsLetterToNum';
+
+  const entries = useMemo(
+    () => computeLeaderboardEntries(profiles, activeBoard),
+    [profiles, activeBoard]
+  );
+
+  const localScore = loadDrillScore(activeBoard);
   const userRankIndex = entries.findIndex((e) => e.uid === user?.uid);
   const userRank = userRankIndex !== -1 ? userRankIndex + 1 : null;
   const userEntry = userRankIndex !== -1 ? entries[userRankIndex] : null;
@@ -117,18 +163,34 @@ const LeaderboardModalContent: React.FC<LeaderboardModalContentProps> = ({
       <div className="modal-body leaderboard-modal-body">
         {/* Multi-drill Switcher Tabs */}
         <div className="leaderboard-mode-tabs" role="tablist" aria-label="Select Leaderboard">
-          {LEADERBOARD_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={board === tab.id}
-              className={`leaderboard-tab ${board === tab.id ? 'active' : ''}`}
-              onClick={() => setBoard(tab.id)}
-            >
-              {tab.label}
-            </button>
-          ))}
+          {visibleTabs.map((tab) => {
+            const isHiddenFromStudents =
+              isTeacher &&
+              tab.cipherId !== 'offsets' &&
+              !isCipherEnabledForStudent(tab.cipherId, classroomCiphers);
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={activeBoard === tab.id}
+                className={`leaderboard-tab ${activeBoard === tab.id ? 'active' : ''}`}
+                onClick={() => setBoard(tab.id)}
+                title={
+                  isHiddenFromStudents
+                    ? `${tab.label} (Hidden from students — enable in Settings)`
+                    : undefined
+                }
+              >
+                <span>{tab.label}</span>
+                {isHiddenFromStudents && (
+                  <span className="leaderboard-tab-lock" aria-hidden="true">
+                    🔒
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         {/* User's Personal Standing Card */}

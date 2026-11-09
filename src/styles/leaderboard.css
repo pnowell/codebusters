@@ -42,6 +42,12 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 0.3rem;
+}
+
+.leaderboard-tab-lock {
+  font-size: 0.72rem;
+  line-height: 1;
 }
 
 .leaderboard-tab:hover {
