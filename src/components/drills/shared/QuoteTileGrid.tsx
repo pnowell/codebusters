@@ -101,68 +101,85 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
     }
   };
 
+  const isContinuousStream = cipher === 'tap';
+  const alphaItems = useMemo(
+    () =>
+      chars
+        .map((char, index) => ({ char, index }))
+        .filter((item) => isLetter(item.char)),
+    [chars]
+  );
+
+  const renderTile = ({ char, index }: { char: string; index: number }) => {
+    const isAlpha = isLetter(char);
+    const isActive = !disabled && isAlpha && activeIdx === index;
+    const userVal = userInputs[index] || '';
+    const isCorrect = showEvaluation && isAlpha && userVal === char;
+    const isWrong = showEvaluation && isAlpha && userVal !== char;
+    const isFilled = !showEvaluation && isAlpha && Boolean(userVal);
+
+    const tileClasses = [
+      'char-tile',
+      !isAlpha ? 'punct-tile' : '',
+      isActive ? 'active-tile' : '',
+      isCorrect ? 'correct-tile' : '',
+      isWrong ? 'wrong-tile' : '',
+      isFilled ? 'filled-tile' : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+    return (
+      <div
+        key={index}
+        className={tileClasses}
+        onClick={() => isAlpha && !disabled && focusTile(index)}
+      >
+        <div className="tile-cipher">
+          <CipherGlyph cipher={cipher} char={char} />
+        </div>
+        {isAlpha ? (
+          <input
+            ref={(el) => {
+              inputRefs.current[index] = el;
+            }}
+            type="text"
+            size={1}
+            inputMode="text"
+            autoCapitalize="characters"
+            autoCorrect="off"
+            autoComplete="off"
+            spellCheck="false"
+            enterKeyHint={onEnterSubmit ? 'done' : 'next'}
+            className="tile-native-input"
+            value={userVal}
+            disabled={disabled}
+            onChange={(e) => handleTileChange(index, e.target.value)}
+            onKeyDown={(e) => handleTileKeyDown(index, e)}
+            onFocus={() => !disabled && setActiveIdx(index)}
+            maxLength={2}
+          />
+        ) : (
+          <div className="tile-punct">{char}</div>
+        )}
+      </div>
+    );
+  };
+
   return (
-    <div className="cipher-scroll-panel" ref={scrollPanelRef}>
+    <div
+      className={`cipher-scroll-panel${isContinuousStream ? ' tap-scroll-panel' : ''}`}
+      ref={scrollPanelRef}
+    >
       <div className="quote-content-canvas">
-        <div className="quote-display-grid">
-          {words.map((word, wIdx) => (
-            <div key={wIdx} className="word-cluster">
-              {word.map(({ char, index }) => {
-                const isAlpha = isLetter(char);
-                const isActive = !disabled && isAlpha && activeIdx === index;
-                const userVal = userInputs[index] || '';
-                const isCorrect = showEvaluation && isAlpha && userVal === char;
-                const isWrong = showEvaluation && isAlpha && userVal !== char;
-                const isFilled = !showEvaluation && isAlpha && Boolean(userVal);
-
-                const tileClasses = [
-                  'char-tile',
-                  !isAlpha ? 'punct-tile' : '',
-                  isActive ? 'active-tile' : '',
-                  isCorrect ? 'correct-tile' : '',
-                  isWrong ? 'wrong-tile' : '',
-                  isFilled ? 'filled-tile' : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ');
-
-                return (
-                  <div
-                    key={index}
-                    className={tileClasses}
-                    onClick={() => isAlpha && !disabled && focusTile(index)}
-                  >
-                    <div className="tile-cipher">
-                      <CipherGlyph cipher={cipher} char={char} />
-                    </div>
-                    {isAlpha ? (
-                      <input
-                        ref={(el) => {
-                          inputRefs.current[index] = el;
-                        }}
-                        type="text"
-                        inputMode="text"
-                        autoCapitalize="characters"
-                        autoCorrect="off"
-                        autoComplete="off"
-                        spellCheck="false"
-                        enterKeyHint={onEnterSubmit ? 'done' : 'next'}
-                        className="tile-native-input"
-                        value={userVal}
-                        disabled={disabled}
-                        onChange={(e) => handleTileChange(index, e.target.value)}
-                        onKeyDown={(e) => handleTileKeyDown(index, e)}
-                        onFocus={() => !disabled && setActiveIdx(index)}
-                        maxLength={2}
-                      />
-                    ) : (
-                      <div className="tile-punct">{char}</div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          ))}
+        <div className={`quote-display-grid${isContinuousStream ? ' tap-quote-grid' : ''}`}>
+          {isContinuousStream
+            ? alphaItems.map(renderTile)
+            : words.map((word, wIdx) => (
+                <div key={wIdx} className="word-cluster">
+                  {word.map(renderTile)}
+                </div>
+              ))}
         </div>
 
         <div className="quote-meta-author">— {quote.author}</div>

@@ -49,7 +49,7 @@ export const DRILLS = [
     shortTitle: 'Tap Code',
     menuLabel: 'Tap Code',
     kind: 'lookup',
-    implemented: false,
+    implemented: true,
     defaultEnabled: false,
     hasFlashcardDrill: true,
     hasQuoteWorkspace: true,

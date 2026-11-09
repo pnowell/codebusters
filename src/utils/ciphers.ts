@@ -52,6 +52,45 @@ export function atbashChar(char: string): string {
 }
 
 /**
+ * Standard 5x5 Tap Code grid (C and K share row 1, col 3).
+ * Column 1 (A, F, L, Q, V) serves as the row-anchor shortcut.
+ */
+export const TAP_CODE_GRID: readonly (readonly string[])[] = [
+  ['A', 'B', 'C/K', 'D', 'E'],
+  ['F', 'G', 'H', 'I', 'J'],
+  ['L', 'M', 'N', 'O', 'P'],
+  ['Q', 'R', 'S', 'T', 'U'],
+  ['V', 'W', 'X', 'Y', 'Z'],
+];
+
+/**
+ * Maps an English letter A-Z to its 1-indexed [row, col] Tap Code pair (1..5, 1..5).
+ * Both 'C' and 'K' map to [1, 3]. Returns null for non-letters.
+ */
+export function letterToTapPair(char: string): readonly [number, number] | null {
+  const upper = char.toUpperCase();
+  if (!isLetter(upper)) return null;
+  if (upper === 'K') return [1, 3];
+  const off = letterToOffset(upper);
+  const cellIndex = off > 10 ? off - 1 : off;
+  const row = Math.floor(cellIndex / 5) + 1;
+  const col = (cellIndex % 5) + 1;
+  return [row, col];
+}
+
+/**
+ * Returns true if two letters share the exact same Tap Code representation
+ * (identical letters, or 'C' and 'K' which both map to [1, 3]).
+ */
+export function isTapCodeEquivalentLetter(a: string, b: string): boolean {
+  const ua = a.toUpperCase();
+  const ub = b.toUpperCase();
+  if (!isLetter(ua) || !isLetter(ub)) return false;
+  if (ua === ub) return true;
+  return (ua === 'C' && ub === 'K') || (ua === 'K' && ub === 'C');
+}
+
+/**
  * Evaluate student answer against target plaintext using official SoCal DaVinci scoring:
  * - 0 to 2 errors: Full credit
  * - 3 to 4 errors: Half credit

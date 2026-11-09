@@ -1240,6 +1240,198 @@
   text-shadow: 0 0 22px rgba(56, 189, 248, 0.4);
 }
 
+/* Tap Code 5x5 Reference Grid */
+.tap-ref-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  padding: 0.25rem 0.5rem 0.3rem 0.5rem;
+  overflow-x: auto;
+}
+
+.tap-ref-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-family: var(--font-mono);
+  margin: 0 auto;
+}
+
+.tap-ref-corner {
+  width: 20px;
+}
+
+.tap-ref-axis {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  padding: 0 7px 3px 7px;
+  text-align: center;
+  line-height: 1.1;
+  user-select: none;
+}
+
+.tap-ref-table tbody .tap-ref-axis {
+  padding: 0 8px 0 4px;
+}
+
+.tap-ref-cell {
+  min-width: 40px;
+  height: 22px;
+  padding: 0 6px;
+  text-align: center;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #cbd5e1;
+  background: rgba(15, 23, 42, 0.65);
+  border-right: 1px solid rgba(148, 163, 184, 0.36);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.36);
+  line-height: 1.1;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.tap-ref-table tbody tr:first-child .tap-ref-cell {
+  border-top: 1px solid rgba(148, 163, 184, 0.36);
+}
+
+.tap-ref-cell.tap-ref-first-col {
+  font-weight: 800;
+  color: #f8fafc;
+  background: rgba(148, 163, 184, 0.22);
+  border-left: 1px solid rgba(148, 163, 184, 0.36);
+}
+
+.tap-ref-table tbody tr:first-child .tap-ref-first-col {
+  border-top-left-radius: 6px;
+}
+
+.tap-ref-table tbody tr:first-child .tap-ref-cell:last-child {
+  border-top-right-radius: 6px;
+}
+
+.tap-ref-table tbody tr:last-child .tap-ref-first-col {
+  border-bottom-left-radius: 6px;
+}
+
+.tap-ref-table tbody tr:last-child .tap-ref-cell:last-child {
+  border-bottom-right-radius: 6px;
+}
+
+/* Stacked Flashcard Layout (Tap Code Drill) & Multi-Char C / K Confirmation */
+.workspace-stacked-layout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  width: 100%;
+}
+
+.workspace-stacked-layout .workspace-prompt-side {
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  min-height: 46px;
+  padding: 0.2rem 0;
+}
+
+.workspace-stacked-layout .symbol-glyph-box {
+  min-height: 44px;
+  width: 100%;
+}
+
+.workspace-stacked-layout .user-answer-box-wrapper,
+.user-answer-box-wrapper.is-wide-answer {
+  width: 112px;
+}
+
+.user-answer-box-wrapper.is-correct-confirm,
+.user-answer-box-wrapper.is-correct-confirm:focus-within {
+  border-color: rgba(16, 185, 129, 0.82);
+  border-bottom-color: var(--accent-emerald);
+  background: rgba(16, 185, 129, 0.16);
+  box-shadow: 0 0 14px rgba(16, 185, 129, 0.28);
+}
+
+@keyframes correctConfirmPop {
+  0% {
+    opacity: 0.65;
+    transform: scale(0.92);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.correct-confirm-reveal {
+  position: absolute;
+  inset: -1px -1px -3px -1px;
+  border-radius: 8px;
+  background: #0f2926;
+  border: 1px solid rgba(16, 185, 129, 0.82);
+  border-bottom: 3px solid var(--accent-emerald);
+  box-shadow: 0 0 14px rgba(16, 185, 129, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #34d399;
+  font-size: 1.55rem;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  line-height: 1;
+  pointer-events: none;
+  user-select: none;
+  z-index: 2;
+  animation: correctConfirmPop 0.14s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.user-answer-box-wrapper.is-wide-answer .wrong-correct-reveal {
+  font-size: 1.55rem;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+/* Variable-Width Quote Tiles for Tap Code */
+.cipher-scroll-panel.tap-scroll-panel {
+  overflow-x: hidden;
+}
+
+.cipher-scroll-panel.tap-scroll-panel .quote-content-canvas {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.quote-display-grid.tap-quote-grid {
+  gap: 0.55rem 0.35rem;
+}
+
+.tap-quote-grid .char-tile {
+  width: max-content;
+  min-width: 28px;
+  margin-right: 0;
+  border-radius: 6px;
+}
+
+.tap-quote-grid .char-tile .tile-cipher {
+  width: 100%;
+  min-width: 26px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  overflow: visible;
+}
+
+.tap-quote-grid .tile-native-input {
+  width: 0;
+  min-width: 100%;
+  box-sizing: border-box;
+}
+
 /* Narrow mobile horizontal tuning */
 @media (max-width: 480px) {
   .offset-card {
@@ -1295,6 +1487,26 @@
     max-height: 96px;
   }
 
+  .symbol-drill-ref-box .tap-ref-wrapper {
+    padding: 0.1rem 0.35rem 0.15rem 0.35rem;
+  }
+
+  .symbol-drill-ref-box .tap-ref-axis {
+    font-size: 0.64rem;
+    padding: 0 5px 2px 5px;
+  }
+
+  .symbol-drill-ref-box .tap-ref-table tbody .tap-ref-axis {
+    padding: 0 6px 0 3px;
+  }
+
+  .symbol-drill-ref-box .tap-ref-cell {
+    min-width: 34px;
+    height: 17px;
+    font-size: 0.74rem;
+    padding: 0 4px;
+  }
+
   .offset-card {
     padding: 0.5rem 0.85rem 0.38rem 0.85rem;
   }
@@ -1312,9 +1524,19 @@
     gap: 0.9rem;
   }
 
+  .workspace-stacked-layout {
+    gap: 0.42rem;
+  }
+
   .workspace-prompt-side {
     min-width: 70px;
     height: 60px;
+  }
+
+  .workspace-stacked-layout .workspace-prompt-side,
+  .workspace-stacked-layout .symbol-glyph-box {
+    min-height: 36px;
+    padding: 0.1rem 0;
   }
 
   .symbol-glyph-box {
@@ -1331,6 +1553,11 @@
     height: 48px;
   }
 
+  .workspace-stacked-layout .user-answer-box-wrapper,
+  .user-answer-box-wrapper.is-wide-answer {
+    width: 102px;
+  }
+
   .user-answer-native-input {
     height: 42px;
     font-size: 1.95rem;
@@ -1339,6 +1566,11 @@
   .wrong-correct-reveal,
   .wrong-user-echo {
     font-size: 1.95rem;
+  }
+
+  .correct-confirm-reveal,
+  .user-answer-box-wrapper.is-wide-answer .wrong-correct-reveal {
+    font-size: 1.38rem;
   }
 
   .btn-inline-submit {

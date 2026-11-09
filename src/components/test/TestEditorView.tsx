@@ -62,6 +62,7 @@ const CIPHER_OPTIONS: { id: LookupCipherType; label: string; promptName: string 
   { id: 'atbash', label: 'Atbash', promptName: 'Atbash Cipher' },
   { id: 'pigpen', label: 'Pigpen', promptName: 'Pigpen Cipher' },
   { id: 'galactic', label: 'Galactic', promptName: 'Standard Galactic Alphabet' },
+  { id: 'tap', label: 'Tap Code', promptName: 'Tap Code Cipher' },
 ];
 
 const CATEGORY_SHORT_LABELS: Record<QuoteCategory, string> = {
@@ -397,7 +398,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
 
   // Question CRUD helpers
   const handleAddQuestion = () => {
-    const cycleCiphers: LookupCipherType[] = ['atbash', 'pigpen', 'galactic'];
+    const cycleCiphers = CIPHER_OPTIONS.map((c) => c.id);
     const nextCipher = cycleCiphers[questions.length % cycleCiphers.length];
     const picked = pickRandomCleanLookupQuote(freshQuoteExcludeIds);
     const uid = createClientUid('q', qSeqRef.current);

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { atbashChar } from '../../utils/ciphers';
-import type { WorkoutStepContext } from '../../types';
+import { atbashChar, isTapCodeEquivalentLetter } from '../../utils/ciphers';
+import type { LookupCipherType, WorkoutStepContext } from '../../types';
 import { useSpacedDeck } from '../../hooks/useSpacedDeck';
 import { useVelocityTracker } from '../../hooks/useVelocityTracker';
 import { useFloatingGhosts } from '../../hooks/useFloatingGhosts';
@@ -17,7 +17,7 @@ import { LeaderboardModal } from '../leaderboard/LeaderboardModal';
 import { useAuth } from '../../context/useAuth';
 import { useIsLargeDrillStage } from '../../hooks/useIsLargeDrillStage';
 
-export type SymbolCipherType = 'atbash' | 'pigpen' | 'galactic';
+export type SymbolCipherType = LookupCipherType;
 
 interface SymbolDrillProps {
   cipher: SymbolCipherType;
@@ -25,7 +25,10 @@ interface SymbolDrillProps {
   workoutContext?: WorkoutStepContext;
 }
 
-const CIPHER_INFO = {
+const CIPHER_INFO: Record<
+  SymbolCipherType,
+  { title: string; shortTitle: string; sheetLabel: string }
+> = {
   atbash: {
     title: 'Atbash Cipher',
     shortTitle: 'Atbash',
@@ -41,7 +44,14 @@ const CIPHER_INFO = {
     shortTitle: 'Galactic',
     sheetLabel: 'Galactic Alphabet Table',
   },
-} as const;
+  tap: {
+    title: 'Tap Code Cipher',
+    shortTitle: 'Tap Code',
+    sheetLabel: 'Tap Code Reference Grid',
+  },
+};
+
+const TAP_CK_CONFIRM_MS = 420;
 
 const NON_ANSWER_KEYS = new Set([
   'Shift',
@@ -97,11 +107,28 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
   const [isMasteryOpen, setIsMasteryOpen] = useState<boolean>(false);
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState<boolean>(false);
   const [inputVal, setInputVal] = useState<string>('');
+  const [confirmReveal, setConfirmReveal] = useState<string | null>(null);
   const [totalQuestions, setTotalQuestions] = useState<number>(0);
   const [correctQuestions, setCorrectQuestions] = useState<number>(0);
   const isAnyDialogOpen = isMasteryOpen || isLeaderboardOpen;
 
   const answerInputRef = useRef<HTMLInputElement | null>(null);
+  const isConfirmingRef = useRef<boolean>(false);
+  const confirmTimerRef = useRef<number | null>(null);
+
+  const clearConfirmTimer = useCallback(() => {
+    if (confirmTimerRef.current !== null) {
+      window.clearTimeout(confirmTimerRef.current);
+      confirmTimerRef.current = null;
+    }
+    isConfirmingRef.current = false;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearConfirmTimer();
+    };
+  }, [clearConfirmTimer]);
 
   const focusAnswerInput = useCallback(() => {
     setTimeout(() => {
@@ -116,6 +143,8 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
   }, [currentLetter]);
 
   const handleResetProgress = () => {
+    clearConfirmTimer();
+    setConfirmReveal(null);
     clearWrongLockout();
     resetProgress();
     setIsMasteryOpen(false);
@@ -128,6 +157,9 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
       if (isAnyDialogOpen || document.querySelector('[role="dialog"]')) {
         return;
       }
+      if (isConfirmingRef.current) {
+        return;
+      }
       if (isLockedRef.current) {
         registerBlockedInput();
         return;
@@ -138,25 +170,47 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
 
       setTotalQuestions((prev) => prev + 1);
 
-      const isCorrect = cleanAnswer === currentLetter;
+      const isTapCKPrompt =
+        cipher === 'tap' && (currentLetter === 'C' || currentLetter === 'K');
+      const isCorrect =
+        cipher === 'tap'
+          ? isTapCodeEquivalentLetter(cleanAnswer, currentLetter)
+          : cleanAnswer === currentLetter;
 
       if (isCorrect) {
         setCorrectQuestions((prev) => prev + 1);
         recordHit();
-        recordAttempt(true, true);
-        spawnGhost(
-          cipher === 'atbash'
-            ? `${atbashChar(currentLetter)} ➔ ${currentLetter} ✓`
-            : `${currentLetter} ✓`
-        );
-        setInputVal('');
-        focusAnswerInput();
+
+        if (isTapCKPrompt) {
+          recordAttempt(true, false);
+          spawnGhost('C / K ✓');
+          isConfirmingRef.current = true;
+          setConfirmReveal('C / K');
+          confirmTimerRef.current = window.setTimeout(() => {
+            confirmTimerRef.current = null;
+            isConfirmingRef.current = false;
+            setConfirmReveal(null);
+            setInputVal('');
+            advanceCard();
+            focusAnswerInput();
+          }, TAP_CK_CONFIRM_MS);
+        } else {
+          recordAttempt(true, true);
+          spawnGhost(
+            cipher === 'atbash'
+              ? `${atbashChar(currentLetter)} ➔ ${currentLetter} ✓`
+              : `${currentLetter} ✓`
+          );
+          setInputVal('');
+          focusAnswerInput();
+        }
       } else {
         setInputVal('');
         recordMiss();
         recordAttempt(false, false);
 
-        triggerWrongLockout(cleanAnswer, currentLetter, () => {
+        const expectedLabel = isTapCKPrompt ? 'C / K' : currentLetter;
+        triggerWrongLockout(cleanAnswer, expectedLabel, () => {
           setInputVal('');
           advanceCard();
           focusAnswerInput();
@@ -200,6 +254,13 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
 
       if (e.repeat && (/^[a-zA-Z0-9]$/.test(e.key) || e.key === 'Enter' || e.key === 'Backspace')) {
         e.preventDefault();
+        return;
+      }
+
+      if (isConfirmingRef.current) {
+        if (!NON_ANSWER_KEYS.has(e.key)) {
+          e.preventDefault();
+        }
         return;
       }
 
@@ -318,6 +379,8 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
                   }
                 : undefined
             }
+            layout={cipher === 'tap' ? 'stacked' : 'horizontal'}
+            confirmReveal={confirmReveal}
             isWrong={isWrong}
             wrongAnswer={wrongAnswer}
             correctAnswer={correctAnswer}
@@ -332,6 +395,9 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
             maxLength={1}
             onInputChange={(e) => {
               if (isAnyDialogOpen || document.querySelector('[role="dialog"]')) {
+                return;
+              }
+              if (isConfirmingRef.current) {
                 return;
               }
               if (isLockedRef.current) {
@@ -351,6 +417,12 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
               }
               if (e.repeat && (e.key === 'Enter' || e.key === 'Backspace')) {
                 e.preventDefault();
+                return;
+              }
+              if (isConfirmingRef.current) {
+                if (!NON_ANSWER_KEYS.has(e.key)) {
+                  e.preventDefault();
+                }
                 return;
               }
               if (isLockedRef.current) {
