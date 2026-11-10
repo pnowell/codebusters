@@ -363,6 +363,32 @@
   border-radius: 999px;
 }
 
+.editor-questions-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.editor-btn-suggest-pts {
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.35rem 0.72rem;
+  border-color: rgba(168, 85, 247, 0.42);
+  color: #e9d5ff;
+  background: rgba(168, 85, 247, 0.12);
+}
+
+.editor-btn-suggest-pts:hover:not(:disabled) {
+  background: rgba(168, 85, 247, 0.24);
+  border-color: rgba(192, 132, 252, 0.65);
+}
+
+.editor-btn-suggest-pts:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .editor-btn-add-q {
   font-size: 0.8rem;
   font-weight: 700;
@@ -465,7 +491,7 @@
 }
 
 .editor-pts-input {
-  width: 72px;
+  width: 68px;
   background: rgba(15, 23, 42, 0.75);
   border: 1px solid rgba(148, 163, 184, 0.28);
   border-radius: 6px;
@@ -474,6 +500,26 @@
   font-family: var(--font-mono);
   font-size: 0.82rem;
   font-weight: 700;
+}
+
+.editor-pts-suggest-chip {
+  background: rgba(168, 85, 247, 0.14);
+  border: 1px solid rgba(168, 85, 247, 0.44);
+  border-radius: 6px;
+  padding: 0.22rem 0.48rem;
+  font-family: var(--font-mono);
+  font-size: 0.73rem;
+  font-weight: 700;
+  color: #e9d5ff;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  white-space: nowrap;
+}
+
+.editor-pts-suggest-chip:hover {
+  background: rgba(168, 85, 247, 0.28);
+  border-color: rgba(192, 132, 252, 0.7);
+  color: #ffffff;
 }
 
 .editor-tb-toggle {

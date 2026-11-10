@@ -13,7 +13,6 @@ import type {
 import type { TestEditorTab } from '../../utils/routing';
 import {
   getQuoteById,
-  MAX_LOOKUP_LENGTH,
   pickRandomCleanLookupQuote,
 } from '../../data/quotes';
 import {
@@ -33,6 +32,11 @@ import {
   saveTestPacket,
   subscribeAttemptsForTest,
 } from '../../services/testService';
+import {
+  getQuestionPointGuidance,
+  isPointsMatchingGuidance,
+  suggestPointsForPacket,
+} from '../../utils/pointGuidance';
 import { getCohortAttemptId, normalizeUidList } from '../../utils/testSync';
 import { Modal } from '../common/Modal';
 import { QuoteTileGrid } from '../drills/shared/QuoteTileGrid';
@@ -43,6 +47,7 @@ interface EditableQuestion {
   cipher: LookupCipherType;
   quoteId: number;
   points: number;
+  isPointsManual: boolean;
   isTiebreaker: boolean;
   description: string;
 }
@@ -124,18 +129,22 @@ function buildStarterQuestions(existingTests: readonly TestPacket[]): EditableQu
     }
   }
   const ciphers: LookupCipherType[] = ['atbash', 'pigpen', 'galactic'];
-  return ciphers.map((cipher, idx) => {
+  const pickedItems = ciphers.map((cipher) => {
     const picked = pickRandomCleanLookupQuote(used);
     used.add(picked.id);
-    return {
-      uid: createClientUid('q', idx + 1),
-      cipher,
-      quoteId: picked.id,
-      points: 150,
-      isTiebreaker: false,
-      description: buildAutoPrompt(cipher, false, picked.author),
-    };
+    return { cipher, quote: picked };
   });
+  const suggestedScores = suggestPointsForPacket(pickedItems);
+
+  return pickedItems.map(({ cipher, quote }, idx) => ({
+    uid: createClientUid('q', idx + 1),
+    cipher,
+    quoteId: quote.id,
+    points: suggestedScores[idx],
+    isPointsManual: false,
+    isTiebreaker: false,
+    description: buildAutoPrompt(cipher, false, quote.author),
+  }));
 }
 
 function serializeDraftSnapshot(params: {
@@ -201,14 +210,21 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
   );
   const [questions, setQuestions] = useState<EditableQuestion[]>(() => {
     if (initialPacket && initialPacket.questions.length > 0) {
-      return initialPacket.questions.map((q, idx) => ({
-        uid: createClientUid('q', idx + 1),
-        cipher: q.cipher,
-        quoteId: q.quoteId,
-        points: q.points,
-        isTiebreaker: Boolean(q.isTiebreaker),
-        description: q.description ?? '',
-      }));
+      return initialPacket.questions.map((q, idx) => {
+        const quote = getQuoteById(q.quoteId);
+        const guidance = getQuestionPointGuidance(q.cipher, quote, {
+          questionIndex: idx,
+        });
+        return {
+          uid: createClientUid('q', idx + 1),
+          cipher: q.cipher,
+          quoteId: q.quoteId,
+          points: q.points,
+          isPointsManual: !isPointsMatchingGuidance(q.points, guidance),
+          isTiebreaker: Boolean(q.isTiebreaker),
+          description: q.description ?? '',
+        };
+      });
     }
     return buildStarterQuestions(existingTests);
   });
@@ -477,7 +493,56 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
     [questions]
   );
 
+  const duplicatePointValuesInDraft = useMemo(() => {
+    const counts = new Map<number, number>();
+    questions.forEach((q) => {
+      if (q.points > 0) {
+        counts.set(q.points, (counts.get(q.points) ?? 0) + 1);
+      }
+    });
+    const dupes = new Set<number>();
+    counts.forEach((count, pts) => {
+      if (count > 1) dupes.add(pts);
+    });
+    return dupes;
+  }, [questions]);
+
+  const packetSuggestedPoints = useMemo(
+    () =>
+      suggestPointsForPacket(
+        questions.map((q) => ({
+          cipher: q.cipher,
+          quote: getQuoteById(q.quoteId),
+        }))
+      ),
+    [questions]
+  );
+
+  const areAllPointsSuggested = useMemo(
+    () =>
+      questions.length > 0 &&
+      questions.every((q, idx) => q.points === packetSuggestedPoints[idx]),
+    [questions, packetSuggestedPoints]
+  );
+
   // Question CRUD helpers (guarded by isContentLocked)
+  const handleSuggestAllPoints = () => {
+    if (isContentLocked) return;
+    setQuestions((prev) => {
+      const suggested = suggestPointsForPacket(
+        prev.map((q) => ({
+          cipher: q.cipher,
+          quote: getQuoteById(q.quoteId),
+        }))
+      );
+      return prev.map((q, idx) => ({
+        ...q,
+        points: suggested[idx],
+        isPointsManual: false,
+      }));
+    });
+  };
+
   const handleAddQuestion = () => {
     if (isContentLocked) return;
     const cycleCiphers = CIPHER_OPTIONS.map((c) => c.id);
@@ -486,17 +551,25 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
     const uid = createClientUid('q', qSeqRef.current);
     qSeqRef.current += 1;
 
-    setQuestions((prev) => [
-      ...prev,
-      {
-        uid,
-        cipher: nextCipher,
-        quoteId: picked.id,
-        points: 150,
-        isTiebreaker: false,
-        description: buildAutoPrompt(nextCipher, false, picked.author),
-      },
-    ]);
+    setQuestions((prev) => {
+      const otherPoints = prev.map((x) => x.points);
+      const guidance = getQuestionPointGuidance(nextCipher, picked, {
+        otherPoints,
+        questionIndex: prev.length,
+      });
+      return [
+        ...prev,
+        {
+          uid,
+          cipher: nextCipher,
+          quoteId: picked.id,
+          points: guidance.suggested,
+          isPointsManual: false,
+          isTiebreaker: false,
+          description: buildAutoPrompt(nextCipher, false, picked.author),
+        },
+      ];
+    });
   };
 
   const handleUpdateQuestion = (
@@ -544,8 +617,21 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
     const shouldRefreshPrompt =
       !question.description.trim() || question.description.trim() === prevDefault;
 
+    const qIdx = Math.max(
+      0,
+      questions.findIndex((q) => q.uid === question.uid)
+    );
+    const otherPoints = questions
+      .filter((q) => q.uid !== question.uid)
+      .map((q) => q.points);
+    const nextGuidance = getQuestionPointGuidance(question.cipher, picked, {
+      otherPoints,
+      questionIndex: qIdx,
+    });
+
     handleUpdateQuestion(question.uid, {
       quoteId: picked.id,
+      ...(!question.isPointsManual ? { points: nextGuidance.suggested } : {}),
       ...(shouldRefreshPrompt
         ? {
             description: buildAutoPrompt(
@@ -560,7 +646,8 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
 
   const handleSelectQuoteFromPicker = (picked: Quote) => {
     if (isContentLocked || !pickerQuestionUid) return;
-    const targetQ = questions.find((q) => q.uid === pickerQuestionUid);
+    const targetIdx = questions.findIndex((q) => q.uid === pickerQuestionUid);
+    const targetQ = targetIdx >= 0 ? questions[targetIdx] : undefined;
     if (targetQ) {
       const prevQuote = getQuoteById(targetQ.quoteId);
       const prevDefault = buildAutoPrompt(
@@ -571,8 +658,17 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
       const shouldRefreshPrompt =
         !targetQ.description.trim() || targetQ.description.trim() === prevDefault;
 
+      const otherPoints = questions
+        .filter((q) => q.uid !== targetQ.uid)
+        .map((q) => q.points);
+      const nextGuidance = getQuestionPointGuidance(targetQ.cipher, picked, {
+        otherPoints,
+        questionIndex: targetIdx,
+      });
+
       handleUpdateQuestion(targetQ.uid, {
         quoteId: picked.id,
+        ...(!targetQ.isPointsManual ? { points: nextGuidance.suggested } : {}),
         ...(shouldRefreshPrompt
           ? {
               description: buildAutoPrompt(
@@ -1236,13 +1332,28 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
               </div>
 
               {!isContentLocked && (
-                <button
-                  type="button"
-                  className="btn-simple editor-btn-add-q"
-                  onClick={handleAddQuestion}
-                >
-                  + Add Question
-                </button>
+                <div className="editor-questions-toolbar-actions">
+                  <button
+                    type="button"
+                    className="btn-simple editor-btn-suggest-pts"
+                    disabled={areAllPointsSuggested}
+                    onClick={handleSuggestAllPoints}
+                    title={
+                      areAllPointsSuggested
+                        ? 'All questions already use their suggested tie-balanced point values'
+                        : 'Auto-assign recommended, tie-reducing point values across all questions'
+                    }
+                  >
+                    ✨ Suggest All Points
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-simple editor-btn-add-q"
+                    onClick={handleAddQuestion}
+                  >
+                    + Add Question
+                  </button>
+                </div>
               )}
             </div>
 
@@ -1256,6 +1367,21 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                 const finishedStudents = finishedByQuotesMap.get(q.quoteId);
                 const isPreviewOpen = expandedPreviewUids.has(q.uid);
                 const cat: QuoteCategory = quote?.category ?? 'general';
+                const cipherLabel =
+                  CIPHER_OPTIONS.find((c) => c.id === q.cipher)?.label ?? 'Cipher';
+                const otherPoints = questions
+                  .filter((_, i) => i !== idx)
+                  .map((x) => x.points);
+                const guidance = getQuestionPointGuidance(q.cipher, quote, {
+                  otherPoints,
+                  questionIndex: idx,
+                });
+                const hasDuplicatePoints = duplicatePointValuesInDraft.has(q.points);
+                const isGuidanceMatch = isPointsMatchingGuidance(q.points, guidance);
+                const showSuggestChip =
+                  !isContentLocked &&
+                  guidance.suggested !== q.points &&
+                  (!isGuidanceMatch || hasDuplicatePoints);
 
                 return (
                   <article
@@ -1291,8 +1417,19 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                                 const shouldRefreshPrompt =
                                   !q.description.trim() ||
                                   q.description.trim() === prevDefault;
+                                const nextGuidance = getQuestionPointGuidance(
+                                  opt.id,
+                                  quote,
+                                  {
+                                    otherPoints,
+                                    questionIndex: idx,
+                                  }
+                                );
                                 handleUpdateQuestion(q.uid, {
                                   cipher: opt.id,
+                                  ...(!q.isPointsManual
+                                    ? { points: nextGuidance.suggested }
+                                    : {}),
                                   ...(shouldRefreshPrompt
                                     ? {
                                         description: buildAutoPrompt(
@@ -1312,24 +1449,52 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                       </div>
 
                       <div className="editor-q-header-right">
-                        <label className="editor-pts-label">
+                        <label
+                          className="editor-pts-label"
+                          title={guidance.tooltipSummary}
+                        >
                           <span>Pts</span>
                           <input
                             type="number"
                             min={0}
                             max={5000}
-                            step={25}
+                            step={1}
                             disabled={isContentLocked}
                             className="editor-pts-input"
                             value={q.points}
                             onChange={(e) =>
                               handleUpdateQuestion(q.uid, {
-                                points: Math.max(0, Number(e.target.value) || 0),
+                                points: Math.max(
+                                  0,
+                                  Math.min(5000, Math.round(Number(e.target.value) || 0))
+                                ),
+                                isPointsManual: true,
                               })
                             }
                             aria-label={`Question ${idx + 1} points`}
                           />
                         </label>
+
+                        {showSuggestChip && (
+                          <button
+                            type="button"
+                            className="editor-pts-suggest-chip"
+                            onClick={() =>
+                              handleUpdateQuestion(q.uid, {
+                                points: guidance.suggested,
+                                isPointsManual: false,
+                              })
+                            }
+                            title={
+                              hasDuplicatePoints && isGuidanceMatch
+                                ? `Duplicate score (${q.points} pts) increases tie risk — click to set ${guidance.suggested} pts (${guidance.tooltipSummary})`
+                                : `Apply suggested score: ${guidance.suggested} pts (${guidance.tooltipSummary})`
+                            }
+                            aria-label={`Apply suggested ${guidance.suggested} points for question ${idx + 1}`}
+                          >
+                            ✨ ~{guidance.suggested}
+                          </button>
+                        )}
 
                         <button
                           type="button"
@@ -1418,10 +1583,18 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                               </span>
                               <span
                                 className={`qb-stat-pill ${
-                                  quote.length > MAX_LOOKUP_LENGTH
-                                    ? 'qb-stat-long'
-                                    : ''
+                                  guidance.lengthWarning ? 'qb-stat-long' : ''
                                 }`}
+                                title={
+                                  guidance.lengthWarning ??
+                                  `Ciphered A–Z letters (recommended ${guidance.recommendedMinLetters}–${guidance.recommendedMaxLetters} letters for ${cipherLabel})`
+                                }
+                              >
+                                {guidance.letterCount} letters
+                              </span>
+                              <span
+                                className="qb-stat-pill"
+                                title="Total string length including spaces and punctuation"
                               >
                                 {quote.length} chars
                               </span>
