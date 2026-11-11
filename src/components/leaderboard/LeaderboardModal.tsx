@@ -86,6 +86,9 @@ const LeaderboardModalContent: React.FC<LeaderboardModalContentProps> = ({
 }) => {
   const { user, allowedUser } = useAuth();
   const isTeacher = allowedUser?.role === 'teacher';
+  const isBetaTester =
+    allowedUser?.role === 'student' && Boolean(allowedUser?.betaTester);
+  const hasPreviewAccess = isTeacher || isBetaTester;
   const [board, setBoard] = useState<LeaderboardBoardId>(initialBoard);
   const [classroomCiphers, setClassroomCiphers] = useState<GeneralPracticeCiphers>(
     getGeneralPracticeCiphers
@@ -119,11 +122,11 @@ const LeaderboardModalContent: React.FC<LeaderboardModalContentProps> = ({
         row.filter(
           (tab) =>
             tab.cipherId === 'offsets' ||
-            isTeacher ||
+            hasPreviewAccess ||
             isCipherEnabledForStudent(tab.cipherId, classroomCiphers)
         )
       ).filter((row) => row.length > 0),
-    [classroomCiphers, isTeacher]
+    [classroomCiphers, hasPreviewAccess]
   );
 
   const visibleTabs = useMemo(() => visibleTabRows.flat(), [visibleTabRows]);
@@ -179,8 +182,8 @@ const LeaderboardModalContent: React.FC<LeaderboardModalContentProps> = ({
           {visibleTabRows.map((row, rowIdx) => (
             <div key={rowIdx} className="leaderboard-tab-row">
               {row.map((tab) => {
-                const isHiddenFromStudents =
-                  isTeacher &&
+                const isUnpublished =
+                  hasPreviewAccess &&
                   tab.cipherId !== 'offsets' &&
                   !isCipherEnabledForStudent(tab.cipherId, classroomCiphers);
                 return (
@@ -192,15 +195,17 @@ const LeaderboardModalContent: React.FC<LeaderboardModalContentProps> = ({
                     className={`leaderboard-tab ${activeBoard === tab.id ? 'active' : ''}`}
                     onClick={() => setBoard(tab.id)}
                     title={
-                      isHiddenFromStudents
-                        ? `${tab.label} (Hidden from students — enable in Settings)`
+                      isUnpublished
+                        ? isTeacher
+                          ? `${tab.label} (Beta preview — enable for all students in Settings)`
+                          : `${tab.label} (Beta preview — hidden from other students)`
                         : undefined
                     }
                   >
                     <span>{tab.label}</span>
-                    {isHiddenFromStudents && (
-                      <span className="leaderboard-tab-lock" aria-hidden="true">
-                        🔒
+                    {isUnpublished && (
+                      <span className="leaderboard-tab-beta" aria-hidden="true">
+                        β
                       </span>
                     )}
                   </button>

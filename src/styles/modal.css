@@ -107,6 +107,29 @@
 }
 
 /* Options Modal Form & Account Section */
+.modal-surface.options-modal-dialog {
+  display: flex;
+  flex-direction: column;
+  max-height: min(90dvh, 840px);
+  overflow: hidden;
+}
+
+.options-modal-dialog .modal-header,
+.options-modal-dialog .modal-footer {
+  flex-shrink: 0;
+}
+
+.options-modal-dialog .modal-footer {
+  margin-top: 0.9rem;
+}
+
+.options-modal-dialog .modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
 .form-group {
   margin-bottom: 1.1rem;
 }
@@ -159,6 +182,105 @@
   cursor: pointer;
 }
 
+.options-helper-note {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin-bottom: 0.5rem;
+}
+
+.beta-testers-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.65rem 0.75rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.beta-testers-pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 1.65rem;
+}
+
+.beta-testers-empty {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.beta-tester-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.24rem 0.35rem 0.24rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(251, 191, 36, 0.14);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  color: #f8fafc;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.beta-tester-pill-symbol {
+  color: #fbbf24;
+  font-weight: 800;
+}
+
+.beta-tester-remove-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.45);
+  color: #e2e8f0;
+  font-size: 0.7rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.beta-tester-remove-btn:hover {
+  background: rgba(244, 63, 94, 0.35);
+  color: #ffffff;
+}
+
+.beta-testers-select {
+  width: 100%;
+  padding: 0.45rem 0.65rem;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 6px;
+  color: var(--text-main);
+  font-size: 0.85rem;
+  font-family: var(--font-sans);
+  cursor: pointer;
+}
+
+.beta-testers-select:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+}
+
+.options-save-error {
+  padding: 0.5rem 0.7rem;
+  border-radius: 7px;
+  background: rgba(244, 63, 94, 0.14);
+  border: 1px solid rgba(244, 63, 94, 0.42);
+  color: #fda4af;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
 .options-account-section {
   margin-bottom: 1.25rem;
   padding-bottom: 1rem;
@@ -199,6 +321,11 @@
   font-size: 0.75rem;
   color: #38bdf8;
   font-weight: 600;
+}
+
+.account-role-beta {
+  color: #fbbf24;
+  font-weight: 700;
 }
 
 .account-login-card {

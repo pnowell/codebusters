@@ -120,16 +120,16 @@
   gap: 0.75rem;
 }
 
-.menu-teacher-hidden-badge {
+.menu-beta-badge {
   flex-shrink: 0;
   font-size: 0.72rem;
   font-weight: 700;
-  color: #fbbf24;
-  background: rgba(251, 191, 36, 0.14);
-  border: 1px solid rgba(251, 191, 36, 0.35);
   border-radius: 999px;
   padding: 0.14rem 0.52rem;
   letter-spacing: 0.02em;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.14);
+  border: 1px solid rgba(251, 191, 36, 0.35);
 }
 
 .menu-drill-group {

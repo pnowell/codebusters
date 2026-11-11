@@ -182,6 +182,10 @@ function initScreen(): ActiveScreen {
 export const App: React.FC = () => {
   const { user, allowedUser, isAllowed, isLoading: isAuthLoading } = useAuth();
   const isTeacher = Boolean(isAllowed && allowedUser?.role === 'teacher');
+  const isBetaTester = Boolean(
+    isAllowed && allowedUser?.role === 'student' && allowedUser?.betaTester
+  );
+  const hasPreviewAccess = isTeacher || isBetaTester;
   const currentUid = user?.uid || 'student';
   const signedInUid = isAllowed && user?.uid ? user.uid : null;
 
@@ -270,8 +274,8 @@ export const App: React.FC = () => {
   }, []);
 
   const activeGeneralPracticeCiphers = useMemo(
-    () => generalPracticeCiphersToList(generalPracticeCiphers, isTeacher),
-    [generalPracticeCiphers, isTeacher]
+    () => generalPracticeCiphersToList(generalPracticeCiphers, hasPreviewAccess),
+    [generalPracticeCiphers, hasPreviewAccess]
   );
 
   const studentEnabledCiphersKey = useMemo(
@@ -471,7 +475,7 @@ export const App: React.FC = () => {
         screen.drill,
         screen.section,
         generalPracticeCiphers,
-        isTeacher
+        hasPreviewAccess
       )
     ) {
       queueMicrotask(() => {
@@ -486,7 +490,7 @@ export const App: React.FC = () => {
     isDrillStructurallyValid,
     isClassroomConfigReady,
     generalPracticeCiphers,
-    isTeacher,
+    hasPreviewAccess,
     cancelWorkout,
   ]);
 
@@ -1262,7 +1266,7 @@ export const App: React.FC = () => {
     screen.kind === 'drill' &&
     isDrillStructurallyValid &&
     (screen.drill === 'offsets' ||
-      isTeacher ||
+      hasPreviewAccess ||
       (isClassroomConfigReady &&
         isCipherAccessible(
           screen.drill,
@@ -1278,6 +1282,7 @@ export const App: React.FC = () => {
           studentName={settings.studentName}
           isAllowed={isAllowed}
           isTeacher={isTeacher}
+          isBetaTester={isBetaTester}
           generalPracticeCiphers={generalPracticeCiphers}
           onStartWorkout={() => startWorkout(1)}
           onOpenTestsList={handleOpenTestsList}

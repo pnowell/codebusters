@@ -60,6 +60,7 @@ export interface AllowedUser {
   email: string;
   displayName: string;
   role: 'student' | 'teacher';
+  betaTester?: boolean;
   addedAt?: unknown;
   active: boolean;
 }

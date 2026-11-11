@@ -63,15 +63,16 @@ export function sanitizeGeneralPracticeCiphers(raw: unknown): GeneralPracticeCip
 /**
  * Converts the global boolean map into the active `CipherType[]` list consumed by
  * `useWorkoutCircuit` and `workoutWeights` (`'offsets'` is always included).
- * When `isTeacher` is true, all implemented ciphers are included regardless of student checkboxes.
+ * When `hasPreviewAccess` is true (teachers or beta testers), all implemented ciphers
+ * are included regardless of general student checkboxes.
  */
 export function generalPracticeCiphersToList(
   flags: GeneralPracticeCiphers,
-  isTeacher = false
+  hasPreviewAccess = false
 ): CipherType[] {
   const active: CipherType[] = ['offsets'];
   for (const drill of GENERAL_PRACTICE_DRILLS) {
-    if (isTeacher || isCipherEnabledForStudent(drill.id, flags)) {
+    if (hasPreviewAccess || isCipherEnabledForStudent(drill.id, flags)) {
       active.push(drill.id);
     }
   }

@@ -167,20 +167,21 @@ export function isCipherEnabledForStudent(
 }
 
 /**
- * Returns whether a user with the given role can access a specific drill or cipher workspace.
- * Teachers can access all implemented features regardless of student visibility checkboxes.
+ * Returns whether a user can access a specific drill or cipher workspace.
+ * Teachers and beta-tester students (`hasPreviewAccess`) can access all implemented
+ * features regardless of general student visibility checkboxes.
  */
 export function isCipherAccessible(
   id: CipherType,
   section: 'memorize' | 'cipher',
   flags: Partial<Record<CipherType, boolean>>,
-  isTeacher: boolean
+  hasPreviewAccess: boolean
 ): boolean {
   const drill = getDrill(id);
   if (!drill.implemented) return false;
   if (section === 'memorize' && !drill.hasFlashcardDrill) return false;
   if (section === 'cipher' && !drill.hasQuoteWorkspace) return false;
-  return isTeacher || isCipherEnabledForStudent(id, flags);
+  return hasPreviewAccess || isCipherEnabledForStudent(id, flags);
 }
 
 /**

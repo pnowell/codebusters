@@ -5,7 +5,7 @@ import {
   type User,
   type Unsubscribe,
 } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db, googleProvider, isFirebaseConfigured } from './firebase';
 import type { AllowedUser } from '../types';
 
@@ -21,6 +21,22 @@ export interface AuthResult {
  * Normalizes email address to lower case for case-insensitive Firestore allowlist keys
  */
 const normalizeEmail = (email: string): string => email.trim().toLowerCase();
+
+function parseAllowlistDoc(
+  normalizedEmail: string,
+  data: Record<string, unknown>
+): AllowedUser | null {
+  if (data.active === false) return null;
+  const rawName = typeof data.displayName === 'string' ? data.displayName.trim() : '';
+  return {
+    email: normalizedEmail,
+    displayName: rawName || 'Decoder',
+    role: data.role === 'teacher' ? 'teacher' : 'student',
+    betaTester: data.betaTester === true,
+    addedAt: data.addedAt,
+    active: true,
+  };
+}
 
 type AllowlistLookupResult =
   | { status: 'allowed'; allowedUser: AllowedUser }
@@ -38,18 +54,12 @@ async function checkAllowlist(email: string): Promise<AllowlistLookupResult> {
     const snap = await getDoc(docRef);
     if (!snap.exists()) return { status: 'denied' };
 
-    const data = snap.data();
-    if (data.active === false) return { status: 'denied' };
+    const parsed = parseAllowlistDoc(normalized, snap.data() as Record<string, unknown>);
+    if (!parsed) return { status: 'denied' };
 
     return {
       status: 'allowed',
-      allowedUser: {
-        email: normalized,
-        displayName: data.displayName || 'Decoder',
-        role: data.role === 'teacher' ? 'teacher' : 'student',
-        addedAt: data.addedAt,
-        active: true,
-      },
+      allowedUser: parsed,
     };
   } catch (err) {
     const code =
@@ -126,7 +136,7 @@ export async function signInWithGoogle(): Promise<AuthResult> {
     } else if (typeof errObj?.message === 'string' && !errObj.message.endsWith(`(${code}).`)) {
       detail = errObj.message;
     } else if (customData?.originalError) {
-      detail = String(customData.originalError);
+      detail = String(customData?.originalError);
     }
 
     const errorMsg = detail ? `${code || 'auth/error'} (${detail})` : code || String(err);
@@ -148,7 +158,8 @@ export async function signOutUser(): Promise<void> {
 }
 
 /**
- * Subscribes to Firebase Auth state changes and verifies allowlist status
+ * Subscribes to Firebase Auth state changes and live `/allowed_users/{normalizedEmail}` updates
+ * so role, active status, and beta-tester membership update in real time.
  */
 export function subscribeToAuthState(
   callback: (user: User | null, allowedUser: AllowedUser | null) => void
@@ -158,25 +169,65 @@ export function subscribeToAuthState(
     return () => {};
   }
 
-  return onAuthStateChanged(auth, async (user) => {
-    if (!user || !user.email) {
+  let allowlistUnsub: Unsubscribe | null = null;
+
+  const clearAllowlistListener = () => {
+    if (allowlistUnsub) {
+      allowlistUnsub();
+      allowlistUnsub = null;
+    }
+  };
+
+  const authUnsub = onAuthStateChanged(auth, (user) => {
+    clearAllowlistListener();
+
+    if (!user || !user.email || !db) {
       callback(null, null);
       return;
     }
 
-    const lookup = await checkAllowlist(user.email);
-    if (lookup.status === 'denied') {
-      // User was genuinely removed from allowlist: sign out
-      await signOut(auth!);
-      callback(null, null);
-      return;
-    }
-    if (lookup.status === 'error') {
-      // Fail closed while offline without wiping the persisted Firebase Auth session
-      callback(null, null);
-      return;
-    }
+    const normalized = normalizeEmail(user.email);
+    const docRef = doc(db, 'allowed_users', normalized);
 
-    callback(user, lookup.allowedUser);
+    allowlistUnsub = onSnapshot(
+      docRef,
+      (snap) => {
+        if (!snap.exists()) {
+          clearAllowlistListener();
+          void signOut(auth!).finally(() => {
+            callback(null, null);
+          });
+          return;
+        }
+
+        const parsed = parseAllowlistDoc(
+          normalized,
+          snap.data() as Record<string, unknown>
+        );
+        if (!parsed) {
+          clearAllowlistListener();
+          void signOut(auth!).finally(() => {
+            callback(null, null);
+          });
+          return;
+        }
+
+        callback(user, parsed);
+      },
+      (err) => {
+        const code =
+          err && typeof err === 'object' && 'code' in err && typeof err.code === 'string'
+            ? err.code
+            : 'unknown';
+        console.error('[Auth] Error listening to allowlist doc:', code);
+        // Fail closed while offline without wiping the persisted Firebase Auth session
+        callback(null, null);
+      }
+    );
   });
+
+  return () => {
+    clearAllowlistListener();
+    authUnsub();
+  };
 }

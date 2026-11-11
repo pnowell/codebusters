@@ -23,6 +23,7 @@ interface MainMenuProps {
   studentName: string;
   isAllowed: boolean;
   isTeacher: boolean;
+  isBetaTester?: boolean;
   generalPracticeCiphers: GeneralPracticeCiphers;
   onStartWorkout: () => void;
   onOpenTestsList: () => void;
@@ -39,6 +40,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   studentName,
   isAllowed,
   isTeacher,
+  isBetaTester = false,
   generalPracticeCiphers,
   onStartWorkout,
   onOpenTestsList,
@@ -46,10 +48,14 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   onOpenOptions,
   onSelectDrill,
 }) => {
+  const hasPreviewAccess = isTeacher || isBetaTester;
+
   const isLetterMathVisible =
-    isTeacher || isCipherEnabledForStudent('letterMath', generalPracticeCiphers);
-  const isLetterMathHiddenFromStudents =
-    isTeacher && !isCipherEnabledForStudent('letterMath', generalPracticeCiphers);
+    hasPreviewAccess ||
+    isCipherEnabledForStudent('letterMath', generalPracticeCiphers);
+  const isLetterMathUnpublished =
+    hasPreviewAccess &&
+    !isCipherEnabledForStudent('letterMath', generalPracticeCiphers);
 
   const visibleFlashcardDrills = DRILLS.filter(
     (d) =>
@@ -57,14 +63,14 @@ export const MainMenu: React.FC<MainMenuProps> = ({
       d.id !== 'letterMath' &&
       d.implemented &&
       d.hasFlashcardDrill &&
-      (isTeacher || isCipherEnabledForStudent(d.id, generalPracticeCiphers))
+      (hasPreviewAccess || isCipherEnabledForStudent(d.id, generalPracticeCiphers))
   );
 
   const visibleQuoteCiphers = DRILLS.filter(
     (d) =>
       d.implemented &&
       d.hasQuoteWorkspace &&
-      (isTeacher || isCipherEnabledForStudent(d.id, generalPracticeCiphers))
+      (hasPreviewAccess || isCipherEnabledForStudent(d.id, generalPracticeCiphers))
   );
 
   const comingSoonDrills = DRILLS.filter(
@@ -72,8 +78,27 @@ export const MainMenu: React.FC<MainMenuProps> = ({
       d.id !== 'offsets' &&
       d.id !== 'letterMath' &&
       (!d.implemented ||
-        (!isTeacher && !isCipherEnabledForStudent(d.id, generalPracticeCiphers)))
+        (!hasPreviewAccess &&
+          !isCipherEnabledForStudent(d.id, generalPracticeCiphers)))
   );
+
+  const renderPreviewStatusBadge = (
+    teacherTitle: string = 'Beta preview — enable for all students in Settings'
+  ) => {
+    if (!hasPreviewAccess) return null;
+    return (
+      <span
+        className="menu-beta-badge"
+        title={
+          isTeacher
+            ? teacherTitle
+            : 'Beta preview — hidden from other students'
+        }
+      >
+        βeta
+      </span>
+    );
+  };
 
   return (
     <>
@@ -187,14 +212,10 @@ export const MainMenu: React.FC<MainMenuProps> = ({
                 >
                   Letter Math
                 </span>
-                {isLetterMathHiddenFromStudents && (
-                  <span
-                    className="menu-teacher-hidden-badge"
-                    title="Hidden from students — enable Caesar Cipher in Settings"
-                  >
-                    🔒 Hidden
-                  </span>
-                )}
+                {isLetterMathUnpublished &&
+                  renderPreviewStatusBadge(
+                    'Beta preview — enable Caesar (±3) & Letter Math in Settings'
+                  )}
               </div>
 
               <div
@@ -239,24 +260,18 @@ export const MainMenu: React.FC<MainMenuProps> = ({
           )}
 
           {visibleFlashcardDrills.map((d) => {
-            const isHiddenFromStudents =
-              isTeacher && !isCipherEnabledForStudent(d.id, generalPracticeCiphers);
+            const isUnpublished =
+              hasPreviewAccess &&
+              !isCipherEnabledForStudent(d.id, generalPracticeCiphers);
             return (
               <button
                 key={d.id}
                 type="button"
-                className={`menu-drill-btn${isHiddenFromStudents ? ' menu-drill-btn-with-badge' : ''}`}
+                className={`menu-drill-btn${isUnpublished ? ' menu-drill-btn-with-badge' : ''}`}
                 onClick={() => onSelectDrill(d.id, 'memorize')}
               >
                 <span>{d.menuLabel}</span>
-                {isHiddenFromStudents && (
-                  <span
-                    className="menu-teacher-hidden-badge"
-                    title="Hidden from students — enable in Settings"
-                  >
-                    🔒 Hidden
-                  </span>
-                )}
+                {isUnpublished && renderPreviewStatusBadge()}
               </button>
             );
           })}
@@ -271,8 +286,9 @@ export const MainMenu: React.FC<MainMenuProps> = ({
 
             <div className="menu-buttons-list">
               {visibleQuoteCiphers.map((d) => {
-                const isHiddenFromStudents =
-                  isTeacher && !isCipherEnabledForStudent(d.id, generalPracticeCiphers);
+                const isUnpublished =
+                  hasPreviewAccess &&
+                  !isCipherEnabledForStudent(d.id, generalPracticeCiphers);
 
                 if (d.id === 'caesar') {
                   return (
@@ -289,14 +305,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
                         >
                           {d.menuLabel}
                         </span>
-                        {isHiddenFromStudents && (
-                          <span
-                            className="menu-teacher-hidden-badge"
-                            title="Hidden from students — enable in Settings"
-                          >
-                            🔒 Hidden
-                          </span>
-                        )}
+                        {isUnpublished && renderPreviewStatusBadge()}
                       </div>
                       <div className="menu-labeled-row-actions">
                         <button
@@ -320,18 +329,11 @@ export const MainMenu: React.FC<MainMenuProps> = ({
                   <button
                     key={d.id}
                     type="button"
-                    className={`menu-drill-btn${isHiddenFromStudents ? ' menu-drill-btn-with-badge' : ''}`}
+                    className={`menu-drill-btn${isUnpublished ? ' menu-drill-btn-with-badge' : ''}`}
                     onClick={() => onSelectDrill(d.id, 'cipher')}
                   >
                     <span>{d.menuLabel}</span>
-                    {isHiddenFromStudents && (
-                      <span
-                        className="menu-teacher-hidden-badge"
-                        title="Hidden from students — enable in Settings"
-                      >
-                        🔒 Hidden
-                      </span>
-                    )}
+                    {isUnpublished && renderPreviewStatusBadge()}
                   </button>
                 );
               })}

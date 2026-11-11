@@ -28,37 +28,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isConfigured = useMemo(() => isFirebaseConfigured(), []);
   const sessionSeqRef = useRef<number>(0);
   const inFlightInitRef = useRef<{ uid: string; promise: Promise<void> } | null>(null);
+  const initializedUidRef = useRef<string | null>(null);
 
   const activateSession = useCallback(
     async (currentUser: User | null, currentAllowed: AllowedUser | null) => {
       const seq = ++sessionSeqRef.current;
 
       if (currentUser && currentAllowed) {
-        try {
-          if (inFlightInitRef.current?.uid === currentUser.uid) {
-            await inFlightInitRef.current.promise;
-          } else {
-            const initPromise = mergeAndInitializeCloudUser(
-              currentUser.uid,
-              currentUser.email ?? '',
-              currentAllowed.displayName,
-              currentAllowed.role
-            );
-            inFlightInitRef.current = { uid: currentUser.uid, promise: initPromise };
-            try {
-              await initPromise;
-            } finally {
-              if (inFlightInitRef.current?.promise === initPromise) {
-                inFlightInitRef.current = null;
+        if (initializedUidRef.current !== currentUser.uid) {
+          try {
+            if (inFlightInitRef.current?.uid === currentUser.uid) {
+              await inFlightInitRef.current.promise;
+            } else {
+              const initPromise = mergeAndInitializeCloudUser(
+                currentUser.uid,
+                currentUser.email ?? '',
+                currentAllowed.displayName,
+                currentAllowed.role
+              );
+              inFlightInitRef.current = { uid: currentUser.uid, promise: initPromise };
+              try {
+                await initPromise;
+              } finally {
+                if (inFlightInitRef.current?.promise === initPromise) {
+                  inFlightInitRef.current = null;
+                }
               }
             }
-          }
 
-          if (seq !== sessionSeqRef.current) return;
-          startCloudSync(currentUser.uid);
-        } catch {
-          console.error('[AuthContext] Cloud merge failed');
-          if (seq !== sessionSeqRef.current) return;
+            if (seq !== sessionSeqRef.current) return;
+            startCloudSync(currentUser.uid);
+            initializedUidRef.current = currentUser.uid;
+          } catch {
+            console.error('[AuthContext] Cloud merge failed');
+            if (seq !== sessionSeqRef.current) return;
+          }
         }
 
         setUser(currentUser);
@@ -66,6 +70,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsLoading(false);
       } else {
         inFlightInitRef.current = null;
+        initializedUidRef.current = null;
         stopCloudSync();
         resetQuoteFlagsCache();
         resetQuoteCompletionsCache();
@@ -89,6 +94,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => {
       sessionSeqRef.current += 1;
+      initializedUidRef.current = null;
       unsubscribe();
       stopCloudSync();
     };
@@ -121,6 +127,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = async () => {
     sessionSeqRef.current += 1;
     inFlightInitRef.current = null;
+    initializedUidRef.current = null;
     setIsLoading(true);
     resetClientSessionState();
     resetQuoteFlagsCache();
