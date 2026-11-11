@@ -83,7 +83,7 @@ export const AlphabetMasteryModal: React.FC<AlphabetMasteryModalProps> = ({
       <div className="modal-header">
         <div>
           <h3 id="mastery-modal-title" className="modal-title">
-            {title || `Alphabet Mastery ${mode ? `(${mode === 'numToLetter' ? '# → Letter' : 'Letter → #'})` : ''}`}
+            {title || `Alphabet Mastery ${mode ? `(${mode === 'numToLetter' ? '# → ABC' : 'ABC → #'})` : ''}`}
           </h3>
           <div className="modal-subtitle" style={{ fontSize: '0.8rem', color: '#34d399', fontWeight: 700, marginTop: '2px' }}>
             {masteredCount} / 26 Mastered (Streak 3+)

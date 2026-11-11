@@ -6,6 +6,7 @@ import type {
   DrillSessionSample,
   LetterProgress,
   DrillProgress,
+  LetterMathMode,
   OffsetsMode,
   QuoteBrowserMode,
   QuoteBrowserSortOption,
@@ -17,7 +18,7 @@ import type {
   QuoteBrowserFilterPrefs,
   QuoteBrowserPrefsMap,
 } from '../types';
-export type { OffsetsMode };
+export type { LetterMathMode, OffsetsMode };
 
 const KEYS = {
   settings: 'davinci_settings',
@@ -200,6 +201,10 @@ export function offsetsModeToDrillId(mode: OffsetsMode): DrillId {
   return mode === 'letterToNum' ? 'offsetsLetterToNum' : 'offsetsNumToLetter';
 }
 
+export function letterMathModeToDrillId(mode: LetterMathMode): DrillId {
+  return mode === 'hard' ? 'letterMathHard' : 'letterMathEasy';
+}
+
 export type DrillProgressRecord = Partial<Record<DrillId, DrillProgress>>;
 export type DrillScoresRecord = Partial<Record<DrillId, DrillScore>>;
 export type DrillHistoryRecord = Partial<Record<DrillId, DrillHistoryEntry>>;
@@ -350,6 +355,8 @@ export function sanitizeDrillHistoryEntry(raw: unknown): DrillHistoryEntry {
 const VALID_DRILL_IDS: ReadonlySet<string> = new Set<DrillId>([
   'offsetsLetterToNum',
   'offsetsNumToLetter',
+  'letterMathEasy',
+  'letterMathHard',
   'atbash',
   'pigpen',
   'galactic',

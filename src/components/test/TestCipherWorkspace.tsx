@@ -3,7 +3,7 @@ import { CollapsibleReference } from '../drills/shared/CollapsibleReference';
 import { ReferenceSheet } from '../drills/shared/ReferenceSheet';
 import { QuoteTileGrid } from '../drills/shared/QuoteTileGrid';
 import { isLetter } from '../../utils/ciphers';
-import type { Quote, TestQuestion } from '../../types';
+import type { CipherWorkspaceParams, Quote, TestQuestion } from '../../types';
 
 interface TestCipherWorkspaceProps {
   question: TestQuestion;
@@ -27,6 +27,14 @@ export const TestCipherWorkspace: React.FC<TestCipherWorkspaceProps> = ({
     [chars, userInputs]
   );
 
+  const cipherParams = useMemo<CipherWorkspaceParams | undefined>(
+    () =>
+      question.cipher === 'caesar'
+        ? { caesarOffset: question.caesarOffset ?? 1, caesarRange: 'pm3' }
+        : undefined,
+    [question.caesarOffset, question.cipher]
+  );
+
   return (
     <div className="test-cipher-workspace">
       {question.description && (
@@ -39,7 +47,7 @@ export const TestCipherWorkspace: React.FC<TestCipherWorkspaceProps> = ({
         className="sticky-ref-container reference-sheet"
         showLabel="Show Reference Sheet"
       >
-        <ReferenceSheet cipher={question.cipher} />
+        <ReferenceSheet cipher={question.cipher} cipherParams={cipherParams} />
       </CollapsibleReference>
 
       <QuoteTileGrid
@@ -48,6 +56,7 @@ export const TestCipherWorkspace: React.FC<TestCipherWorkspaceProps> = ({
         userInputs={userInputs}
         onChangeUserInputs={onChangeUserInputs}
         disabled={disabled}
+        cipherParams={cipherParams}
       />
 
       <div className="test-workspace-footer">

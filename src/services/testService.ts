@@ -16,16 +16,20 @@ import {
 import { db } from './firebase';
 import { getCachedProfileForUid } from './profileService';
 import { withVersionStamp } from './versionService';
-import { isLookupCipher } from '../data/drills';
+import { isTestableCipher } from '../data/drills';
 import type {
   CipherType,
-  LookupCipherType,
   Quote,
+  TestableCipherType,
   TestAttempt,
   TestCohort,
   TestPacket,
   TestQuestion,
 } from '../types';
+import {
+  deterministicCaesarOffset,
+  isValidCaesarPm3Offset,
+} from '../utils/ciphers';
 import {
   evaluateTestPacket,
   getCohortAttemptId,
@@ -150,7 +154,7 @@ function normalizeTestQuestions(raw: unknown): TestQuestion[] {
     if (!item || typeof item !== 'object') return;
     const obj = item as Record<string, unknown>;
     const rawCipher = typeof obj.cipher === 'string' ? (obj.cipher as CipherType) : 'atbash';
-    const cipher: LookupCipherType = isLookupCipher(rawCipher) ? rawCipher : 'atbash';
+    const cipher: TestableCipherType = isTestableCipher(rawCipher) ? rawCipher : 'atbash';
     const quoteId =
       typeof obj.quoteId === 'number' && Number.isInteger(obj.quoteId) && obj.quoteId >= 0
         ? obj.quoteId
@@ -159,6 +163,12 @@ function normalizeTestQuestions(raw: unknown): TestQuestion[] {
       typeof obj.points === 'number' && Number.isFinite(obj.points) && obj.points > 0
         ? Math.round(obj.points)
         : 150;
+    const caesarOffset =
+      cipher === 'caesar'
+        ? isValidCaesarPm3Offset(obj.caesarOffset)
+          ? obj.caesarOffset
+          : deterministicCaesarOffset(quoteId + index, 'pm3')
+        : undefined;
     const description =
       typeof obj.description === 'string' && obj.description.trim().length > 0
         ? obj.description.trim().slice(0, 240)
@@ -169,6 +179,7 @@ function normalizeTestQuestions(raw: unknown): TestQuestion[] {
       cipher,
       quoteId,
       points,
+      ...(caesarOffset !== undefined ? { caesarOffset } : {}),
       ...(isTiebreaker ? { isTiebreaker: true } : {}),
       ...(description ? { description } : {}),
     });
@@ -876,7 +887,7 @@ export async function saveTestPacket(
   const sanitizedQuestions: TestQuestion[] = [];
   for (let i = 0; i < packet.questions.length; i += 1) {
     const q = packet.questions[i];
-    if (!isLookupCipher(q.cipher)) {
+    if (!isTestableCipher(q.cipher)) {
       return { ok: false, error: `Question ${i + 1} uses an unsupported cipher.` };
     }
     const quoteId = Math.round(q.quoteId);
@@ -884,6 +895,12 @@ export async function saveTestPacket(
       return { ok: false, error: `Question ${i + 1} has an invalid quote ID.` };
     }
     const points = Math.max(0, Math.min(5000, Math.round(q.points)));
+    const caesarOffset =
+      q.cipher === 'caesar'
+        ? isValidCaesarPm3Offset(q.caesarOffset)
+          ? q.caesarOffset
+          : deterministicCaesarOffset(quoteId + i, 'pm3')
+        : undefined;
     const cleanDesc =
       typeof q.description === 'string' && q.description.trim().length > 0
         ? q.description.trim().slice(0, 250)
@@ -894,6 +911,7 @@ export async function saveTestPacket(
       cipher: q.cipher,
       quoteId,
       points,
+      ...(caesarOffset !== undefined ? { caesarOffset } : {}),
       ...(q.isTiebreaker ? { isTiebreaker: true } : {}),
       ...(cleanDesc ? { description: cleanDesc } : {}),
     });

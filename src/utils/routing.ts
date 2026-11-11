@@ -1,5 +1,9 @@
 import { isCipherType, type CipherType } from '../data/drills';
-import type { OffsetsMode } from '../types';
+import type {
+  CaesarRangeMode,
+  LetterMathMode,
+  OffsetsMode,
+} from '../types';
 
 export type DrillSection = 'memorize' | 'cipher';
 export type TestEditorTab = 'questions' | 'teams';
@@ -8,6 +12,8 @@ export interface Route {
   drill: CipherType | null;
   section?: DrillSection;
   offsetsMode?: OffsetsMode;
+  letterMathMode?: LetterMathMode;
+  caesarRange?: CaesarRangeMode;
   quoteId?: number;
   testId?: string;
   spectateAttemptId?: string;
@@ -20,6 +26,14 @@ export interface Route {
 
 function isOffsetsMode(val: string | null): val is OffsetsMode {
   return val === 'letterToNum' || val === 'numToLetter';
+}
+
+function isLetterMathMode(val: string | null): val is LetterMathMode {
+  return val === 'easy' || val === 'hard';
+}
+
+function isCaesarRangeMode(val: string | null): val is CaesarRangeMode {
+  return val === 'pm3' || val === 'any';
 }
 
 function isTestEditorTab(val: string | null): val is TestEditorTab {
@@ -73,7 +87,16 @@ export function parseUrlRoute(search = window.location.search): Route {
   return {
     drill,
     section,
-    offsetsMode: drill === 'offsets' && isOffsetsMode(modeParam) ? modeParam : undefined,
+    offsetsMode:
+      drill === 'offsets' && isOffsetsMode(modeParam) ? modeParam : undefined,
+    letterMathMode:
+      drill === 'letterMath' && isLetterMathMode(modeParam)
+        ? modeParam
+        : undefined,
+    caesarRange:
+      drill === 'caesar' && section === 'cipher' && isCaesarRangeMode(modeParam)
+        ? modeParam
+        : undefined,
     quoteId: Number.isNaN(quoteId) ? undefined : quoteId,
     testId,
     spectateAttemptId,
@@ -107,8 +130,20 @@ export function buildRouteUrl(route: Route): string {
     p.delete('cipher');
   }
 
-  if (route.drill === 'offsets' && route.offsetsMode) p.set('mode', route.offsetsMode);
-  else p.delete('mode');
+  if (route.drill === 'offsets' && route.offsetsMode) {
+    p.set('mode', route.offsetsMode);
+  } else if (route.drill === 'letterMath' && route.letterMathMode) {
+    p.set('mode', route.letterMathMode);
+  } else if (
+    route.drill === 'caesar' &&
+    route.section === 'cipher' &&
+    route.caesarRange &&
+    route.caesarRange !== 'pm3'
+  ) {
+    p.set('mode', route.caesarRange);
+  } else {
+    p.delete('mode');
+  }
 
   if (route.drill && route.quoteId !== undefined) p.set('q', String(route.quoteId));
   else p.delete('q');

@@ -1,4 +1,4 @@
-import { IMPLEMENTED_DRILLS, getCipherBucket, type CipherType } from '../data/drills';
+import { IMPLEMENTED_DRILLS, type CipherType } from '../data/drills';
 import {
   loadAllDrillHistory,
   loadAllDrillProgress,
@@ -9,12 +9,18 @@ import {
   type DrillProgressRecord,
   type DrillScoresRecord,
 } from '../services/storage';
-import type { DrillId, DrillProgress, OffsetsMode } from '../types';
+import type {
+  DrillId,
+  DrillProgress,
+  LetterMathMode,
+  OffsetsMode,
+} from '../types';
 
 export interface WarmupChoice {
   drillId: DrillId;
   cipher: CipherType;
   offsetsMode?: OffsetsMode;
+  letterMathMode?: LetterMathMode;
 }
 
 export interface DrillWeightBreakdown {
@@ -31,6 +37,7 @@ export interface DrillWeightBreakdown {
 
 export interface CipherQuoteWeightBreakdown {
   cipher: CipherType;
+  expectedPoints: number;
   weight: number;
   noveltyMultiplier: number;
   recencyMultiplier: number;
@@ -46,11 +53,30 @@ interface DrillBenchmark {
 const DRILL_BENCHMARKS: Record<DrillId, DrillBenchmark> = {
   offsetsLetterToNum: { target60s: 30, hasDeck: true },
   offsetsNumToLetter: { target60s: 30, hasDeck: true },
+  letterMathEasy: { target60s: 22, hasDeck: false },
+  letterMathHard: { target60s: 16, hasDeck: false },
   atbash: { target60s: 28, hasDeck: true },
   pigpen: { target60s: 25, hasDeck: true },
   galactic: { target60s: 25, hasDeck: true },
   knights: { target60s: 25, hasDeck: true },
   tap: { target60s: 22, hasDeck: true },
+};
+
+/**
+ * Expected/target point values per quote cipher used as base General Practice
+ * selection weights (normalized dynamically over the user's enabled ciphers).
+ */
+export const CIPHER_PRACTICE_EXPECTED_POINTS: Readonly<
+  Record<Exclude<CipherType, 'offsets' | 'letterMath'>, number>
+> = {
+  pigpen: 70,
+  knights: 70,
+  tap: 70,
+  atbash: 75,
+  galactic: 80,
+  caesar: 105,
+  vigenere: 110,
+  aristocrat: 180,
 };
 
 const DECK_SIZE = 26;
@@ -149,8 +175,16 @@ export function getWarmupCandidates(unlockedCiphers: CipherType[]): WarmupChoice
     { drillId: 'offsetsNumToLetter', cipher: 'offsets', offsetsMode: 'numToLetter' },
   ];
 
+  if (unlockedCiphers.includes('caesar')) {
+    choices.push({
+      drillId: 'letterMathEasy',
+      cipher: 'letterMath',
+      letterMathMode: 'easy',
+    });
+  }
+
   for (const drill of IMPLEMENTED_DRILLS) {
-    if (drill.id === 'offsets' || drill.kind !== 'lookup') continue;
+    if (drill.kind !== 'lookup') continue;
     if (!unlockedCiphers.includes(drill.id)) continue;
     choices.push({
       drillId: drill.id as DrillId,
@@ -235,11 +269,12 @@ export function computeCipherQuoteWeights(params: {
   now?: number;
 }): CipherQuoteWeightBreakdown[] {
   const { unlockedCiphers, practiceHistory, now = Date.now() } = params;
-  const pool = unlockedCiphers.filter(
-    (id) => id !== 'offsets' && IMPLEMENTED_DRILLS.some((d) => d.id === id)
-  );
+  const pool = unlockedCiphers.filter((id) =>
+    IMPLEMENTED_DRILLS.some((d) => d.id === id && d.hasQuoteWorkspace)
+  ) as Exclude<CipherType, 'offsets' | 'letterMath'>[];
 
   return pool.map((cipher) => {
+    const expectedPoints = CIPHER_PRACTICE_EXPECTED_POINTS[cipher] ?? 75;
     const rec = practiceHistory[cipher];
     const count =
       rec && typeof rec.count === 'number' && Number.isFinite(rec.count) && rec.count > 0
@@ -262,10 +297,11 @@ export function computeCipherQuoteWeights(params: {
       CIPHER_RECENCY_MAX,
       CIPHER_RECENCY_TAU_HOURS
     );
-    const weight = noveltyMultiplier * recencyMultiplier;
+    const weight = expectedPoints * noveltyMultiplier * recencyMultiplier;
 
     return {
       cipher,
+      expectedPoints,
       weight,
       noveltyMultiplier,
       recencyMultiplier,
@@ -276,9 +312,8 @@ export function computeCipherQuoteWeights(params: {
 }
 
 /**
- * Picks up to 2 distinct quote ciphers via weighted random sampling without replacement.
- * When both 'speed' and 'analysis' buckets have unlocked/implemented ciphers,
- * draws 1 weighted speed cipher + 1 weighted analysis cipher.
+ * Picks up to 2 distinct quote ciphers via expected-point weighted random sampling
+ * without replacement (never picking 2 of the same cipher type in a single round).
  */
 export function pickWeightedWorkoutCiphers(
   unlockedCiphers: CipherType[],
@@ -293,15 +328,6 @@ export function pickWeightedWorkoutCiphers(
 
   if (breakdowns.length <= 1) {
     return breakdowns.map((b) => b.cipher);
-  }
-
-  const speedItems = breakdowns.filter((b) => getCipherBucket(b.cipher) === 'speed');
-  const analysisItems = breakdowns.filter((b) => getCipherBucket(b.cipher) === 'analysis');
-
-  if (speedItems.length > 0 && analysisItems.length > 0) {
-    const chosenSpeed = drawWeightedItem(speedItems, rng).cipher;
-    const chosenAnalysis = drawWeightedItem(analysisItems, rng).cipher;
-    return [chosenSpeed, chosenAnalysis];
   }
 
   const first = drawWeightedItem(breakdowns, rng);

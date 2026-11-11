@@ -22,8 +22,8 @@ interface LetterOffsetDrillProps {
 }
 
 const MODES: readonly { readonly id: OffsetsMode; readonly label: string }[] = [
-  { id: 'letterToNum', label: 'Letter → #' },
-  { id: 'numToLetter', label: '# → Letter' },
+  { id: 'letterToNum', label: 'ABC → #' },
+  { id: 'numToLetter', label: '# → ABC' },
 ];
 
 const NON_ANSWER_KEYS = new Set([
@@ -281,7 +281,7 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
   }, [flushSession, mode, sessionBest60s, workoutContext]);
 
   const isLargeStage = useIsLargeDrillStage();
-  const modeLabel = mode === 'letterToNum' ? 'Letter → #' : '# → Letter';
+  const modeLabel = mode === 'letterToNum' ? 'ABC → #' : '# → ABC';
   const headerTitle = workoutContext ? `Warm-up: ${modeLabel}` : `Offsets: ${modeLabel}`;
 
   const headerRight = (

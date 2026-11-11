@@ -1,5 +1,17 @@
-import type { CipherType, LookupCipherType } from '../data/drills';
-export type { CipherType, LookupCipherType };
+import type {
+  CipherType,
+  LookupCipherType,
+  TestableCipherType,
+} from '../data/drills';
+export type { CipherType, LookupCipherType, TestableCipherType };
+
+export type LetterMathMode = 'easy' | 'hard';
+export type CaesarRangeMode = 'pm3' | 'any';
+
+export interface CipherWorkspaceParams {
+  caesarOffset?: number;
+  caesarRange?: CaesarRangeMode;
+}
 
 export type QuoteCategory =
   | 'kid_joke'
@@ -55,6 +67,8 @@ export interface AllowedUser {
 export type DrillId =
   | 'offsetsLetterToNum'
   | 'offsetsNumToLetter'
+  | 'letterMathEasy'
+  | 'letterMathHard'
   | 'atbash'
   | 'pigpen'
   | 'galactic'
@@ -142,9 +156,10 @@ export interface QuoteFlag {
 
 export interface TestQuestion {
   questionNumber: number; // 1-indexed (1, 2, 3...)
-  cipher: LookupCipherType;
+  cipher: TestableCipherType;
   quoteId: number;
   points: number;
+  caesarOffset?: number;
   isTiebreaker?: boolean;
   description?: string;
 }
@@ -234,6 +249,7 @@ export interface WorkoutStepResult {
   author?: string;
   warmup60s?: number;
   offsetsMode?: OffsetsMode;
+  letterMathMode?: LetterMathMode;
 }
 
 export interface WorkoutSummaryData {
@@ -247,6 +263,7 @@ export interface WorkoutStepContext {
   stepIndex: number;
   totalSteps: number;
   offsetsMode?: OffsetsMode;
+  letterMathMode?: LetterMathMode;
   nextCipherTitle?: string;
   isLastStep: boolean;
   onAdvance: (stepResult?: Partial<WorkoutStepResult>) => void;

@@ -2,16 +2,21 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { CipherGlyph } from './CipherGlyph';
 import { isLetter, findLetterIndex, groupIntoWords } from '../../../utils/ciphers';
 import { useKeepInView } from '../../../hooks/useKeepInView';
-import type { LookupCipherType, Quote } from '../../../types';
+import type {
+  CipherWorkspaceParams,
+  Quote,
+  TestableCipherType,
+} from '../../../types';
 
 interface QuoteTileGridProps {
-  cipher: LookupCipherType;
+  cipher: TestableCipherType;
   quote: Quote;
   userInputs: string[];
   onChangeUserInputs: (inputs: string[]) => void;
   disabled?: boolean;
   showEvaluation?: boolean;
   onEnterSubmit?: () => void;
+  cipherParams?: CipherWorkspaceParams;
 }
 
 export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
@@ -22,6 +27,7 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
   disabled = false,
   showEvaluation = false,
   onEnterSubmit,
+  cipherParams,
 }) => {
   const chars = useMemo(() => quote.quote.toUpperCase().split(''), [quote.quote]);
   const words = useMemo(() => groupIntoWords(chars), [chars]);
@@ -136,7 +142,7 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
         onClick={() => isAlpha && !disabled && focusTile(index)}
       >
         <div className="tile-cipher">
-          <CipherGlyph cipher={cipher} char={char} />
+          <CipherGlyph cipher={cipher} char={char} cipherParams={cipherParams} />
         </div>
         {isAlpha ? (
           <input

@@ -13,8 +13,8 @@ export interface FlashcardStats {
 }
 
 export interface FlashcardStageActions {
-  masteredCount: number;
-  onOpenMastery: () => void;
+  masteredCount?: number;
+  onOpenMastery?: () => void;
   onOpenLeaderboard?: () => void;
 }
 
@@ -277,33 +277,36 @@ export const FlashcardWorkspace: React.FC<FlashcardWorkspaceProps> = ({
         </div>
       </div>
 
-      {stageActions && (
-        <div className="drill-stage-actions-row">
-          <button
-            type="button"
-            className="popover-action-btn stage-action-btn mastery-action"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={stageActions.onOpenMastery}
-          >
-            <span>📊 Alphabet Mastery</span>
-            <span className="popover-action-badge">
-              {stageActions.masteredCount}/26
-            </span>
-          </button>
+      {stageActions &&
+        (stageActions.onOpenMastery || stageActions.onOpenLeaderboard) && (
+          <div className="drill-stage-actions-row">
+            {stageActions.onOpenMastery && (
+              <button
+                type="button"
+                className="popover-action-btn stage-action-btn mastery-action"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={stageActions.onOpenMastery}
+              >
+                <span>📊 Alphabet Mastery</span>
+                <span className="popover-action-badge">
+                  {stageActions.masteredCount ?? 0}/26
+                </span>
+              </button>
+            )}
 
-          {stageActions.onOpenLeaderboard && (
-            <button
-              type="button"
-              className="popover-action-btn stage-action-btn leaderboard-action"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={stageActions.onOpenLeaderboard}
-            >
-              <span>🏆 Leaderboards</span>
-              <span className="popover-action-chevron">›</span>
-            </button>
-          )}
-        </div>
-      )}
+            {stageActions.onOpenLeaderboard && (
+              <button
+                type="button"
+                className="popover-action-btn stage-action-btn leaderboard-action"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={stageActions.onOpenLeaderboard}
+              >
+                <span>🏆 Leaderboards</span>
+                <span className="popover-action-chevron">›</span>
+              </button>
+            )}
+          </div>
+        )}
     </div>
   );
 };

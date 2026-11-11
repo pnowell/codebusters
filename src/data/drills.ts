@@ -11,8 +11,20 @@ export const DRILLS = [
     hasQuoteWorkspace: false,
   },
   {
+    id: 'letterMath',
+    name: 'Letter Math (ABC ± #)',
+    shortTitle: 'ABC ± #',
+    menuLabel: 'ABC ± #',
+    kind: 'math',
+    implemented: true,
+    defaultEnabled: false,
+    hasFlashcardDrill: true,
+    hasQuoteWorkspace: false,
+    gatedBy: 'caesar' as const,
+  },
+  {
     id: 'atbash',
-    name: 'Atbash Cipher',
+    name: 'Atbash',
     shortTitle: 'Atbash',
     menuLabel: 'Atbash',
     kind: 'lookup',
@@ -23,7 +35,7 @@ export const DRILLS = [
   },
   {
     id: 'pigpen',
-    name: 'Pigpen / Masonic Cipher',
+    name: 'Pigpen',
     shortTitle: 'Pigpen',
     menuLabel: 'Pigpen',
     kind: 'lookup',
@@ -45,7 +57,7 @@ export const DRILLS = [
   },
   {
     id: 'tap',
-    name: 'Tap Code Cipher',
+    name: 'Tap Code',
     shortTitle: 'Tap Code',
     menuLabel: 'Tap Code',
     kind: 'lookup',
@@ -56,8 +68,8 @@ export const DRILLS = [
   },
   {
     id: 'knights',
-    name: 'Knights Templar Cipher',
-    shortTitle: 'Knights',
+    name: 'Knights Templar',
+    shortTitle: 'Knights Templar',
     menuLabel: 'Knights Templar',
     kind: 'lookup',
     implemented: true,
@@ -67,11 +79,11 @@ export const DRILLS = [
   },
   {
     id: 'caesar',
-    name: 'Caesar Cipher (±3)',
+    name: 'Caesar (±3) & Letter Math',
     shortTitle: 'Caesar',
-    menuLabel: 'Caesar (±3)',
+    menuLabel: 'Caesar',
     kind: 'analysis',
-    implemented: false,
+    implemented: true,
     defaultEnabled: false,
     hasFlashcardDrill: false,
     hasQuoteWorkspace: true,
@@ -101,27 +113,44 @@ export const DRILLS = [
 ] as const;
 
 export type CipherType = (typeof DRILLS)[number]['id'];
-export type LookupCipherType = Extract<(typeof DRILLS)[number], { kind: 'lookup'; implemented: true }>['id'];
+export type LookupCipherType = Extract<
+  (typeof DRILLS)[number],
+  { kind: 'lookup'; implemented: true }
+>['id'];
+export type TestableCipherType = Extract<
+  (typeof DRILLS)[number],
+  { hasQuoteWorkspace: true; implemented: true }
+>['id'];
 
-export const DRILL_IDS: readonly CipherType[] = DRILLS.map(d => d.id);
-export const IMPLEMENTED_DRILLS = DRILLS.filter(d => d.implemented);
-export const COMING_SOON_DRILLS = DRILLS.filter(d => !d.implemented);
-export const GENERAL_PRACTICE_DRILLS = IMPLEMENTED_DRILLS.filter(d => d.id !== 'offsets');
+export const DRILL_IDS: readonly CipherType[] = DRILLS.map((d) => d.id);
+export const IMPLEMENTED_DRILLS = DRILLS.filter((d) => d.implemented);
+export const COMING_SOON_DRILLS = DRILLS.filter((d) => !d.implemented);
+export const GENERAL_PRACTICE_DRILLS = IMPLEMENTED_DRILLS.filter(
+  (d) => d.hasQuoteWorkspace
+);
 
-const LOOKUP_CIPHER_IDS: readonly string[] = DRILLS
-  .filter(d => d.kind === 'lookup' && d.implemented)
-  .map(d => d.id);
+const LOOKUP_CIPHER_IDS: readonly string[] = DRILLS.filter(
+  (d) => d.kind === 'lookup' && d.implemented
+).map((d) => d.id);
+
+const TESTABLE_CIPHER_IDS: readonly string[] = DRILLS.filter(
+  (d) => d.hasQuoteWorkspace && d.implemented
+).map((d) => d.id);
 
 export const isCipherType = (s: string | null | undefined): s is CipherType =>
   !!s && (DRILL_IDS as readonly string[]).includes(s);
-export const isLookupCipher = (id: CipherType | null): id is LookupCipherType =>
-  !!id && LOOKUP_CIPHER_IDS.includes(id);
-export const getDrill = (id: CipherType) => DRILLS.find(d => d.id === id)!;
+export const isLookupCipher = (
+  id: CipherType | null | undefined
+): id is LookupCipherType => !!id && LOOKUP_CIPHER_IDS.includes(id);
+export const isTestableCipher = (
+  id: CipherType | null | undefined
+): id is TestableCipherType => !!id && TESTABLE_CIPHER_IDS.includes(id);
+export const getDrill = (id: CipherType) => DRILLS.find((d) => d.id === id)!;
 
 /**
- * Returns whether an implemented cipher is enabled for students (and Guest Mode)
- * given the global teacher-configured flags. Letter Offsets is always enabled.
- * Newly implemented ciphers with `defaultEnabled: false` stay hidden until explicitly checked.
+ * Returns whether an implemented cipher/drill is enabled for students (and Guest Mode)
+ * given the global teacher-configured flags. Letter Offsets is always enabled,
+ * and gated drills (e.g. `letterMath` -> `caesar`) inherit their parent cipher's flag.
  */
 export function isCipherEnabledForStudent(
   id: CipherType,
@@ -130,6 +159,9 @@ export function isCipherEnabledForStudent(
   const drill = getDrill(id);
   if (!drill.implemented) return false;
   if (id === 'offsets') return true;
+  if ('gatedBy' in drill && drill.gatedBy) {
+    return isCipherEnabledForStudent(drill.gatedBy, flags);
+  }
   const configured = flags[id];
   return typeof configured === 'boolean' ? configured : drill.defaultEnabled;
 }
@@ -151,17 +183,9 @@ export function isCipherAccessible(
   return isTeacher || isCipherEnabledForStudent(id, flags);
 }
 
-export type CipherBucket = 'speed' | 'analysis';
-
-export function getCipherBucket(id: CipherType): CipherBucket | null {
-  const drill = getDrill(id);
-  if (drill.kind === 'offsets') return null;
-  return drill.kind === 'analysis' ? 'analysis' : 'speed';
-}
-
 /**
  * Tunable wrong-answer lockout timing for flashcard speed drills
- * (Offsets, Atbash, Pigpen, Galactic).
+ * (Offsets, Letter Math, Atbash, Pigpen, Galactic, Tap Code, Knights Templar).
  *
  * Random guessing math (1/26 hit rate per card):
  *   Expected 60s hits ≈ 60_000 / (25 * wrongAnswerLockoutMs)

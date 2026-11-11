@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  DRILLS,
   isCipherEnabledForStudent,
   type CipherType,
 } from '../../data/drills';
@@ -28,16 +27,24 @@ interface LeaderboardTabConfig {
   cipherId: CipherType;
 }
 
-const ALL_IMPLEMENTED_LEADERBOARD_TABS: readonly LeaderboardTabConfig[] = [
-  { id: 'offsetsLetterToNum', label: 'Letter → #', cipherId: 'offsets' },
-  { id: 'offsetsNumToLetter', label: '# → Letter', cipherId: 'offsets' },
-  ...DRILLS.filter(
-    (d) => d.id !== 'offsets' && d.implemented && d.hasFlashcardDrill
-  ).map((d) => ({
-    id: d.id as LeaderboardBoardId,
-    label: d.shortTitle,
-    cipherId: d.id,
-  })),
+const LEADERBOARD_TAB_ROWS: readonly (readonly LeaderboardTabConfig[])[] = [
+  [
+    { id: 'offsetsLetterToNum', label: 'ABC → #', cipherId: 'offsets' },
+    { id: 'offsetsNumToLetter', label: '# → ABC', cipherId: 'offsets' },
+  ],
+  [
+    { id: 'letterMathEasy', label: 'ABC ± # (Easy)', cipherId: 'letterMath' },
+    { id: 'letterMathHard', label: 'ABC ± # (Hard)', cipherId: 'letterMath' },
+  ],
+  [
+    { id: 'atbash', label: 'Atbash', cipherId: 'atbash' },
+    { id: 'pigpen', label: 'Pigpen', cipherId: 'pigpen' },
+    { id: 'galactic', label: 'Galactic', cipherId: 'galactic' },
+  ],
+  [
+    { id: 'tap', label: 'Tap Code', cipherId: 'tap' },
+    { id: 'knights', label: 'Knights Templar', cipherId: 'knights' },
+  ],
 ];
 
 function resolveBoardId(drillOrMode?: DrillId | OffsetsMode): LeaderboardBoardId {
@@ -48,6 +55,8 @@ function resolveBoardId(drillOrMode?: DrillId | OffsetsMode): LeaderboardBoardId
     return 'offsetsLetterToNum';
   }
   if (
+    drillOrMode === 'letterMathEasy' ||
+    drillOrMode === 'letterMathHard' ||
     drillOrMode === 'atbash' ||
     drillOrMode === 'pigpen' ||
     drillOrMode === 'galactic' ||
@@ -104,16 +113,20 @@ const LeaderboardModalContent: React.FC<LeaderboardModalContentProps> = ({
     );
   }, []);
 
-  const visibleTabs = useMemo(
+  const visibleTabRows = useMemo(
     () =>
-      ALL_IMPLEMENTED_LEADERBOARD_TABS.filter(
-        (tab) =>
-          tab.cipherId === 'offsets' ||
-          isTeacher ||
-          isCipherEnabledForStudent(tab.cipherId, classroomCiphers)
-      ),
+      LEADERBOARD_TAB_ROWS.map((row) =>
+        row.filter(
+          (tab) =>
+            tab.cipherId === 'offsets' ||
+            isTeacher ||
+            isCipherEnabledForStudent(tab.cipherId, classroomCiphers)
+        )
+      ).filter((row) => row.length > 0),
     [classroomCiphers, isTeacher]
   );
+
+  const visibleTabs = useMemo(() => visibleTabRows.flat(), [visibleTabRows]);
 
   const activeBoard: LeaderboardBoardId = visibleTabs.some((t) => t.id === board)
     ? board
@@ -161,36 +174,40 @@ const LeaderboardModalContent: React.FC<LeaderboardModalContentProps> = ({
       </div>
 
       <div className="modal-body leaderboard-modal-body">
-        {/* Multi-drill Switcher Tabs */}
+        {/* Multi-drill Switcher Tabs (Grouped Centered Rows) */}
         <div className="leaderboard-mode-tabs" role="tablist" aria-label="Select Leaderboard">
-          {visibleTabs.map((tab) => {
-            const isHiddenFromStudents =
-              isTeacher &&
-              tab.cipherId !== 'offsets' &&
-              !isCipherEnabledForStudent(tab.cipherId, classroomCiphers);
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                role="tab"
-                aria-selected={activeBoard === tab.id}
-                className={`leaderboard-tab ${activeBoard === tab.id ? 'active' : ''}`}
-                onClick={() => setBoard(tab.id)}
-                title={
-                  isHiddenFromStudents
-                    ? `${tab.label} (Hidden from students — enable in Settings)`
-                    : undefined
-                }
-              >
-                <span>{tab.label}</span>
-                {isHiddenFromStudents && (
-                  <span className="leaderboard-tab-lock" aria-hidden="true">
-                    🔒
-                  </span>
-                )}
-              </button>
-            );
-          })}
+          {visibleTabRows.map((row, rowIdx) => (
+            <div key={rowIdx} className="leaderboard-tab-row">
+              {row.map((tab) => {
+                const isHiddenFromStudents =
+                  isTeacher &&
+                  tab.cipherId !== 'offsets' &&
+                  !isCipherEnabledForStudent(tab.cipherId, classroomCiphers);
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeBoard === tab.id}
+                    className={`leaderboard-tab ${activeBoard === tab.id ? 'active' : ''}`}
+                    onClick={() => setBoard(tab.id)}
+                    title={
+                      isHiddenFromStudents
+                        ? `${tab.label} (Hidden from students — enable in Settings)`
+                        : undefined
+                    }
+                  >
+                    <span>{tab.label}</span>
+                    {isHiddenFromStudents && (
+                      <span className="leaderboard-tab-lock" aria-hidden="true">
+                        🔒
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </div>
 
         {/* User's Personal Standing Card */}

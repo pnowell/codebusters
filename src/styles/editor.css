@@ -451,6 +451,7 @@
 
 .editor-cipher-segmented {
   display: inline-flex;
+  flex-wrap: wrap;
   background: rgba(15, 23, 42, 0.8);
   border: 1px solid rgba(148, 163, 184, 0.26);
   border-radius: 8px;
@@ -479,6 +480,73 @@
   background: rgba(56, 189, 248, 0.22);
   color: #ffffff;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
+.editor-caesar-shift-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  padding: 0.38rem 0.6rem;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  border-radius: 8px;
+}
+
+.editor-caesar-shift-label {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #cbd5e1;
+  letter-spacing: 0.02em;
+}
+
+.editor-caesar-shift-segmented {
+  display: inline-flex;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 7px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.editor-caesar-shift-btn {
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  min-width: 34px;
+  padding: 0.2rem 0.45rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.editor-caesar-shift-btn:hover:not(:disabled) {
+  color: var(--text-main);
+}
+
+.editor-caesar-shift-btn.active {
+  background: rgba(56, 189, 248, 0.24);
+  color: #e0f2fe;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
+.editor-caesar-shift-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.editor-caesar-shift-example {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--accent-blue);
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  padding: 0.14rem 0.48rem;
+  border-radius: 999px;
 }
 
 .editor-pts-label {

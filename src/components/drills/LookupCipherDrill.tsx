@@ -6,17 +6,26 @@ import { DrillActionRow } from './shared/DrillActionRow';
 import { ResultBanner } from './shared/ResultBanner';
 import { QuoteTileGrid } from './shared/QuoteTileGrid';
 import {
+  deterministicCaesarOffset,
   evaluateSolution,
   isLetter,
+  pickRandomCaesarOffset,
   shouldCountQuoteCompleted,
 } from '../../utils/ciphers';
 import { pickLookupQuote } from '../../data/quotes';
-import { getDrill, type LookupCipherType } from '../../data/drills';
+import { getDrill, type TestableCipherType } from '../../data/drills';
 import { saveCompletedQuoteId, recordCipherPractice } from '../../services/storage';
-import type { Quote, EvaluationResult, WorkoutStepContext } from '../../types';
+import type {
+  CaesarRangeMode,
+  CipherWorkspaceParams,
+  EvaluationResult,
+  Quote,
+  WorkoutStepContext,
+} from '../../types';
 
 interface LookupCipherDrillProps {
-  cipher: LookupCipherType;
+  cipher: TestableCipherType;
+  caesarRange?: CaesarRangeMode;
   onBack: () => void;
   initialQuoteId?: number;
   onQuoteChange?: (quoteId: number) => void;
@@ -26,13 +35,26 @@ interface LookupCipherDrillProps {
 interface PuzzleState {
   quote: Quote;
   userInputs: string[];
+  caesarOffset?: number;
 }
 
-function freshPuzzle(quote: Quote): PuzzleState {
+function freshPuzzle(
+  quote: Quote,
+  cipher: TestableCipherType,
+  caesarRange: CaesarRangeMode,
+  options?: { deterministic?: boolean; prevOffset?: number }
+): PuzzleState {
   const chars = quote.quote.toUpperCase().split('');
+  const caesarOffset =
+    cipher === 'caesar'
+      ? options?.deterministic
+        ? deterministicCaesarOffset(quote.id, caesarRange)
+        : pickRandomCaesarOffset(caesarRange, options?.prevOffset)
+      : undefined;
   return {
     quote,
     userInputs: chars.map((c) => (isLetter(c) ? '' : c)),
+    caesarOffset,
   };
 }
 
@@ -40,23 +62,34 @@ const EMPTY_USER_INPUTS: string[] = [];
 
 export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
   cipher,
+  caesarRange = 'pm3',
   onBack,
   initialQuoteId,
   onQuoteChange,
   workoutContext,
 }) => {
-  const [initialResolved] = useState<{ quote: Quote | null; notFoundId?: number }>(() => {
+  const [initialResolved] = useState<{
+    quote: Quote | null;
+    notFoundId?: number;
+    deterministic?: boolean;
+  }>(() => {
     if (initialQuoteId !== undefined) {
       const q = pickLookupQuote(initialQuoteId);
-      if (q) return { quote: q };
+      if (q) return { quote: q, deterministic: true };
       return { quote: null, notFoundId: initialQuoteId };
     }
-    return { quote: pickLookupQuote() };
+    return { quote: pickLookupQuote(), deterministic: false };
   });
 
-  const [notFoundId, setNotFoundId] = useState<number | undefined>(initialResolved.notFoundId);
+  const [notFoundId, setNotFoundId] = useState<number | undefined>(
+    initialResolved.notFoundId
+  );
   const [puzzle, setPuzzle] = useState<PuzzleState | null>(() =>
-    initialResolved.quote ? freshPuzzle(initialResolved.quote) : null
+    initialResolved.quote
+      ? freshPuzzle(initialResolved.quote, cipher, caesarRange, {
+          deterministic: initialResolved.deterministic,
+        })
+      : null
   );
   const quote = puzzle?.quote;
   const quoteId = quote?.id;
@@ -80,22 +113,39 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     }
   }, [quoteId]);
 
-  const chars = useMemo(() => (quote ? quote.quote.toUpperCase().split('') : []), [quote]);
+  const chars = useMemo(
+    () => (quote ? quote.quote.toUpperCase().split('') : []),
+    [quote]
+  );
   const totalLetters = useMemo(() => chars.filter(isLetter).length, [chars]);
-  const filledLetters = userInputs.filter((c, idx) => isLetter(chars[idx] ?? '') && c !== '').length;
+  const filledLetters = userInputs.filter(
+    (c, idx) => isLetter(chars[idx] ?? '') && c !== ''
+  ).length;
   const isAllFilled = totalLetters > 0 && filledLetters === totalLetters;
+
+  const cipherParams = useMemo<CipherWorkspaceParams | undefined>(
+    () =>
+      cipher === 'caesar'
+        ? { caesarOffset: puzzle?.caesarOffset ?? 1, caesarRange }
+        : undefined,
+    [caesarRange, cipher, puzzle?.caesarOffset]
+  );
 
   const loadNewQuote = useCallback(() => {
     const nextQ = pickLookupQuote(undefined, quoteId);
     if (nextQ) {
       setNotFoundId(undefined);
-      setPuzzle(freshPuzzle(nextQ));
+      setPuzzle((prev) =>
+        freshPuzzle(nextQ, cipher, caesarRange, {
+          prevOffset: prev?.caesarOffset,
+        })
+      );
       setResult(null);
       setIsSubmitted(false);
       startTimeRef.current = Date.now();
       onQuoteChange?.(nextQ.id);
     }
-  }, [onQuoteChange, quoteId]);
+  }, [caesarRange, cipher, onQuoteChange, quoteId]);
 
   const handleNext = useCallback(() => {
     if (workoutContext) {
@@ -128,11 +178,18 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     setPuzzle((prev) => (prev ? { ...prev, userInputs: nextInputs } : null));
   }, []);
 
+  const baseTitle =
+    cipher === 'caesar'
+      ? caesarRange === 'any'
+        ? 'Caesar (Any)'
+        : 'Caesar (±3)'
+      : getDrill(cipher).shortTitle;
+
   if (notFoundId !== undefined && !puzzle) {
     return (
       <div className="drill-container">
         <DrillHeader
-          title={getDrill(cipher).shortTitle}
+          title={baseTitle}
           onBack={onBack}
           right={
             <button
@@ -168,8 +225,8 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
       <DrillHeader
         title={
           workoutContext
-            ? `${getDrill(cipher).shortTitle} • Step ${workoutContext.stepIndex + 1}/${workoutContext.totalSteps}`
-            : getDrill(cipher).shortTitle
+            ? `${baseTitle} • Step ${workoutContext.stepIndex + 1}/${workoutContext.totalSteps}`
+            : baseTitle
         }
         onBack={onBack}
         right={
@@ -191,7 +248,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
         className="sticky-ref-container reference-sheet"
         showLabel="Show Reference Table"
       >
-        <ReferenceSheet cipher={cipher} />
+        <ReferenceSheet cipher={cipher} cipherParams={cipherParams} />
       </CollapsibleReference>
 
       <QuoteTileGrid
@@ -202,6 +259,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
         disabled={isSubmitted}
         showEvaluation={isSubmitted}
         onEnterSubmit={handleSubmit}
+        cipherParams={cipherParams}
       />
 
       <DrillActionRow
@@ -229,10 +287,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
               : `Next: ${workoutContext.nextCipherTitle || 'Next'} ➔`}
           </button>
         ) : (
-          <button
-            className="btn-submit btn-next"
-            onClick={handleNext}
-          >
+          <button className="btn-submit btn-next" onClick={handleNext}>
             Next Puzzle →
           </button>
         )}

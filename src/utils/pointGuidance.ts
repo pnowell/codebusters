@@ -1,5 +1,5 @@
-import type { LookupCipherType, Quote } from '../types';
-import { isLetter, letterToTapPair } from './ciphers';
+import type { Quote, TestableCipherType } from '../types';
+import { formatSignedOffset, isLetter, letterToTapPair } from './ciphers';
 
 export interface QuoteCipherStats {
   letterCount: number;
@@ -21,20 +21,22 @@ export interface QuestionPointGuidance {
   tooltipSummary: string;
 }
 
-const CIPHER_LABELS: Record<LookupCipherType, string> = {
+const CIPHER_LABELS: Record<TestableCipherType, string> = {
   atbash: 'Atbash',
   pigpen: 'Pigpen',
   galactic: 'Galactic',
   tap: 'Tap Code',
   knights: 'Knights Templar',
+  caesar: 'Caesar',
 };
 
-const CIPHER_SEEDS: Record<LookupCipherType, number> = {
+const CIPHER_SEEDS: Record<TestableCipherType, number> = {
   atbash: 1,
   pigpen: 2,
   galactic: 3,
   tap: 4,
   knights: 5,
+  caesar: 6,
 };
 
 /**
@@ -185,39 +187,44 @@ export function pickNonRoundScore(params: {
  * and cipher-specific quote length guidance following Toebes' Division A implementation.
  */
 export function getQuestionPointGuidance(
-  cipher: LookupCipherType,
+  cipher: TestableCipherType,
   quote: Quote | undefined,
   options?: {
     otherPoints?: readonly number[];
     questionIndex?: number;
+    caesarOffset?: number;
   }
 ): QuestionPointGuidance {
   const cipherLabel = CIPHER_LABELS[cipher] ?? 'Cipher';
   const seed =
     (quote?.id ?? 0) +
     (CIPHER_SEEDS[cipher] ?? 0) +
-    (options?.questionIndex ?? 0);
+    (options?.questionIndex ?? 0) +
+    Math.abs(options?.caesarOffset ?? 0);
 
   if (!quote) {
+    const fallbackBase = cipher === 'caesar' ? 104 : 68;
+    const fallbackMin = fallbackBase - 5;
+    const fallbackMax = fallbackBase + 5;
     const fallbackSuggested = pickNonRoundScore({
-      rawBase: 68,
-      min: 63,
-      max: 73,
+      rawBase: fallbackBase,
+      min: fallbackMin,
+      max: fallbackMax,
       otherPoints: options?.otherPoints,
       seed,
     });
     return {
-      rawBase: 68,
+      rawBase: fallbackBase,
       suggested: fallbackSuggested,
-      min: 63,
-      max: 73,
+      min: fallbackMin,
+      max: fallbackMax,
       letterCount: 0,
       uniqueLetters: 0,
       tapCount: 0,
-      recommendedMinLetters: 25,
-      recommendedMaxLetters: 60,
+      recommendedMinLetters: cipher === 'caesar' ? 30 : 25,
+      recommendedMaxLetters: cipher === 'caesar' ? 75 : 60,
       lengthWarning: null,
-      tooltipSummary: `Suggested: ${fallbackSuggested} pts (range 63–73)`,
+      tooltipSummary: `Suggested: ${fallbackSuggested} pts (range ${fallbackMin}–${fallbackMax})`,
     };
   }
 
@@ -273,6 +280,28 @@ export function getQuestionPointGuidance(
       detailStats = `${L} letters, ${T} taps`;
       break;
     }
+    case 'caesar': {
+      // Toebes Division A CipherTableEncoder (Caesar):
+      // round(1.5 * (len + 2.5 * unique)) minus short-shift and 1/2-letter word discounts, range ±12
+      const effOffset =
+        options?.caesarOffset && options.caesarOffset !== 0
+          ? options.caesarOffset
+          : 2;
+      const absShift = Math.abs(effOffset);
+      const shiftDiscount = absShift === 1 ? 20 : absShift <= 3 ? 10 : 0;
+      const wordDiscount =
+        quote.minWordLength === 1 ? 15 : quote.minWordLength === 2 ? 10 : 0;
+      rawBase = Math.max(
+        20,
+        Math.round(1.5 * (L + 2.5 * U)) - shiftDiscount - wordDiscount
+      );
+      min = Math.max(15, rawBase - 12);
+      max = rawBase + 12;
+      recommendedMinLetters = 30;
+      recommendedMaxLetters = 75;
+      detailStats = `${L} letters, ${U} unique, shift ${formatSignedOffset(effOffset)}, min word ${quote.minWordLength}`;
+      break;
+    }
   }
 
   const suggested = pickNonRoundScore({
@@ -313,13 +342,18 @@ export function getQuestionPointGuidance(
  * Assigns tie-reduced, non-round point values across an entire list of questions.
  */
 export function suggestPointsForPacket(
-  questions: readonly { cipher: LookupCipherType; quote: Quote | undefined }[]
+  questions: readonly {
+    cipher: TestableCipherType;
+    quote: Quote | undefined;
+    caesarOffset?: number;
+  }[]
 ): number[] {
   const assigned: number[] = [];
   questions.forEach((q, idx) => {
     const guidance = getQuestionPointGuidance(q.cipher, q.quote, {
       otherPoints: assigned,
       questionIndex: idx,
+      caesarOffset: q.caesarOffset,
     });
     assigned.push(guidance.suggested);
   });

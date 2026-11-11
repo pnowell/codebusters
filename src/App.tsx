@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import type {
+  CaesarRangeMode,
   CipherType,
   GeneralPracticeCiphers,
+  LetterMathMode,
   OffsetsMode,
   UserSettings,
   TestPacket,
@@ -9,6 +11,7 @@ import type {
   TestEvaluationResult,
 } from './types';
 import { LetterOffsetDrill } from './components/drills/LetterOffsetDrill';
+import { LetterMathDrill } from './components/drills/LetterMathDrill';
 import { SymbolDrill } from './components/drills/SymbolDrill';
 import { MainMenu } from './components/menu/MainMenu';
 import { OptionsModal } from './components/options/OptionsModal';
@@ -22,6 +25,7 @@ import {
   getDrill,
   isCipherAccessible,
   isLookupCipher,
+  isTestableCipher,
 } from './data/drills';
 import { getQuoteById } from './data/quotes';
 import {
@@ -101,6 +105,8 @@ type ActiveScreen =
       drill: CipherType;
       section: DrillSection;
       offsetsMode?: OffsetsMode;
+      letterMathMode?: LetterMathMode;
+      caesarRange?: CaesarRangeMode;
       quoteId?: number;
     }
   | { kind: 'testsList' }
@@ -144,6 +150,8 @@ function initScreen(): ActiveScreen {
       drill: route.drill,
       section: route.section || 'memorize',
       offsetsMode: route.offsetsMode,
+      letterMathMode: route.letterMathMode,
+      caesarRange: route.caesarRange,
       quoteId: route.quoteId,
     };
   }
@@ -208,14 +216,39 @@ export const App: React.FC = () => {
       section: DrillSection = 'memorize',
       quoteId?: number,
       replaceHistory = false,
-      offsetsMode?: OffsetsMode
+      offsetsMode?: OffsetsMode,
+      letterMathMode?: LetterMathMode,
+      caesarRange?: CaesarRangeMode
     ) => {
-      setScreen({ kind: 'drill', drill, section, offsetsMode, quoteId });
-      const newUrl = buildRouteUrl({ drill, section, offsetsMode, quoteId });
+      setScreen({
+        kind: 'drill',
+        drill,
+        section,
+        offsetsMode,
+        letterMathMode,
+        caesarRange,
+        quoteId,
+      });
+      const newUrl = buildRouteUrl({
+        drill,
+        section,
+        offsetsMode,
+        letterMathMode,
+        caesarRange,
+        quoteId,
+      });
+      const statePayload = {
+        drill,
+        section,
+        offsetsMode,
+        letterMathMode,
+        caesarRange,
+        quoteId,
+      };
       if (replaceHistory) {
-        window.history.replaceState({ drill, section, offsetsMode, quoteId }, '', newUrl);
+        window.history.replaceState(statePayload, '', newUrl);
       } else {
-        window.history.pushState({ drill, section, offsetsMode, quoteId }, '', newUrl);
+        window.history.pushState(statePayload, '', newUrl);
       }
     },
     []
@@ -696,6 +729,8 @@ export const App: React.FC = () => {
           drill: route.drill,
           section: route.section || 'memorize',
           offsetsMode: route.offsetsMode,
+          letterMathMode: route.letterMathMode,
+          caesarRange: route.caesarRange,
           quoteId: route.quoteId,
         });
       } else if (route.quotesBrowser) {
@@ -773,6 +808,8 @@ export const App: React.FC = () => {
           drill: route.drill,
           section: route.section,
           offsetsMode: route.offsetsMode,
+          letterMathMode: route.letterMathMode,
+          caesarRange: route.caesarRange,
           quoteId: route.quoteId,
         },
         '',
@@ -1122,6 +1159,8 @@ export const App: React.FC = () => {
         drill: prev.drill,
         section: prev.section,
         offsetsMode: prev.offsetsMode,
+        letterMathMode: prev.letterMathMode,
+        caesarRange: prev.caesarRange,
         quoteId: newQuoteId,
       });
       window.history.replaceState(
@@ -1129,6 +1168,8 @@ export const App: React.FC = () => {
           drill: prev.drill,
           section: prev.section,
           offsetsMode: prev.offsetsMode,
+          letterMathMode: prev.letterMathMode,
+          caesarRange: prev.caesarRange,
           quoteId: newQuoteId,
         },
         '',
@@ -1152,6 +1193,23 @@ export const App: React.FC = () => {
         newUrl
       );
       return { ...prev, offsetsMode: newMode };
+    });
+  }, []);
+
+  const handleLetterMathModeChange = useCallback((newMode: LetterMathMode) => {
+    setScreen((prev) => {
+      if (prev.kind !== 'drill' || prev.drill !== 'letterMath') return prev;
+      const newUrl = buildRouteUrl({
+        drill: prev.drill,
+        section: prev.section,
+        letterMathMode: newMode,
+      });
+      window.history.replaceState(
+        { drill: prev.drill, section: prev.section, letterMathMode: newMode },
+        '',
+        newUrl
+      );
+      return { ...prev, letterMathMode: newMode };
     });
   }, []);
 
@@ -1225,8 +1283,16 @@ export const App: React.FC = () => {
           onOpenTestsList={handleOpenTestsList}
           onOpenLeaderboard={openLeaderboard}
           onOpenOptions={openOptions}
-          onSelectDrill={(drill, section, offsetsMode) =>
-            navigateToDrill(drill, section, undefined, false, offsetsMode)
+          onSelectDrill={(drill, section, options) =>
+            navigateToDrill(
+              drill,
+              section,
+              undefined,
+              false,
+              options?.offsetsMode,
+              options?.letterMathMode,
+              options?.caesarRange
+            )
           }
         />
       )}
@@ -1266,28 +1332,44 @@ export const App: React.FC = () => {
         />
       )}
 
+      {screen.kind === 'drill' && canRenderDrillScreen && screen.drill === 'letterMath' && (
+        <LetterMathDrill
+          key={workoutContext ? `workout-${workoutContext.round}-${workoutContext.stepIndex}` : 'standalone'}
+          initialMode={screen.letterMathMode}
+          onModeChange={handleLetterMathModeChange}
+          onBack={navigateToMenu}
+          workoutContext={workoutContext}
+        />
+      )}
+
       {screen.kind === 'drill' &&
         canRenderDrillScreen &&
-        isLookupCipher(screen.drill) &&
-        (screen.section === 'cipher' ? (
+        screen.section === 'cipher' &&
+        isTestableCipher(screen.drill) && (
           <Suspense fallback={suspenseFallback}>
             <LookupCipherDrill
-              key={`${screen.drill}:${screen.quoteId ?? 'random'}:${workoutContext ? `${workoutContext.round}-${workoutContext.stepIndex}` : 'standalone'}`}
+              key={`${screen.drill}:${screen.caesarRange ?? 'pm3'}:${screen.quoteId ?? 'random'}:${workoutContext ? `${workoutContext.round}-${workoutContext.stepIndex}` : 'standalone'}`}
               cipher={screen.drill}
+              caesarRange={screen.caesarRange}
               initialQuoteId={screen.quoteId}
               onQuoteChange={handleQuoteChange}
               onBack={navigateToMenu}
               workoutContext={workoutContext}
             />
           </Suspense>
-        ) : (
+        )}
+
+      {screen.kind === 'drill' &&
+        canRenderDrillScreen &&
+        screen.section === 'memorize' &&
+        isLookupCipher(screen.drill) && (
           <SymbolDrill
             key={`${screen.drill}:${workoutContext ? `${workoutContext.round}-${workoutContext.stepIndex}` : 'standalone'}`}
             cipher={screen.drill}
             onBack={navigateToMenu}
             workoutContext={workoutContext}
           />
-        ))}
+        )}
 
       {screen.kind === 'testResults' && (
         <Suspense fallback={suspenseFallback}>

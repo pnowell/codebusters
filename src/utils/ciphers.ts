@@ -1,4 +1,9 @@
-import type { EvaluationResult, ScoreTier } from '../types';
+import type {
+  CaesarRangeMode,
+  EvaluationResult,
+  LetterMathMode,
+  ScoreTier,
+} from '../types';
 
 export const isLetter = (c: string): boolean => c.length === 1 && c >= 'A' && c <= 'Z';
 
@@ -49,6 +54,143 @@ export function atbashChar(char: string): string {
   const off = letterToOffset(char);
   if (off === -1) return char;
   return offsetToLetter(25 - off);
+}
+
+/** Allowed non-zero Caesar shifts for Division A (±3). */
+export const CAESAR_PM3_OFFSETS = [-3, -2, -1, 1, 2, 3] as const;
+
+/** All 25 non-zero Caesar shifts modulo 26 (-12..-1, +1..+13). */
+export const CAESAR_ANY_OFFSETS: readonly number[] = [
+  -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1,
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
+];
+
+export function isValidCaesarPm3Offset(val: unknown): val is number {
+  return (
+    typeof val === 'number' &&
+    Number.isInteger(val) &&
+    val >= -3 &&
+    val <= 3 &&
+    val !== 0
+  );
+}
+
+export function isValidCaesarAnyOffset(val: unknown): val is number {
+  return (
+    typeof val === 'number' &&
+    Number.isInteger(val) &&
+    val >= -13 &&
+    val <= 13 &&
+    val !== 0
+  );
+}
+
+/**
+ * Caesar mapping: shifts A-Z by `offset` modulo 26 (`cipher = (plain + offset) mod 26`).
+ * Non-alphabetic characters are returned unchanged.
+ */
+export function caesarChar(char: string, offset: number): string {
+  const off = letterToOffset(char);
+  if (off === -1) return char;
+  const shift = Number.isFinite(offset) ? Math.trunc(offset) : 0;
+  const shifted = (((off + shift) % 26) + 26) % 26;
+  return offsetToLetter(shifted);
+}
+
+/**
+ * Deterministic non-zero Caesar shift derived from an integer seed (e.g. `quoteId`),
+ * used as a stable fallback when no explicit offset was persisted.
+ */
+export function deterministicCaesarOffset(
+  seed: number,
+  range: CaesarRangeMode = 'pm3'
+): number {
+  const pool = range === 'any' ? CAESAR_ANY_OFFSETS : CAESAR_PM3_OFFSETS;
+  const idx = Math.abs(Math.trunc(seed * 7 + 3)) % pool.length;
+  return pool[idx];
+}
+
+/**
+ * Picks a random non-zero Caesar offset for the requested range, optionally avoiding `excludeOffset`.
+ */
+export function pickRandomCaesarOffset(
+  range: CaesarRangeMode = 'pm3',
+  excludeOffset?: number,
+  rng: () => number = Math.random
+): number {
+  const pool = range === 'any' ? CAESAR_ANY_OFFSETS : CAESAR_PM3_OFFSETS;
+  const filtered =
+    excludeOffset !== undefined ? pool.filter((o) => o !== excludeOffset) : pool;
+  const candidates = filtered.length > 0 ? filtered : pool;
+  return candidates[Math.floor(rng() * candidates.length)];
+}
+
+export function formatSignedOffset(offset: number): string {
+  if (offset > 0) return `+${offset}`;
+  return String(offset);
+}
+
+export type ArithmeticOperandKind = 'number' | 'letter';
+
+export interface LetterMathProblem {
+  key: string;
+  baseOffset: number;
+  baseLetter: string;
+  op: '+' | '-';
+  delta: number;
+  bottomOperandLabel: string;
+  bottomOperandOffsetHint?: number;
+  answerOffset: number;
+  answerLetter: string;
+}
+
+/**
+ * Generates a modulo-26 letter arithmetic card (`ABC ± #` or future `ABC ± ABC`).
+ * - `easy`: non-zero delta in `1..3`
+ * - `hard`: non-zero delta in `1..25`
+ */
+export function generateLetterMathProblem(
+  mode: LetterMathMode,
+  operandKind: ArithmeticOperandKind = 'number',
+  excludeKey?: string,
+  rng: () => number = Math.random
+): LetterMathProblem {
+  const maxDelta = mode === 'easy' ? 3 : 25;
+  let candidate: LetterMathProblem | null = null;
+
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const baseOffset = Math.floor(rng() * 26);
+    const op: '+' | '-' = rng() < 0.5 ? '+' : '-';
+    const delta = 1 + Math.floor(rng() * maxDelta);
+    const signedDelta = op === '+' ? delta : -delta;
+    const answerOffset = (((baseOffset + signedDelta) % 26) + 26) % 26;
+    const baseLetter = offsetToLetter(baseOffset);
+    const answerLetter = offsetToLetter(answerOffset);
+
+    const bottomOperandLabel =
+      operandKind === 'letter' ? offsetToLetter(delta) : String(delta);
+    const bottomOperandOffsetHint =
+      operandKind === 'letter' ? delta : undefined;
+    const key = `${baseLetter}${op}${bottomOperandLabel}`;
+
+    candidate = {
+      key,
+      baseOffset,
+      baseLetter,
+      op,
+      delta,
+      bottomOperandLabel,
+      bottomOperandOffsetHint,
+      answerOffset,
+      answerLetter,
+    };
+
+    if (!excludeKey || key !== excludeKey) {
+      break;
+    }
+  }
+
+  return candidate!;
 }
 
 /**

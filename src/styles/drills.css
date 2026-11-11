@@ -1582,4 +1582,271 @@
     min-height: 18px;
     margin-top: 0.2rem;
   }
+
+  .tabula-recta-viewport {
+    max-height: 128px;
+  }
+
+  .workspace-prompt-side:has(.letter-math-prompt) {
+    min-height: 70px;
+    padding: 0.08rem 2.25rem 0.08rem 0.25rem;
+  }
+
+  .letter-math-operand {
+    font-size: 1.82rem;
+  }
+
+  .letter-math-op,
+  .letter-math-op-spacer {
+    font-size: 1.55rem;
+  }
+}
+
+/* ==========================================================================
+   Interactive Tabula Recta Reference (Caesar & Vigenère)
+   ========================================================================== */
+.tabula-recta-outer {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  padding: 0.16rem 0.2rem;
+}
+
+.tabula-recta-viewport {
+  max-width: 100%;
+  max-height: 196px;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+  border-radius: 7px;
+  border: 1px solid rgba(148, 163, 184, 0.36);
+  background: #0f172a;
+  cursor: grab;
+  user-select: none;
+}
+
+.tabula-recta-viewport.is-dragging {
+  cursor: grabbing;
+}
+
+.tabula-recta-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-family: var(--font-mono);
+  margin: 0;
+}
+
+.tr-cell {
+  min-width: 26px;
+  height: 22px;
+  padding: 0 5px;
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #cbd5e1;
+  background: #131d31;
+  border-right: 1px solid rgba(148, 163, 184, 0.26);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.26);
+  line-height: 1.1;
+  white-space: nowrap;
+  user-select: none;
+  transition: background-color 0.1s ease, color 0.1s ease;
+}
+
+.tabula-recta-table tr .tr-cell:last-child {
+  border-right: none;
+}
+
+.tabula-recta-table tbody tr:last-child .tr-cell {
+  border-bottom: none;
+}
+
+/* Sticky Left Row Header */
+.tr-row-header {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  min-width: 34px;
+  padding: 0 7px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #94a3b8;
+  background: #162238;
+  border-right: 1px solid rgba(148, 163, 184, 0.45);
+}
+
+.tr-row-header:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: -2px;
+}
+
+/* Central "0" Reference Row — styled like Tap Code's first col with opaque slate backdrop & dual-edge sticky */
+.tr-zero-cell {
+  position: sticky;
+  top: 0;
+  bottom: 0;
+  z-index: 3;
+  font-weight: 800;
+  color: #f8fafc;
+  background: #2a384c;
+  box-shadow: inset 0 1px 0 rgba(226, 232, 240, 0.28),
+    inset 0 -1px 0 rgba(226, 232, 240, 0.34);
+}
+
+.tr-zero-corner {
+  position: sticky;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 5;
+  font-weight: 800;
+  color: #f8fafc;
+  background: #32425a;
+  border-right: 1px solid rgba(226, 232, 240, 0.45);
+  box-shadow: inset 0 1px 0 rgba(226, 232, 240, 0.28),
+    inset 0 -1px 0 rgba(226, 232, 240, 0.34);
+  cursor: pointer;
+}
+
+/* Vigenère Sticky Column Headers */
+.tr-vigenere-col-header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  font-weight: 800;
+  color: #f8fafc;
+  background: #2a384c;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.4);
+}
+
+.tr-vigenere-corner {
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 5;
+  background: #32425a;
+  border-right: 1px solid rgba(226, 232, 240, 0.45);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.4);
+}
+
+/* Selectable Row Hover & Active Teal Highlight */
+.tr-selectable-row {
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .tabula-recta-viewport:not(.is-dragging)
+    .tr-selectable-row:not(.is-selected):hover
+    .tr-cell {
+    background: #1b2b45;
+    color: #e2e8f0;
+  }
+
+  .tabula-recta-viewport:not(.is-dragging)
+    .tr-selectable-row:not(.is-selected):hover
+    .tr-row-header {
+    background: #1f3250;
+    color: #e2e8f0;
+  }
+}
+
+.tr-cell.is-selected {
+  background: #123c56;
+  color: #e0f2fe;
+  font-weight: 800;
+  box-shadow: inset 0 1px 0 rgba(56, 189, 248, 0.75),
+    inset 0 -1px 0 rgba(56, 189, 248, 0.75);
+}
+
+.tr-row-header.is-selected {
+  background: #0ea5e9;
+  color: #082f49;
+  font-weight: 800;
+  border-right-color: #38bdf8;
+  box-shadow: inset 0 1px 0 #7dd3fc, inset 0 -1px 0 #7dd3fc;
+}
+
+/* ==========================================================================
+   Letter Math Flashcard Vertical Arithmetic Stack (ABC ± # / ABC ± ABC)
+   ========================================================================== */
+.workspace-prompt-side:has(.letter-math-prompt) {
+  height: auto;
+  min-height: 88px;
+  min-width: 112px;
+  padding: 0.15rem 2.55rem 0.15rem 0.35rem;
+}
+
+.letter-math-prompt {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  font-family: var(--font-mono);
+  user-select: none;
+  gap: 0.1rem;
+}
+
+.letter-math-row {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 0.38rem;
+}
+
+.letter-math-op,
+.letter-math-op-spacer {
+  display: inline-block;
+  width: 1.25ch;
+  text-align: center;
+  font-size: 1.85rem;
+  font-weight: 800;
+  color: #94a3b8;
+  line-height: 1.05;
+}
+
+.letter-math-operand {
+  display: inline-block;
+  min-width: 2ch;
+  text-align: right;
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: var(--accent-blue);
+  line-height: 1.06;
+}
+
+.letter-math-hint-slot {
+  position: absolute;
+  left: calc(100% + 0.38rem);
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+@keyframes letterMathHintFade {
+  from {
+    opacity: 0;
+    transform: translateX(-3px);
+  }
+  to {
+    opacity: 0.92;
+    transform: translateX(0);
+  }
+}
+
+.letter-math-offset-hint {
+  display: inline-block;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #94a3b8;
+  animation: letterMathHintFade 0.2s ease-out forwards;
+}
+
+.letter-math-rule {
+  width: 100%;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(148, 163, 184, 0.7);
+  margin-top: 0.16rem;
 }

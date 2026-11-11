@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
-  LookupCipherType,
   PublicProfile,
   Quote,
   QuoteCategory,
   QuoteFlag,
+  TestableCipherType,
   TestAttempt,
   TestCohort,
   TestPacket,
@@ -33,6 +33,14 @@ import {
   subscribeAttemptsForTest,
 } from '../../services/testService';
 import {
+  CAESAR_PM3_OFFSETS,
+  caesarChar,
+  deterministicCaesarOffset,
+  formatSignedOffset,
+  isValidCaesarPm3Offset,
+  pickRandomCaesarOffset,
+} from '../../utils/ciphers';
+import {
   getQuestionPointGuidance,
   isPointsMatchingGuidance,
   suggestPointsForPacket,
@@ -44,9 +52,10 @@ import { QuoteBrowserPanel } from '../quotes/QuoteBrowserPanel';
 
 interface EditableQuestion {
   uid: string;
-  cipher: LookupCipherType;
+  cipher: TestableCipherType;
   quoteId: number;
   points: number;
+  caesarOffset?: number;
   isPointsManual: boolean;
   isTiebreaker: boolean;
   description: string;
@@ -70,12 +79,13 @@ export interface TestEditorViewProps {
   onDeleted: () => void;
 }
 
-const CIPHER_OPTIONS: { id: LookupCipherType; label: string; promptName: string }[] = [
+const CIPHER_OPTIONS: { id: TestableCipherType; label: string; promptName: string }[] = [
   { id: 'atbash', label: 'Atbash', promptName: 'Atbash Cipher' },
   { id: 'pigpen', label: 'Pigpen', promptName: 'Pigpen Cipher' },
   { id: 'galactic', label: 'Galactic', promptName: 'Standard Galactic Alphabet' },
   { id: 'tap', label: 'Tap Code', promptName: 'Tap Code Cipher' },
-  { id: 'knights', label: 'Knights', promptName: 'Knights Templar Cipher' },
+  { id: 'knights', label: 'Knights Templar', promptName: 'Knights Templar Cipher' },
+  { id: 'caesar', label: 'Caesar', promptName: 'Caesar Cipher' },
 ];
 
 const CATEGORY_SHORT_LABELS: Record<QuoteCategory, string> = {
@@ -102,7 +112,7 @@ function createClientUid(prefix: string, seq: number): string {
 }
 
 function buildAutoPrompt(
-  cipher: LookupCipherType,
+  cipher: TestableCipherType,
   isTiebreaker: boolean,
   author?: string
 ): string {
@@ -128,7 +138,7 @@ function buildStarterQuestions(existingTests: readonly TestPacket[]): EditableQu
       used.add(quoteId);
     }
   }
-  const ciphers: LookupCipherType[] = ['atbash', 'pigpen', 'galactic'];
+  const ciphers: TestableCipherType[] = ['atbash', 'pigpen', 'galactic'];
   const pickedItems = ciphers.map((cipher) => {
     const picked = pickRandomCleanLookupQuote(used);
     used.add(picked.id);
@@ -164,6 +174,9 @@ function serializeDraftSnapshot(params: {
       cipher: q.cipher,
       quoteId: q.quoteId,
       points: Math.round(q.points),
+      ...(q.cipher === 'caesar' && q.caesarOffset !== undefined
+        ? { caesarOffset: q.caesarOffset }
+        : {}),
       isTiebreaker: Boolean(q.isTiebreaker),
       description: q.description.trim(),
     })),
@@ -212,14 +225,22 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
     if (initialPacket && initialPacket.questions.length > 0) {
       return initialPacket.questions.map((q, idx) => {
         const quote = getQuoteById(q.quoteId);
+        const caesarOffset =
+          q.cipher === 'caesar'
+            ? isValidCaesarPm3Offset(q.caesarOffset)
+              ? q.caesarOffset
+              : deterministicCaesarOffset(q.quoteId + idx, 'pm3')
+            : undefined;
         const guidance = getQuestionPointGuidance(q.cipher, quote, {
           questionIndex: idx,
+          caesarOffset,
         });
         return {
           uid: createClientUid('q', idx + 1),
           cipher: q.cipher,
           quoteId: q.quoteId,
           points: q.points,
+          ...(caesarOffset !== undefined ? { caesarOffset } : {}),
           isPointsManual: !isPointsMatchingGuidance(q.points, guidance),
           isTiebreaker: Boolean(q.isTiebreaker),
           description: q.description ?? '',
@@ -513,6 +534,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
         questions.map((q) => ({
           cipher: q.cipher,
           quote: getQuoteById(q.quoteId),
+          caesarOffset: q.caesarOffset,
         }))
       ),
     [questions]
@@ -533,6 +555,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
         prev.map((q) => ({
           cipher: q.cipher,
           quote: getQuoteById(q.quoteId),
+          caesarOffset: q.caesarOffset,
         }))
       );
       return prev.map((q, idx) => ({
@@ -547,6 +570,8 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
     if (isContentLocked) return;
     const cycleCiphers = CIPHER_OPTIONS.map((c) => c.id);
     const nextCipher = cycleCiphers[questions.length % cycleCiphers.length];
+    const nextCaesarOffset =
+      nextCipher === 'caesar' ? pickRandomCaesarOffset('pm3') : undefined;
     const picked = pickRandomCleanLookupQuote(freshQuoteExcludeIds);
     const uid = createClientUid('q', qSeqRef.current);
     qSeqRef.current += 1;
@@ -556,6 +581,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
       const guidance = getQuestionPointGuidance(nextCipher, picked, {
         otherPoints,
         questionIndex: prev.length,
+        caesarOffset: nextCaesarOffset,
       });
       return [
         ...prev,
@@ -564,6 +590,9 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
           cipher: nextCipher,
           quoteId: picked.id,
           points: guidance.suggested,
+          ...(nextCaesarOffset !== undefined
+            ? { caesarOffset: nextCaesarOffset }
+            : {}),
           isPointsManual: false,
           isTiebreaker: false,
           description: buildAutoPrompt(nextCipher, false, picked.author),
@@ -627,6 +656,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
     const nextGuidance = getQuestionPointGuidance(question.cipher, picked, {
       otherPoints,
       questionIndex: qIdx,
+      caesarOffset: question.caesarOffset,
     });
 
     handleUpdateQuestion(question.uid, {
@@ -664,6 +694,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
       const nextGuidance = getQuestionPointGuidance(targetQ.cipher, picked, {
         otherPoints,
         questionIndex: targetIdx,
+        caesarOffset: targetQ.caesarOffset,
       });
 
       handleUpdateQuestion(targetQ.uid, {
@@ -977,6 +1008,9 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
       cipher: q.cipher,
       quoteId: q.quoteId,
       points: Math.max(0, Math.round(Number(q.points) || 0)),
+      ...(q.cipher === 'caesar' && q.caesarOffset !== undefined
+        ? { caesarOffset: q.caesarOffset }
+        : {}),
       ...(q.isTiebreaker ? { isTiebreaker: true } : {}),
       ...(q.description.trim() ? { description: q.description.trim() } : {}),
     }));
@@ -1375,6 +1409,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                 const guidance = getQuestionPointGuidance(q.cipher, quote, {
                   otherPoints,
                   questionIndex: idx,
+                  caesarOffset: q.caesarOffset,
                 });
                 const hasDuplicatePoints = duplicatePointValuesInDraft.has(q.points);
                 const isGuidanceMatch = isPointsMatchingGuidance(q.points, guidance);
@@ -1417,16 +1452,24 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                                 const shouldRefreshPrompt =
                                   !q.description.trim() ||
                                   q.description.trim() === prevDefault;
+                                const nextCaesarOffset =
+                                  opt.id === 'caesar'
+                                    ? isValidCaesarPm3Offset(q.caesarOffset)
+                                      ? q.caesarOffset
+                                      : pickRandomCaesarOffset('pm3')
+                                    : undefined;
                                 const nextGuidance = getQuestionPointGuidance(
                                   opt.id,
                                   quote,
                                   {
                                     otherPoints,
                                     questionIndex: idx,
+                                    caesarOffset: nextCaesarOffset,
                                   }
                                 );
                                 handleUpdateQuestion(q.uid, {
                                   cipher: opt.id,
+                                  caesarOffset: nextCaesarOffset,
                                   ...(!q.isPointsManual
                                     ? { points: nextGuidance.suggested }
                                     : {}),
@@ -1570,6 +1613,67 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                         )}
                       </div>
                     </div>
+
+                    {q.cipher === 'caesar' && (
+                      <div
+                        className="editor-caesar-shift-row"
+                        role="group"
+                        aria-label={`Question ${idx + 1} Caesar shift`}
+                      >
+                        <span className="editor-caesar-shift-label">
+                          Caesar Shift:
+                        </span>
+                        <div className="editor-caesar-shift-segmented">
+                          {CAESAR_PM3_OFFSETS.map((shiftVal) => {
+                            const activeShift = isValidCaesarPm3Offset(q.caesarOffset)
+                              ? q.caesarOffset
+                              : 1;
+                            const isShiftActive = activeShift === shiftVal;
+                            return (
+                              <button
+                                key={shiftVal}
+                                type="button"
+                                disabled={isContentLocked}
+                                className={`editor-caesar-shift-btn ${
+                                  isShiftActive ? 'active' : ''
+                                }`}
+                                onClick={() => {
+                                  const nextGuidance = getQuestionPointGuidance(
+                                    'caesar',
+                                    quote,
+                                    {
+                                      otherPoints,
+                                      questionIndex: idx,
+                                      caesarOffset: shiftVal,
+                                    }
+                                  );
+                                  handleUpdateQuestion(q.uid, {
+                                    caesarOffset: shiftVal,
+                                    ...(!q.isPointsManual
+                                      ? { points: nextGuidance.suggested }
+                                      : {}),
+                                  });
+                                }}
+                              >
+                                {formatSignedOffset(shiftVal)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <span
+                          className="editor-caesar-shift-example"
+                          title="Plaintext A encodes to this ciphertext letter"
+                        >
+                          A →{' '}
+                          {caesarChar(
+                            'A',
+                            isValidCaesarPm3Offset(q.caesarOffset)
+                              ? q.caesarOffset
+                              : 1
+                          )}
+                        </span>
+                      </div>
+                    )}
 
                     {/* Selected Quote Box */}
                     <div className="editor-quote-box">
@@ -1720,6 +1824,16 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                       <div className="editor-puzzle-preview">
                         <QuoteTileGrid
                           cipher={q.cipher}
+                          cipherParams={
+                            q.cipher === 'caesar'
+                              ? {
+                                  caesarOffset: isValidCaesarPm3Offset(q.caesarOffset)
+                                    ? q.caesarOffset
+                                    : 1,
+                                  caesarRange: 'pm3',
+                                }
+                              : undefined
+                          }
                           quote={quote}
                           userInputs={EMPTY_INPUTS}
                           onChangeUserInputs={NOOP_INPUTS}

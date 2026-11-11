@@ -1,6 +1,7 @@
 import React from 'react';
 import { TAP_CODE_GRID } from '../../../utils/ciphers';
-import type { LookupCipherType } from '../../../types';
+import type { CipherWorkspaceParams, TestableCipherType } from '../../../types';
+import { TabulaRecta } from './TabulaRecta';
 
 const REFERENCE_IMAGES = {
   atbash: {
@@ -9,7 +10,7 @@ const REFERENCE_IMAGES = {
   },
   pigpen: {
     src: 'references/pigpen_table.png',
-    alt: 'Pigpen / Masonic Decryption Table from Official Resource Sheet',
+    alt: 'Pigpen Decryption Table from Official Resource Sheet',
   },
   galactic: {
     src: 'references/galactic_table.png',
@@ -21,13 +22,23 @@ const REFERENCE_IMAGES = {
   },
 } as const;
 
-export type ReferenceCipher = LookupCipherType;
+export type ReferenceCipher = TestableCipherType;
 
 interface Props {
   cipher: ReferenceCipher;
+  cipherParams?: CipherWorkspaceParams;
 }
 
-export const ReferenceSheet: React.FC<Props> = ({ cipher }) => {
+export const ReferenceSheet: React.FC<Props> = ({ cipher, cipherParams }) => {
+  if (cipher === 'caesar') {
+    return (
+      <TabulaRecta
+        variant="caesar"
+        caesarRange={cipherParams?.caesarRange ?? 'pm3'}
+      />
+    );
+  }
+
   if (cipher === 'tap') {
     return (
       <div className="tap-ref-wrapper">

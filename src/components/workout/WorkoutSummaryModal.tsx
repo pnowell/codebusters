@@ -35,7 +35,11 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
 
           <div className="summary-results-list">
             {summary.results.map((res, idx) => {
-              if (res.isWarmup || res.cipherId === 'offsets') {
+              if (
+                res.isWarmup ||
+                res.cipherId === 'offsets' ||
+                res.cipherId === 'letterMath'
+              ) {
                 return (
                   <div key={idx} className="summary-result-row">
                     <div className="summary-row-left">
@@ -45,7 +49,14 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
                           <>
                             Letter Offsets{' '}
                             <small style={{ opacity: 0.75, fontWeight: 500 }}>
-                              ({res.offsetsMode === 'numToLetter' ? '# → Letter' : 'Letter → #'})
+                              ({res.offsetsMode === 'numToLetter' ? '# → ABC' : 'ABC → #'})
+                            </small>
+                          </>
+                        ) : res.cipherId === 'letterMath' ? (
+                          <>
+                            Letter Math{' '}
+                            <small style={{ opacity: 0.75, fontWeight: 500 }}>
+                              (ABC ± # · {res.letterMathMode === 'hard' ? 'Hard' : 'Easy'})
                             </small>
                           </>
                         ) : (

@@ -4,9 +4,20 @@ import {
   isCipherEnabledForStudent,
   type CipherType,
 } from '../../data/drills';
-import type { GeneralPracticeCiphers, OffsetsMode } from '../../types';
+import type {
+  CaesarRangeMode,
+  GeneralPracticeCiphers,
+  LetterMathMode,
+  OffsetsMode,
+} from '../../types';
 import type { DrillSection } from '../../utils/routing';
 import { UserAuthBadge } from '../auth/UserAuthBadge';
+
+export interface SelectDrillOptions {
+  offsetsMode?: OffsetsMode;
+  letterMathMode?: LetterMathMode;
+  caesarRange?: CaesarRangeMode;
+}
 
 interface MainMenuProps {
   studentName: string;
@@ -17,7 +28,11 @@ interface MainMenuProps {
   onOpenTestsList: () => void;
   onOpenLeaderboard: () => void;
   onOpenOptions: () => void;
-  onSelectDrill: (drill: CipherType, section: DrillSection, offsetsMode?: OffsetsMode) => void;
+  onSelectDrill: (
+    drill: CipherType,
+    section: DrillSection,
+    options?: SelectDrillOptions
+  ) => void;
 }
 
 export const MainMenu: React.FC<MainMenuProps> = ({
@@ -31,9 +46,15 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   onOpenOptions,
   onSelectDrill,
 }) => {
+  const isLetterMathVisible =
+    isTeacher || isCipherEnabledForStudent('letterMath', generalPracticeCiphers);
+  const isLetterMathHiddenFromStudents =
+    isTeacher && !isCipherEnabledForStudent('letterMath', generalPracticeCiphers);
+
   const visibleFlashcardDrills = DRILLS.filter(
     (d) =>
       d.id !== 'offsets' &&
+      d.id !== 'letterMath' &&
       d.implemented &&
       d.hasFlashcardDrill &&
       (isTeacher || isCipherEnabledForStudent(d.id, generalPracticeCiphers))
@@ -49,6 +70,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   const comingSoonDrills = DRILLS.filter(
     (d) =>
       d.id !== 'offsets' &&
+      d.id !== 'letterMath' &&
       (!d.implemented ||
         (!isTeacher && !isCipherEnabledForStudent(d.id, generalPracticeCiphers)))
   );
@@ -114,29 +136,108 @@ export const MainMenu: React.FC<MainMenuProps> = ({
         </div>
 
         <div className="menu-buttons-list">
-          <div className="menu-drill-group" role="group" aria-labelledby="menu-offsets-group-label">
-            <div id="menu-offsets-group-label" className="menu-drill-group-label">
+          {/* Letter Offsets — Horizontal Labeled Row */}
+          <div
+            className="menu-labeled-row"
+            role="group"
+            aria-labelledby="menu-offsets-row-label"
+          >
+            <span id="menu-offsets-row-label" className="menu-labeled-row-title">
               Letter Offsets
-            </div>
-            <div className="menu-drill-group-row">
+            </span>
+            <div className="menu-labeled-row-actions">
               <button
                 type="button"
-                className="menu-drill-btn menu-drill-subbtn"
-                onClick={() => onSelectDrill('offsets', 'memorize', 'letterToNum')}
-                aria-label="Letter Offsets: Letter to Number"
+                className="menu-drill-btn menu-inline-pill-btn"
+                onClick={() =>
+                  onSelectDrill('offsets', 'memorize', {
+                    offsetsMode: 'letterToNum',
+                  })
+                }
+                aria-label="Letter Offsets: ABC to Number"
               >
-                Letter → #
+                ABC → #
               </button>
               <button
                 type="button"
-                className="menu-drill-btn menu-drill-subbtn"
-                onClick={() => onSelectDrill('offsets', 'memorize', 'numToLetter')}
-                aria-label="Letter Offsets: Number to Letter"
+                className="menu-drill-btn menu-inline-pill-btn"
+                onClick={() =>
+                  onSelectDrill('offsets', 'memorize', {
+                    offsetsMode: 'numToLetter',
+                  })
+                }
+                aria-label="Letter Offsets: Number to ABC"
               >
-                # → Letter
+                # → ABC
               </button>
             </div>
           </div>
+
+          {/* Letter Math — Grouped Sub-Card inside Drills */}
+          {isLetterMathVisible && (
+            <div
+              className="menu-drill-group"
+              role="group"
+              aria-labelledby="menu-letter-math-group-label"
+            >
+              <div className="menu-drill-group-header">
+                <span
+                  id="menu-letter-math-group-label"
+                  className="menu-drill-group-label"
+                >
+                  Letter Math
+                </span>
+                {isLetterMathHiddenFromStudents && (
+                  <span
+                    className="menu-teacher-hidden-badge"
+                    title="Hidden from students — enable Caesar Cipher in Settings"
+                  >
+                    🔒 Hidden
+                  </span>
+                )}
+              </div>
+
+              <div
+                className="menu-labeled-row menu-labeled-row-nested"
+                role="group"
+                aria-labelledby="menu-letter-math-num-label"
+              >
+                <span
+                  id="menu-letter-math-num-label"
+                  className="menu-labeled-row-title"
+                >
+                  ABC ± #
+                </span>
+                <div className="menu-labeled-row-actions">
+                  <button
+                    type="button"
+                    className="menu-drill-btn menu-inline-pill-btn"
+                    onClick={() =>
+                      onSelectDrill('letterMath', 'memorize', {
+                        letterMathMode: 'easy',
+                      })
+                    }
+                    aria-label="Letter Math ABC plus or minus Number: Easy (up to 3)"
+                  >
+                    Easy
+                  </button>
+                  <button
+                    type="button"
+                    className="menu-drill-btn menu-inline-pill-btn"
+                    onClick={() =>
+                      onSelectDrill('letterMath', 'memorize', {
+                        letterMathMode: 'hard',
+                      })
+                    }
+                    aria-label="Letter Math ABC plus or minus Number: Hard (any offset)"
+                  >
+                    Hard
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {visibleFlashcardDrills.map((d) => {
             const isHiddenFromStudents =
               isTeacher && !isCipherEnabledForStudent(d.id, generalPracticeCiphers);
@@ -172,6 +273,49 @@ export const MainMenu: React.FC<MainMenuProps> = ({
               {visibleQuoteCiphers.map((d) => {
                 const isHiddenFromStudents =
                   isTeacher && !isCipherEnabledForStudent(d.id, generalPracticeCiphers);
+
+                if (d.id === 'caesar') {
+                  return (
+                    <div
+                      key={d.id}
+                      className="menu-labeled-row"
+                      role="group"
+                      aria-labelledby="menu-caesar-row-label"
+                    >
+                      <div className="menu-labeled-row-left">
+                        <span
+                          id="menu-caesar-row-label"
+                          className="menu-labeled-row-title"
+                        >
+                          {d.menuLabel}
+                        </span>
+                        {isHiddenFromStudents && (
+                          <span
+                            className="menu-teacher-hidden-badge"
+                            title="Hidden from students — enable in Settings"
+                          >
+                            🔒 Hidden
+                          </span>
+                        )}
+                      </div>
+                      <div className="menu-labeled-row-actions">
+                        <button
+                          type="button"
+                          className="menu-drill-btn menu-inline-pill-btn"
+                          onClick={() =>
+                            onSelectDrill('caesar', 'cipher', {
+                              caesarRange: 'pm3',
+                            })
+                          }
+                          aria-label="Caesar Cipher: Offset plus or minus 3"
+                        >
+                          Offset ± 3
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
                 return (
                   <button
                     key={d.id}

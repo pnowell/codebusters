@@ -34,12 +34,12 @@ const CIPHER_INFO: Record<
   { title: string; shortTitle: string; sheetLabel: string }
 > = {
   atbash: {
-    title: 'Atbash Cipher',
+    title: 'Atbash',
     shortTitle: 'Atbash',
     sheetLabel: 'Atbash Table',
   },
   pigpen: {
-    title: 'Pigpen / Masonic Cipher',
+    title: 'Pigpen',
     shortTitle: 'Pigpen',
     sheetLabel: 'Pigpen Reference Table',
   },
@@ -49,13 +49,13 @@ const CIPHER_INFO: Record<
     sheetLabel: 'Galactic Alphabet Table',
   },
   tap: {
-    title: 'Tap Code Cipher',
+    title: 'Tap Code',
     shortTitle: 'Tap Code',
     sheetLabel: 'Tap Code Reference Grid',
   },
   knights: {
-    title: 'Knights Templar Cipher',
-    shortTitle: 'Knights',
+    title: 'Knights Templar',
+    shortTitle: 'Knights Templar',
     sheetLabel: 'Knights Templar Table',
   },
 };
