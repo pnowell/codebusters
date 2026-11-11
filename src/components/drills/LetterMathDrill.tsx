@@ -23,7 +23,7 @@ interface LetterMathDrillProps {
   workoutContext?: WorkoutStepContext;
 }
 
-const HINT_DELAY_MS = 3000;
+export const HINT_DELAY_MS = 4000;
 
 const MODES: readonly { readonly id: LetterMathMode; readonly label: string }[] = [
   { id: 'easy', label: 'Easy (±3)' },
@@ -118,7 +118,7 @@ const LetterMathSession: React.FC<LetterMathSessionProps> = ({
     focusAnswerInput();
   }, [focusAnswerInput]);
 
-  // Reveal numeric offset hint next to the letter(s) if staring at the card for >= 3 seconds
+  // Reveal numeric offset hint next to the letter(s) if staring at the card for >= 4 seconds
   useEffect(() => {
     if (isWrong || isLeaderboardOpen) return;
     const timer = setTimeout(() => {
@@ -282,8 +282,6 @@ const LetterMathSession: React.FC<LetterMathSessionProps> = ({
     />
   );
 
-  const displayOp = problem.op === '-' ? '−' : '+';
-
   return (
     <div className="drill-container">
       <DrillHeader title={headerTitle} onBack={onBack} right={headerRight} />
@@ -334,7 +332,42 @@ const LetterMathSession: React.FC<LetterMathSessionProps> = ({
                   </span>
                 </div>
                 <div className="letter-math-row">
-                  <span className="letter-math-op">{displayOp}</span>
+                  <span
+                    className={`letter-math-op ${
+                      problem.op === '-'
+                        ? 'letter-math-op-minus'
+                        : 'letter-math-op-plus'
+                    }`}
+                    aria-hidden="true"
+                  >
+                    <svg
+                      className="letter-math-op-svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      focusable="false"
+                    >
+                      <line
+                        x1="3.5"
+                        y1="12"
+                        x2="20.5"
+                        y2="12"
+                        stroke="currentColor"
+                        strokeWidth="4.6"
+                        strokeLinecap="round"
+                      />
+                      {problem.op === '+' && (
+                        <line
+                          x1="12"
+                          y1="3.5"
+                          x2="12"
+                          y2="20.5"
+                          stroke="currentColor"
+                          strokeWidth="4.6"
+                          strokeLinecap="round"
+                        />
+                      )}
+                    </svg>
+                  </span>
                   <span className="letter-math-operand">
                     {problem.bottomOperandLabel}
                   </span>
