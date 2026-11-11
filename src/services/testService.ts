@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { getCachedProfileForUid } from './profileService';
+import { syncReservedTestQuotes } from './classroomConfigService';
 import { withVersionStamp } from './versionService';
 import { isTestableCipher } from '../data/drills';
 import type {
@@ -850,6 +851,22 @@ export function generateUniqueTestId(
   return `${base}-${suffix}`;
 }
 
+async function reconcileReservedTestQuotesFromFirestore(): Promise<void> {
+  if (!db) return;
+  try {
+    const snap = await getDocs(collection(db, 'tests'));
+    const allTests: TestPacket[] = [];
+    snap.forEach((docSnap) => {
+      allTests.push(
+        normalizeTestPacket(docSnap.data() as Record<string, unknown>, docSnap.id)
+      );
+    });
+    await syncReservedTestQuotes(allTests, { force: true });
+  } catch {
+    console.warn('[TestService] Failed to reconcile reserved test quotes');
+  }
+}
+
 /**
  * Teacher API: Creates or updates a full `TestPacket` document in `/tests/{testId}`
  * with strict input validation and zero `undefined` properties.
@@ -949,6 +966,7 @@ export async function saveTestPacket(
           updatedAt: serverTimestamp(),
         })
       );
+      await reconcileReservedTestQuotesFromFirestore();
       return { ok: true, testId: resolvedTestId };
     }
 
@@ -1034,6 +1052,7 @@ export async function saveTestPacket(
       }),
       { merge: true }
     );
+    await reconcileReservedTestQuotesFromFirestore();
     return { ok: true, testId: resolvedTestId };
   } catch {
     console.warn('[TestService] Failed to save test packet');
@@ -1069,6 +1088,7 @@ export async function deleteTestPacketAndAttempts(
     }
     await deleteDoc(doc(db, 'tests', testId));
     clearLocalTestAttempt(testId);
+    await reconcileReservedTestQuotesFromFirestore();
     return { ok: true };
   } catch {
     console.warn('[TestService] Failed to delete test packet');

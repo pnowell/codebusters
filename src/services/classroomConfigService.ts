@@ -12,11 +12,14 @@ import {
   isCipherEnabledForStudent,
   type CipherType,
 } from '../data/drills';
-import type { GeneralPracticeCiphers } from '../types';
+import type { GeneralPracticeCiphers, TestPacket } from '../types';
 
 const CACHE_KEY = 'davinci_general_practice_ciphers';
+const RESERVED_QUOTES_CACHE_KEY = 'davinci_reserved_test_quotes';
 const CLASSROOM_CONFIG_COLLECTION = 'classroom_config';
 const GENERAL_PRACTICE_DOC_ID = 'general_practice';
+const RESERVED_QUOTES_DOC_ID = 'reserved_quotes';
+const MAX_RESERVED_QUOTE_IDS = 1000;
 
 type ClassroomCiphersListener = (ciphers: GeneralPracticeCiphers) => void;
 const cacheListeners = new Set<ClassroomCiphersListener>();
@@ -99,6 +102,179 @@ function persistCachedCiphers(ciphers: GeneralPracticeCiphers): void {
 
 let cachedCiphers: GeneralPracticeCiphers = loadCachedCiphers();
 
+// ============================================================================
+// Reserved Practice Test Quote IDs (`/classroom_config/reserved_quotes`)
+// ============================================================================
+
+/**
+ * Validates and normalizes an untrusted array of quote IDs into a sorted,
+ * deduplicated array of non-negative safe integers (`<= 1000` entries).
+ */
+export function sanitizeReservedQuoteIds(raw: unknown): number[] {
+  if (!Array.isArray(raw)) return [];
+  const unique = new Set<number>();
+  for (const item of raw) {
+    if (
+      typeof item === 'number' &&
+      Number.isInteger(item) &&
+      item >= 0 &&
+      unique.size < MAX_RESERVED_QUOTE_IDS
+    ) {
+      unique.add(item);
+    }
+  }
+  return Array.from(unique).sort((a, b) => a - b);
+}
+
+/**
+ * Extracts the sorted, deduplicated union of `quoteId`s across all supplied practice tests.
+ */
+export function extractQuoteIdsFromTests(tests: readonly TestPacket[]): number[] {
+  const ids: number[] = [];
+  for (const test of tests) {
+    for (const q of test.questions) {
+      if (Number.isInteger(q.quoteId) && q.quoteId >= 0) {
+        ids.push(q.quoteId);
+      }
+    }
+  }
+  return sanitizeReservedQuoteIds(ids);
+}
+
+function loadCachedReservedQuoteIds(): number[] {
+  try {
+    const raw = localStorage.getItem(RESERVED_QUOTES_CACHE_KEY);
+    if (!raw) return [];
+    return sanitizeReservedQuoteIds(JSON.parse(raw));
+  } catch {
+    return [];
+  }
+}
+
+function persistCachedReservedQuoteIds(quoteIds: readonly number[]): void {
+  try {
+    localStorage.setItem(RESERVED_QUOTES_CACHE_KEY, JSON.stringify(quoteIds));
+  } catch {
+    // Ignore storage quota / privacy mode errors
+  }
+}
+
+function sortedArraysEqual(a: readonly number[], b: readonly number[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+let cloudReservedQuoteIds: number[] = loadCachedReservedQuoteIds();
+let liveTestsReservedQuoteIds: number[] = [];
+let hasLoadedCloudReservedDoc = false;
+let effectiveReservedQuoteIds = new Set<number>(cloudReservedQuoteIds);
+
+function rebuildEffectiveReservedQuoteIds(): void {
+  const merged = new Set<number>();
+  for (const id of cloudReservedQuoteIds) merged.add(id);
+  for (const id of liveTestsReservedQuoteIds) merged.add(id);
+  effectiveReservedQuoteIds = merged;
+}
+
+/**
+ * Returns the live in-memory set of quote IDs reserved across active and draft
+ * practice tests (used by random quote pickers so students and new test questions
+ * skip quotes included on practice tests).
+ */
+export function getReservedTestQuoteIds(): ReadonlySet<number> {
+  return effectiveReservedQuoteIds;
+}
+
+/**
+ * Updates the in-memory fallback set from currently loaded `TestPacket`s so active
+ * tests are immediately excluded even before `/classroom_config/reserved_quotes`
+ * has been populated for the first time.
+ */
+export function setLiveTestsReservedQuotes(tests: readonly TestPacket[]): void {
+  liveTestsReservedQuoteIds = extractQuoteIdsFromTests(tests);
+  rebuildEffectiveReservedQuoteIds();
+}
+
+/**
+ * Subscribes to `/classroom_config/reserved_quotes` so students receive the union
+ * of quote IDs reserved across all active and inactive draft practice tests without
+ * exposing draft `/tests` documents.
+ */
+export function subscribeReservedTestQuotes(
+  onUpdate?: (quoteIds: readonly number[]) => void,
+  onError?: (err: Error) => void
+): Unsubscribe {
+  if (!db) {
+    hasLoadedCloudReservedDoc = true;
+    onUpdate?.(cloudReservedQuoteIds);
+    return () => {};
+  }
+
+  return onSnapshot(
+    doc(db, CLASSROOM_CONFIG_COLLECTION, RESERVED_QUOTES_DOC_ID),
+    (snap) => {
+      if (snap.exists()) {
+        const rawData = snap.data() as Record<string, unknown>;
+        cloudReservedQuoteIds = sanitizeReservedQuoteIds(rawData.quoteIds);
+      } else {
+        cloudReservedQuoteIds = [];
+      }
+      hasLoadedCloudReservedDoc = true;
+      persistCachedReservedQuoteIds(cloudReservedQuoteIds);
+      rebuildEffectiveReservedQuoteIds();
+      onUpdate?.(cloudReservedQuoteIds);
+    },
+    (err) => {
+      console.warn('[ClassroomConfig] Error subscribing to reserved_quotes config');
+      onUpdate?.(cloudReservedQuoteIds);
+      onError?.(err);
+    }
+  );
+}
+
+/**
+ * Teacher API: Synchronizes `/classroom_config/reserved_quotes` with the union of
+ * quote IDs across all active and draft practice tests when a diff is detected.
+ * Idempotent: skips writing to Firestore if the sorted ID list already matches.
+ */
+export async function syncReservedTestQuotes(
+  allTests: readonly TestPacket[],
+  options?: { force?: boolean }
+): Promise<boolean> {
+  const nextIds = extractQuoteIdsFromTests(allTests);
+  liveTestsReservedQuoteIds = nextIds;
+  rebuildEffectiveReservedQuoteIds();
+
+  if (!db) return false;
+  if (!options?.force && !hasLoadedCloudReservedDoc) return false;
+  if (!options?.force && sortedArraysEqual(nextIds, cloudReservedQuoteIds)) {
+    return true;
+  }
+
+  try {
+    await setDoc(
+      doc(db, CLASSROOM_CONFIG_COLLECTION, RESERVED_QUOTES_DOC_ID),
+      withVersionStamp({
+        quoteIds: nextIds,
+        updatedAt: serverTimestamp(),
+      })
+    );
+    cloudReservedQuoteIds = nextIds;
+    hasLoadedCloudReservedDoc = true;
+    persistCachedReservedQuoteIds(nextIds);
+    rebuildEffectiveReservedQuoteIds();
+    return true;
+  } catch {
+    console.warn(
+      '[ClassroomConfig] Failed to sync reserved_quotes config (deploy updated firestore.rules if permission-denied)'
+    );
+    return false;
+  }
+}
+
 /**
  * Returns a copy of the latest cached classroom cipher visibility booleans.
  */
@@ -120,12 +296,17 @@ export function subscribeCachedClassroomCiphers(
 }
 
 /**
- * Resets the classroom config cache to defaults on sign-out.
+ * Resets classroom config and reserved test quote caches on sign-out.
  */
 export function resetClassroomConfigCache(): void {
   cachedCiphers = createDefaultGeneralPracticeCiphers();
+  cloudReservedQuoteIds = [];
+  liveTestsReservedQuoteIds = [];
+  hasLoadedCloudReservedDoc = false;
+  effectiveReservedQuoteIds = new Set<number>();
   try {
     localStorage.removeItem(CACHE_KEY);
+    localStorage.removeItem(RESERVED_QUOTES_CACHE_KEY);
   } catch {
     // Ignore storage errors
   }

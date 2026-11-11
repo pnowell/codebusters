@@ -53,7 +53,10 @@ import {
   getGeneralPracticeCiphers,
   saveGeneralPracticeCiphers,
   sanitizeGeneralPracticeCiphers,
+  setLiveTestsReservedQuotes,
   subscribeGeneralPracticeCiphers,
+  subscribeReservedTestQuotes,
+  syncReservedTestQuotes,
 } from './services/classroomConfigService';
 import {
   parseUrlRoute,
@@ -235,6 +238,7 @@ export const App: React.FC = () => {
   const [studentAttempts, setStudentAttempts] = useState<Record<string, TestAttempt>>({});
   const [isTestsLoading, setIsTestsLoading] = useState<boolean>(true);
   const [isAttemptsLoaded, setIsAttemptsLoaded] = useState<boolean>(false);
+  const [isReservedQuotesLoaded, setIsReservedQuotesLoaded] = useState<boolean>(false);
   const [briefingState, setBriefingState] = useState<BriefingState | null>(null);
 
   // Pin outer window and track visual viewport height above mobile virtual keyboard
@@ -356,6 +360,7 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (!isAllowed) {
       queueMicrotask(() => {
+        setLiveTestsReservedQuotes([]);
         setAvailableTests([]);
         setIsTestsLoading(false);
       });
@@ -368,6 +373,7 @@ export const App: React.FC = () => {
 
     return subscribeAvailableTests(
       (tests) => {
+        setLiveTestsReservedQuotes(tests);
         setAvailableTests(tests);
         setIsTestsLoading(false);
       },
@@ -450,6 +456,28 @@ export const App: React.FC = () => {
     if (!isAllowed) return;
     return subscribeQuoteFlags();
   }, [isAllowed]);
+
+  // Subscribe to reserved practice test quote IDs (including inactive draft tests)
+  useEffect(() => {
+    if (!isAllowed) {
+      queueMicrotask(() => {
+        setIsReservedQuotesLoaded(false);
+      });
+      return;
+    }
+    return subscribeReservedTestQuotes(() => {
+      setIsReservedQuotesLoaded(true);
+    });
+  }, [isAllowed]);
+
+  // Teacher auto-reconciliation: ensure `/classroom_config/reserved_quotes` stays synced
+  // with the exact union of quoteIds across all active and inactive draft tests.
+  useEffect(() => {
+    if (!isAllowed || !isTeacher || isTestsLoading || !isReservedQuotesLoaded) {
+      return;
+    }
+    void syncReservedTestQuotes(availableTests);
+  }, [isAllowed, isTeacher, isTestsLoading, isReservedQuotesLoaded, availableTests]);
 
   const drillScreenInfo = screen.kind === 'drill' ? getDrill(screen.drill) : null;
   const isDrillStructurallyValid = Boolean(

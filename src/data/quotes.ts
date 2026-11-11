@@ -7,6 +7,7 @@ import type {
 } from '../types';
 import { loadCompletedQuoteIds } from '../services/storage';
 import { getFlaggedQuoteIds } from '../services/quoteFlagService';
+import { getReservedTestQuoteIds } from '../services/classroomConfigService';
 import { hasCriticalNonLetterChars } from '../utils/ciphers';
 
 const ALL_QUOTES = quotesData as Quote[];
@@ -53,27 +54,36 @@ export function isQuoteEligibleForCipher(
 }
 
 /**
- * Picks a random unflagged lookup-eligible quote (excluding any caller-supplied IDs,
- * such as quotes already used in the current practice test), respecting cipher-specific
- * character constraints (e.g. Tap Code).
+ * Picks a random unflagged, non-reserved lookup-eligible quote (excluding any
+ * caller-supplied IDs, such as quotes already used in the current practice test),
+ * respecting cipher-specific character constraints (e.g. Tap Code).
  */
 export function pickRandomCleanLookupQuote(
   excludeIds?: ReadonlySet<number>,
   cipher?: CipherType
 ): Quote {
   const flaggedIds = getFlaggedQuoteIds();
+  const reservedIds = getReservedTestQuoteIds();
   const cipherEligible = LOOKUP_ELIGIBLE_QUOTES.filter(q =>
     isQuoteEligibleForCipher(q, cipher)
   );
   const candidates = cipherEligible.filter(
-    q => !flaggedIds.has(q.id) && !excludeIds?.has(q.id)
+    q =>
+      !flaggedIds.has(q.id) &&
+      !reservedIds.has(q.id) &&
+      !excludeIds?.has(q.id)
   );
-  const fallback = cipherEligible.filter(q => !flaggedIds.has(q.id));
+  const unreservedUnflagged = cipherEligible.filter(
+    q => !flaggedIds.has(q.id) && !reservedIds.has(q.id)
+  );
+  const unflagged = cipherEligible.filter(q => !flaggedIds.has(q.id));
   const pool =
     candidates.length > 0
       ? candidates
-      : fallback.length > 0
-      ? fallback
+      : unreservedUnflagged.length > 0
+      ? unreservedUnflagged
+      : unflagged.length > 0
+      ? unflagged
       : cipherEligible.length > 0
       ? cipherEligible
       : LOOKUP_ELIGIBLE_QUOTES;
@@ -82,7 +92,8 @@ export function pickRandomCleanLookupQuote(
 
 /**
  * Picks a random quote for symbol lookup / cipher exercises:
- * - Filters out quotes flagged by teachers (`quote_flags`), quotes ineligible for `cipher`,
+ * - Filters out quotes flagged by teachers (`quote_flags`), quotes reserved in active
+ *   or draft practice tests (`reserved_quotes`), quotes ineligible for `cipher`,
  *   and quotes already completed by the user.
  * - Prefers kid-friendly quotes (~80% chance) while still drawing from the general pool (~20% chance).
  * - Caps length at MAX_LOOKUP_LENGTH (75 chars) so quotes are not excessively long.
@@ -94,12 +105,19 @@ function pickRandomLookupQuote(
 ): Quote {
   const completedSet = new Set(loadCompletedQuoteIds());
   const flaggedSet = getFlaggedQuoteIds();
+  const reservedSet = getReservedTestQuoteIds();
 
   const safeKidPool = KID_LOOKUP_POOL.filter(
-    q => !flaggedSet.has(q.id) && isQuoteEligibleForCipher(q, cipher)
+    q =>
+      !flaggedSet.has(q.id) &&
+      !reservedSet.has(q.id) &&
+      isQuoteEligibleForCipher(q, cipher)
   );
   const safeGeneralPool = GENERAL_LOOKUP_POOL.filter(
-    q => !flaggedSet.has(q.id) && isQuoteEligibleForCipher(q, cipher)
+    q =>
+      !flaggedSet.has(q.id) &&
+      !reservedSet.has(q.id) &&
+      isQuoteEligibleForCipher(q, cipher)
   );
 
   // Filter out completed quotes (and current quote if requesting "New") from both pools
@@ -113,7 +131,7 @@ function pickRandomLookupQuote(
   const nonCurrentKid = safeKidPool.filter(q => q.id !== excludeId);
   const nonCurrentGeneral = safeGeneralPool.filter(q => q.id !== excludeId);
 
-  // Determine active candidates (falling back to non-current unflagged pools if uncompleted quotes are exhausted)
+  // Determine active candidates (falling back to non-current unflagged/unreserved pools if uncompleted quotes are exhausted)
   const kidCandidates =
     uncompletedKid.length > 0
       ? uncompletedKid
@@ -132,7 +150,13 @@ function pickRandomLookupQuote(
   const primary = preferKid ? kidCandidates : generalCandidates;
   const secondary = preferKid ? generalCandidates : kidCandidates;
 
-  const fallbackEligible = LOOKUP_ELIGIBLE_QUOTES.filter(q =>
+  const fallbackEligible = LOOKUP_ELIGIBLE_QUOTES.filter(
+    q =>
+      !flaggedSet.has(q.id) &&
+      !reservedSet.has(q.id) &&
+      isQuoteEligibleForCipher(q, cipher)
+  );
+  const cipherFallback = LOOKUP_ELIGIBLE_QUOTES.filter(q =>
     isQuoteEligibleForCipher(q, cipher)
   );
 
@@ -143,6 +167,8 @@ function pickRandomLookupQuote(
       ? secondary
       : fallbackEligible.length > 0
       ? fallbackEligible
+      : cipherFallback.length > 0
+      ? cipherFallback
       : LOOKUP_ELIGIBLE_QUOTES;
 
   return chosenPool[Math.floor(Math.random() * chosenPool.length)] ?? ALL_QUOTES[0];
@@ -168,10 +194,19 @@ export function pickLookupQuote(
 
 export function getQuotesByTier(tier: CryptanalysisTier): Quote[] {
   const flaggedSet = getFlaggedQuoteIds();
-  return ALL_QUOTES.filter(q => q.tier === tier && !flaggedSet.has(q.id));
+  const reservedSet = getReservedTestQuoteIds();
+  return ALL_QUOTES.filter(
+    q => q.tier === tier && !flaggedSet.has(q.id) && !reservedSet.has(q.id)
+  );
 }
 
 export function getQuotesByCategory(category: QuoteCategory): Quote[] {
   const flaggedSet = getFlaggedQuoteIds();
-  return ALL_QUOTES.filter(q => q.category === category && !flaggedSet.has(q.id));
+  const reservedSet = getReservedTestQuoteIds();
+  return ALL_QUOTES.filter(
+    q =>
+      q.category === category &&
+      !flaggedSet.has(q.id) &&
+      !reservedSet.has(q.id)
+  );
 }

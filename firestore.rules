@@ -143,20 +143,32 @@ service cloud.firestore {
       allow list, write: if false;
     }
 
-    // Global classroom configuration (e.g. ciphers included in General Practice)
+    // Global classroom configuration (e.g. ciphers included in General Practice, reserved test quote IDs)
     match /classroom_config/{configId} {
       allow read: if configId != 'app_version' && isAllowedUser() && hasValidReadVersion();
       allow create, update: if isTeacher()
-        && configId == 'general_practice'
         && isValidVersionedWrite()
-        && request.resource.data.keys().hasOnly([
-             'ciphers',
-             'updatedAt',
-             'criticalVersion',
-             'versionWriteAt'
-           ])
-        && request.resource.data.ciphers is map
-        && request.resource.data.ciphers.size() <= 20;
+        && (
+          (configId == 'general_practice'
+            && request.resource.data.keys().hasOnly([
+                 'ciphers',
+                 'updatedAt',
+                 'criticalVersion',
+                 'versionWriteAt'
+               ])
+            && request.resource.data.ciphers is map
+            && request.resource.data.ciphers.size() <= 20)
+          ||
+          (configId == 'reserved_quotes'
+            && request.resource.data.keys().hasOnly([
+                 'quoteIds',
+                 'updatedAt',
+                 'criticalVersion',
+                 'versionWriteAt'
+               ])
+            && request.resource.data.quoteIds is list
+            && request.resource.data.quoteIds.size() <= 1000)
+        );
       allow delete: if isTeacher() && configId != 'app_version' && hasValidReadVersion();
     }
 
