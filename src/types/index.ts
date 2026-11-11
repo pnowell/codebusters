@@ -7,6 +7,7 @@ export type { CipherType, LookupCipherType, TestableCipherType };
 
 export type LetterMathMode = 'easy' | 'hard';
 export type CaesarRangeMode = 'pm3' | 'any';
+export type MainMenuTab = 'drills' | 'ciphers';
 
 export interface CipherWorkspaceParams {
   caesarOffset?: number;

@@ -4,6 +4,7 @@ import type {
   CipherType,
   GeneralPracticeCiphers,
   LetterMathMode,
+  MainMenuTab,
   OffsetsMode,
   UserSettings,
   TestPacket,
@@ -179,6 +180,24 @@ function initScreen(): ActiveScreen {
   return { kind: 'menu' };
 }
 
+const MENU_TAB_STORAGE_KEY = 'codebusters_menu_tab';
+
+function initMenuTab(): MainMenuTab {
+  const route = parseUrlRoute();
+  if (route.drill) {
+    return route.section === 'cipher' ? 'ciphers' : 'drills';
+  }
+  try {
+    const saved = window.sessionStorage.getItem(MENU_TAB_STORAGE_KEY);
+    if (saved === 'ciphers' || saved === 'drills') {
+      return saved;
+    }
+  } catch {
+    // Ignore storage errors in restricted contexts
+  }
+  return 'drills';
+}
+
 export const App: React.FC = () => {
   const { user, allowedUser, isAllowed, isLoading: isAuthLoading } = useAuth();
   const isTeacher = Boolean(isAllowed && allowedUser?.role === 'teacher');
@@ -194,6 +213,16 @@ export const App: React.FC = () => {
     useState<GeneralPracticeCiphers>(getGeneralPracticeCiphers);
   const [loadedConfigForUid, setLoadedConfigForUid] = useState<string | null>(null);
   const [screen, setScreen] = useState<ActiveScreen>(initScreen);
+  const [activeMenuTab, setActiveMenuTab] = useState<MainMenuTab>(initMenuTab);
+
+  const selectMenuTab = useCallback((nextTab: MainMenuTab) => {
+    setActiveMenuTab(nextTab);
+    try {
+      window.sessionStorage.setItem(MENU_TAB_STORAGE_KEY, nextTab);
+    } catch {
+      // Ignore storage errors in restricted contexts
+    }
+  }, []);
 
   const isClassroomConfigReady =
     !isAuthLoading && (!signedInUid || loadedConfigForUid === signedInUid);
@@ -728,6 +757,9 @@ export const App: React.FC = () => {
       }
 
       if (route.drill) {
+        if (!workoutContext) {
+          selectMenuTab(route.section === 'cipher' ? 'ciphers' : 'drills');
+        }
         setScreen({
           kind: 'drill',
           drill: route.drill,
@@ -799,7 +831,14 @@ export const App: React.FC = () => {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [availableTests, cancelWorkout, currentUid, studentAttempts]);
+  }, [
+    availableTests,
+    cancelWorkout,
+    currentUid,
+    selectMenuTab,
+    studentAttempts,
+    workoutContext,
+  ]);
 
   // Seed history stack when landing directly on a deep link
   useEffect(() => {
@@ -1276,7 +1315,11 @@ export const App: React.FC = () => {
         )));
 
   return (
-    <div className="app-container">
+    <div
+      className={`app-container${
+        screen.kind === 'menu' ? ' app-container-menu' : ''
+      }`}
+    >
       {screen.kind === 'menu' && (
         <MainMenu
           studentName={settings.studentName}
@@ -1284,11 +1327,14 @@ export const App: React.FC = () => {
           isTeacher={isTeacher}
           isBetaTester={isBetaTester}
           generalPracticeCiphers={generalPracticeCiphers}
+          activeTab={activeMenuTab}
+          onSelectTab={selectMenuTab}
           onStartWorkout={() => startWorkout(1)}
           onOpenTestsList={handleOpenTestsList}
           onOpenLeaderboard={openLeaderboard}
           onOpenOptions={openOptions}
-          onSelectDrill={(drill, section, options) =>
+          onSelectDrill={(drill, section, options) => {
+            selectMenuTab(section === 'cipher' ? 'ciphers' : 'drills');
             navigateToDrill(
               drill,
               section,
@@ -1297,8 +1343,8 @@ export const App: React.FC = () => {
               options?.offsetsMode,
               options?.letterMathMode,
               options?.caesarRange
-            )
-          }
+            );
+          }}
         />
       )}
 

@@ -6,16 +6,20 @@
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   scrollbar-gutter: stable;
-  padding: 0.25rem 0.85rem 2rem 0.85rem;
+  padding: 0.25rem 0.65rem 2rem 0.65rem;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
-  max-width: 600px;
+  gap: 0.9rem;
+  max-width: 580px;
   width: 100%;
   margin: 0 auto;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .menu-featured-actions,
+.menu-tabs-bar,
+.menu-panes-viewport,
 .menu-divider,
 .menu-buttons-list {
   flex-shrink: 0;
@@ -24,14 +28,14 @@
 .menu-featured-actions {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.7rem;
 }
 
 .menu-action-btn {
   width: 100%;
-  padding: 0.95rem 1.25rem;
+  padding: 0.92rem 1.25rem;
   background: #1e3a8a;
-  border: 1px solid rgba(59, 130, 246, 0.35);
+  border: 1px solid rgba(59, 130, 246, 0.38);
   border-radius: 10px;
   color: #f8fafc;
   font-size: 1rem;
@@ -39,7 +43,8 @@
   font-family: var(--font-sans);
   cursor: pointer;
   text-align: center;
-  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  transition: transform 0.15s ease, border-color 0.15s ease,
+    background 0.15s ease, box-shadow 0.15s ease;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   display: flex;
   align-items: center;
@@ -58,13 +63,305 @@
   transform: translateY(0);
 }
 
+/* Segmented Tab Bar (Mobile / Narrow Viewports) */
+.menu-tabs-bar {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 0.26rem;
+  background: rgba(15, 23, 42, 0.86);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 12px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+.menu-tabs-indicator {
+  position: absolute;
+  top: 0.26rem;
+  bottom: 0.26rem;
+  left: 0.26rem;
+  width: calc(50% - 0.26rem);
+  border-radius: 9px;
+  pointer-events: none;
+  will-change: transform;
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+    background 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
+}
+
+.menu-tabs-indicator.is-dragging {
+  transition: background 0.18s ease, border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.menu-tabs-indicator.is-drills {
+  background: linear-gradient(
+    135deg,
+    rgba(245, 158, 11, 0.22),
+    rgba(30, 41, 59, 0.92)
+  );
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  box-shadow: 0 2px 10px rgba(245, 158, 11, 0.16);
+}
+
+.menu-tabs-indicator.is-ciphers {
+  background: linear-gradient(
+    135deg,
+    rgba(56, 189, 248, 0.22),
+    rgba(30, 41, 59, 0.92)
+  );
+  border: 1px solid rgba(56, 189, 248, 0.48);
+  box-shadow: 0 2px 10px rgba(56, 189, 248, 0.18);
+}
+
+.menu-tab-btn {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.48rem;
+  padding: 0.58rem 0.85rem;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.015em;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.menu-tab-btn:hover:not(.active) {
+  color: #e2e8f0;
+}
+
+.menu-tab-btn-drills.active {
+  color: #fde68a;
+}
+
+.menu-tab-btn-ciphers.active {
+  color: #7dd3fc;
+}
+
+.menu-tab-icon {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+}
+
+/* Swipeable Viewport & Dual-Pane Track */
+.menu-panes-viewport {
+  width: 100%;
+  overflow: hidden;
+  border-radius: 16px;
+  touch-action: pan-y;
+}
+
+.menu-panes-track {
+  display: flex;
+  align-items: stretch;
+  width: 200%;
+  will-change: transform;
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.menu-panes-track.is-dragging {
+  transition: none;
+}
+
+/* Individual Drills & Ciphers Themed Cards */
+.menu-pane-card {
+  position: relative;
+  width: 50%;
+  flex: 0 0 50%;
+  box-sizing: border-box;
+  border-radius: 16px;
+  padding: 0.95rem;
+  overflow: hidden;
+  background: #0b1120;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+}
+
+.menu-pane-drills {
+  border: 1px solid rgba(251, 191, 36, 0.22);
+}
+
+.menu-pane-ciphers {
+  border: 1px solid rgba(56, 189, 248, 0.24);
+}
+
+.menu-pane-bg {
+  position: absolute;
+  inset: -14px;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.menu-pane-bg-drills {
+  filter: blur(2.5px) saturate(1.1) brightness(0.74);
+  opacity: 0.55;
+}
+
+.menu-pane-bg-ciphers {
+  filter: blur(3px) saturate(1.08) brightness(0.6);
+  opacity: 0.48;
+}
+
+.menu-pane-tint {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.menu-pane-tint-drills {
+  background: radial-gradient(
+      circle at 18% 12%,
+      rgba(245, 158, 11, 0.14) 0%,
+      transparent 55%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(11, 17, 32, 0.34) 0%,
+      rgba(11, 17, 32, 0.56) 100%
+    );
+}
+
+.menu-pane-tint-ciphers {
+  background: radial-gradient(
+      circle at 82% 14%,
+      rgba(56, 189, 248, 0.16) 0%,
+      transparent 55%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(11, 17, 32, 0.36) 0%,
+      rgba(11, 17, 32, 0.58) 100%
+    );
+}
+
+.menu-pane-content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.menu-pane-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0 0.2rem 0.35rem 0.2rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.menu-pane-title {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.98rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.menu-pane-drills .menu-pane-title {
+  color: #fde68a;
+}
+
+.menu-pane-ciphers .menu-pane-title {
+  color: #7dd3fc;
+}
+
+.menu-pane-subtitle {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: rgba(203, 213, 225, 0.78);
+}
+
+/* On mobile/narrow viewports, the tab bar already labels Drills/Ciphers,
+   so keep the pane header compact as a subtle subtitle strip */
+@media (max-width: 819px) {
+  .menu-pane-header {
+    justify-content: center;
+    padding: 0 0.2rem 0.2rem 0.2rem;
+    border-bottom: none;
+  }
+
+  .menu-pane-title {
+    display: none;
+  }
+
+  .menu-pane-subtitle {
+    font-size: 0.77rem;
+    letter-spacing: 0.02em;
+    color: rgba(226, 232, 240, 0.82);
+  }
+}
+
+/* Wide Viewports: Display Drills and Ciphers Simultaneously Side-by-Side */
+@media (min-width: 820px) {
+  .menu-container {
+    max-width: 1010px;
+    padding: 0.25rem 0.5rem 2rem 0.5rem;
+    gap: 1.05rem;
+  }
+
+  .menu-featured-actions {
+    width: 100%;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+
+  .menu-tabs-bar {
+    display: none;
+  }
+
+  .menu-panes-viewport {
+    overflow: visible;
+    border-radius: 0;
+    touch-action: auto;
+  }
+
+  .menu-panes-track {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    width: 100%;
+    transform: none !important;
+    transition: none !important;
+  }
+
+  .menu-pane-card {
+    width: 100%;
+    flex: none;
+    padding: 1.05rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-tabs-indicator,
+  .menu-panes-track {
+    transition: none;
+  }
+}
+
+/* Dividers & Button Lists inside Panes */
 .menu-divider {
   display: flex;
   align-items: center;
   text-align: center;
-  margin: 0.5rem 0;
-  color: var(--text-muted);
-  font-size: 0.85rem;
+  margin: 0.45rem 0 0.1rem 0;
+  color: rgba(203, 213, 225, 0.8);
+  font-size: 0.78rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -74,39 +371,50 @@
 .menu-divider::after {
   content: '';
   flex: 1;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.24);
 }
 
 .menu-divider span {
-  padding: 0 1rem;
+  padding: 0 0.85rem;
 }
 
 .menu-buttons-list {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.68rem;
 }
 
 .menu-drill-btn {
   width: 100%;
-  padding: 0.95rem 1.25rem;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
+  padding: 0.9rem 1.15rem;
+  background: rgba(15, 23, 42, 0.58);
+  backdrop-filter: blur(3.5px);
+  -webkit-backdrop-filter: blur(3.5px);
+  border: 1px solid rgba(148, 163, 184, 0.26);
   border-radius: 10px;
   color: var(--text-main);
-  font-size: 1rem;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+  font-size: 0.98rem;
   font-weight: 600;
   font-family: var(--font-sans);
   cursor: pointer;
   text-align: left;
-  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  transition: transform 0.15s ease, border-color 0.15s ease,
+    background 0.15s ease, box-shadow 0.15s ease;
 }
 
-.menu-drill-btn:hover:not(:disabled) {
+.menu-pane-drills .menu-drill-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: rgba(251, 191, 36, 0.62);
+  background: rgba(30, 41, 59, 0.88);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.38);
+}
+
+.menu-pane-ciphers .menu-drill-btn:hover:not(:disabled) {
   transform: translateY(-2px);
   border-color: var(--accent-blue);
-  background: rgba(30, 41, 59, 0.95);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  background: rgba(30, 41, 59, 0.88);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.38);
 }
 
 .menu-drill-btn:active:not(:disabled) {
@@ -128,13 +436,16 @@
   padding: 0.14rem 0.52rem;
   letter-spacing: 0.02em;
   color: #fbbf24;
-  background: rgba(251, 191, 36, 0.14);
-  border: 1px solid rgba(251, 191, 36, 0.35);
+  background: rgba(251, 191, 36, 0.16);
+  border: 1px solid rgba(251, 191, 36, 0.38);
+  text-shadow: none;
 }
 
 .menu-drill-group {
-  background: rgba(15, 23, 42, 0.55);
-  border: 1px solid var(--border-color);
+  background: rgba(15, 23, 42, 0.56);
+  backdrop-filter: blur(3.5px);
+  -webkit-backdrop-filter: blur(3.5px);
+  border: 1px solid rgba(148, 163, 184, 0.26);
   border-radius: 12px;
   padding: 0.5rem 0.6rem 0.6rem;
   display: flex;
@@ -153,21 +464,10 @@
 .menu-drill-group-label {
   font-size: 0.8rem;
   font-weight: 600;
-  color: var(--text-muted);
+  color: #e2e8f0;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
   padding: 0 0.35rem;
   letter-spacing: 0.015em;
-}
-
-.menu-drill-group-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.55rem;
-}
-
-.menu-drill-subbtn {
-  text-align: center;
-  padding: 0.8rem 0.75rem;
-  border-radius: 8px;
 }
 
 /* Horizontal Labeled Menu Rows (Letter Offsets, Letter Math, Caesar) */
@@ -175,18 +475,22 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.65rem;
-  padding: 0.52rem 0.6rem 0.52rem 1.15rem;
-  background: rgba(15, 23, 42, 0.55);
-  border: 1px solid var(--border-color);
+  gap: 0.6rem;
+  padding: 0.5rem 0.55rem 0.5rem 1.05rem;
+  background: rgba(15, 23, 42, 0.58);
+  backdrop-filter: blur(3.5px);
+  -webkit-backdrop-filter: blur(3.5px);
+  border: 1px solid rgba(148, 163, 184, 0.26);
   border-radius: 12px;
 }
 
 .menu-labeled-row-nested {
-  background: rgba(15, 23, 42, 0.38);
-  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(15, 23, 42, 0.52);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid rgba(148, 163, 184, 0.16);
   border-radius: 9px;
-  padding: 0.4rem 0.45rem 0.4rem 0.8rem;
+  padding: 0.38rem 0.45rem 0.38rem 0.78rem;
 }
 
 .menu-labeled-row-left {
@@ -198,14 +502,14 @@
 }
 
 .menu-labeled-row-title {
-  font-size: 0.98rem;
+  font-size: 0.96rem;
   font-weight: 600;
   color: var(--text-main);
   white-space: nowrap;
 }
 
 .menu-labeled-row-nested .menu-labeled-row-title {
-  font-size: 0.94rem;
+  font-size: 0.92rem;
   font-weight: 700;
   letter-spacing: 0.01em;
 }
@@ -213,25 +517,32 @@
 .menu-labeled-row-actions {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.42rem;
   flex-shrink: 0;
 }
 
 .menu-drill-btn.menu-inline-pill-btn {
   width: auto;
-  min-width: 78px;
-  padding: 0.52rem 0.88rem;
+  min-width: 74px;
+  padding: 0.5rem 0.82rem;
   border-radius: 8px;
+  background: rgba(30, 41, 59, 0.82);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   text-align: center;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   font-weight: 700;
   white-space: nowrap;
 }
 
 @media (max-width: 420px) {
+  .menu-pane-card {
+    padding: 0.75rem;
+  }
+
   .menu-labeled-row {
-    padding: 0.45rem 0.48rem 0.45rem 0.85rem;
-    gap: 0.45rem;
+    padding: 0.45rem 0.45rem 0.45rem 0.8rem;
+    gap: 0.42rem;
   }
 
   .menu-labeled-row-nested {
@@ -239,27 +550,27 @@
   }
 
   .menu-labeled-row-title {
-    font-size: 0.92rem;
+    font-size: 0.9rem;
   }
 
   .menu-labeled-row-nested .menu-labeled-row-title {
-    font-size: 0.88rem;
+    font-size: 0.86rem;
   }
 
   .menu-labeled-row-actions {
-    gap: 0.35rem;
+    gap: 0.34rem;
   }
 
   .menu-drill-btn.menu-inline-pill-btn {
-    min-width: 66px;
-    padding: 0.48rem 0.68rem;
-    font-size: 0.84rem;
+    min-width: 64px;
+    padding: 0.46rem 0.65rem;
+    font-size: 0.83rem;
   }
 }
 
 .menu-footer {
   flex-shrink: 0;
-  margin-top: 0.5rem;
+  margin-top: 0.35rem;
   padding-top: 0.85rem;
   border-top: 1px solid var(--border-color);
   display: flex;
