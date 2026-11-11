@@ -74,11 +74,11 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     deterministic?: boolean;
   }>(() => {
     if (initialQuoteId !== undefined) {
-      const q = pickLookupQuote(initialQuoteId);
+      const q = pickLookupQuote(initialQuoteId, undefined, cipher);
       if (q) return { quote: q, deterministic: true };
       return { quote: null, notFoundId: initialQuoteId };
     }
-    return { quote: pickLookupQuote(), deterministic: false };
+    return { quote: pickLookupQuote(undefined, undefined, cipher), deterministic: false };
   });
 
   const [notFoundId, setNotFoundId] = useState<number | undefined>(
@@ -132,7 +132,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
   );
 
   const loadNewQuote = useCallback(() => {
-    const nextQ = pickLookupQuote(undefined, quoteId);
+    const nextQ = pickLookupQuote(undefined, quoteId, cipher);
     if (nextQ) {
       setNotFoundId(undefined);
       setPuzzle((prev) =>

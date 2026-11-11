@@ -7,6 +7,41 @@ import type {
 
 export const isLetter = (c: string): boolean => c.length === 1 && c >= 'A' && c <= 'Z';
 
+const STRIPPABLE_STREAM_CHAR_RE = /^[\s.,;:'"!?()-]$/;
+
+/**
+ * Returns true if `c` is whitespace or standard grammatical punctuation that can
+ * be safely omitted in continuous-stream ciphers (such as Tap Code) without
+ * losing semantic words, numbers, or symbols.
+ */
+export function isStrippableStreamChar(c: string): boolean {
+  return c.length === 1 && STRIPPABLE_STREAM_CHAR_RE.test(c);
+}
+
+/**
+ * Returns true if `c` should be retained in a continuous-stream cipher tile grid:
+ * alphabetic letters (A-Z) plus any critical non-punctuation characters (such as
+ * digits `0-9` or `&`, `%`, `$`, etc.).
+ */
+export function isRetainedInContinuousStream(c: string): boolean {
+  const upper = c.toUpperCase();
+  return isLetter(upper) || (c.length === 1 && !isStrippableStreamChar(c));
+}
+
+/**
+ * Returns true if `text` contains any critical non-letter, non-punctuation
+ * characters (e.g. digits `0-9` or `&`) that cannot be encoded purely as A-Z
+ * cipher symbols in a continuous stream.
+ */
+export function hasCriticalNonLetterChars(text: string): boolean {
+  for (const ch of text) {
+    if (!isLetter(ch.toUpperCase()) && !isStrippableStreamChar(ch)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function letterToOffset(letter: string): number {
   const upper = letter.toUpperCase();
   if (isLetter(upper)) {

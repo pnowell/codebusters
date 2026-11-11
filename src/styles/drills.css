@@ -1432,6 +1432,11 @@
   box-sizing: border-box;
 }
 
+.tap-quote-grid .tile-punct {
+  width: 100%;
+  font-family: var(--font-mono);
+}
+
 /* Narrow mobile horizontal tuning */
 @media (max-width: 480px) {
   .offset-card {

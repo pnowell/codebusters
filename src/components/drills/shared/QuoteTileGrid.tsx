@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { CipherGlyph } from './CipherGlyph';
-import { isLetter, findLetterIndex, groupIntoWords } from '../../../utils/ciphers';
+import {
+  isLetter,
+  isRetainedInContinuousStream,
+  findLetterIndex,
+  groupIntoWords,
+} from '../../../utils/ciphers';
 import { useKeepInView } from '../../../hooks/useKeepInView';
 import type {
   CipherWorkspaceParams,
@@ -108,11 +113,11 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
   };
 
   const isContinuousStream = cipher === 'tap';
-  const alphaItems = useMemo(
+  const streamItems = useMemo(
     () =>
       chars
         .map((char, index) => ({ char, index }))
-        .filter((item) => isLetter(item.char)),
+        .filter((item) => isRetainedInContinuousStream(item.char)),
     [chars]
   );
 
@@ -180,7 +185,7 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
       <div className="quote-content-canvas">
         <div className={`quote-display-grid${isContinuousStream ? ' tap-quote-grid' : ''}`}>
           {isContinuousStream
-            ? alphaItems.map(renderTile)
+            ? streamItems.map(renderTile)
             : words.map((word, wIdx) => (
                 <div key={wIdx} className="word-cluster">
                   {word.map(renderTile)}

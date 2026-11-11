@@ -1,7 +1,13 @@
 import quotesData from './quotes.json';
-import type { Quote, QuoteCategory, CryptanalysisTier } from '../types';
+import type {
+  CipherType,
+  CryptanalysisTier,
+  Quote,
+  QuoteCategory,
+} from '../types';
 import { loadCompletedQuoteIds } from '../services/storage';
 import { getFlaggedQuoteIds } from '../services/quoteFlagService';
+import { hasCriticalNonLetterChars } from '../utils/ciphers';
 
 const ALL_QUOTES = quotesData as Quote[];
 
@@ -11,8 +17,12 @@ export const MAX_LOOKUP_LENGTH = 75;
 /** Lookup-eligible quotes (not excessively long for mobile tile grids) */
 const LOOKUP_ELIGIBLE_QUOTES = ALL_QUOTES.filter(q => q.length <= MAX_LOOKUP_LENGTH);
 
-const KID_LOOKUP_POOL = LOOKUP_ELIGIBLE_QUOTES.filter(q => q.category && q.category !== 'general');
-const GENERAL_LOOKUP_POOL = LOOKUP_ELIGIBLE_QUOTES.filter(q => !q.category || q.category === 'general');
+const KID_LOOKUP_POOL = LOOKUP_ELIGIBLE_QUOTES.filter(
+  q => q.category && q.category !== 'general'
+);
+const GENERAL_LOOKUP_POOL = LOOKUP_ELIGIBLE_QUOTES.filter(
+  q => !q.category || q.category === 'general'
+);
 
 /** Fast O(1) lookup table indexed by permanent, stable quote ID */
 const QUOTES_BY_ID = new Map<number, Quote>(ALL_QUOTES.map(q => [q.id, q]));
@@ -28,37 +38,69 @@ export function getQuoteById(id: number): Quote | undefined {
 }
 
 /**
- * Picks a random unflagged lookup-eligible quote (excluding any caller-supplied IDs,
- * such as quotes already used in the current practice test).
+ * Returns whether a quote is suitable for random/picker selection for `cipher`.
+ * Continuous-stream ciphers (`tap`) exclude quotes with critical non-letter,
+ * non-punctuation characters (such as digits `0-9` or `&`).
  */
-export function pickRandomCleanLookupQuote(excludeIds?: ReadonlySet<number>): Quote {
+export function isQuoteEligibleForCipher(
+  quote: Quote,
+  cipher?: CipherType
+): boolean {
+  if (cipher === 'tap') {
+    return !hasCriticalNonLetterChars(quote.quote);
+  }
+  return true;
+}
+
+/**
+ * Picks a random unflagged lookup-eligible quote (excluding any caller-supplied IDs,
+ * such as quotes already used in the current practice test), respecting cipher-specific
+ * character constraints (e.g. Tap Code).
+ */
+export function pickRandomCleanLookupQuote(
+  excludeIds?: ReadonlySet<number>,
+  cipher?: CipherType
+): Quote {
   const flaggedIds = getFlaggedQuoteIds();
-  const candidates = LOOKUP_ELIGIBLE_QUOTES.filter(
+  const cipherEligible = LOOKUP_ELIGIBLE_QUOTES.filter(q =>
+    isQuoteEligibleForCipher(q, cipher)
+  );
+  const candidates = cipherEligible.filter(
     q => !flaggedIds.has(q.id) && !excludeIds?.has(q.id)
   );
-  const fallback = LOOKUP_ELIGIBLE_QUOTES.filter(q => !flaggedIds.has(q.id));
+  const fallback = cipherEligible.filter(q => !flaggedIds.has(q.id));
   const pool =
     candidates.length > 0
       ? candidates
       : fallback.length > 0
       ? fallback
+      : cipherEligible.length > 0
+      ? cipherEligible
       : LOOKUP_ELIGIBLE_QUOTES;
   return pool[Math.floor(Math.random() * pool.length)] ?? ALL_QUOTES[0];
 }
 
 /**
- * Picks a random quote for symbol lookup drills (Pigpen, Galactic, Atbash):
- * - Filters out quotes flagged by teachers (`quote_flags`) and quotes already completed by the user.
+ * Picks a random quote for symbol lookup / cipher exercises:
+ * - Filters out quotes flagged by teachers (`quote_flags`), quotes ineligible for `cipher`,
+ *   and quotes already completed by the user.
  * - Prefers kid-friendly quotes (~80% chance) while still drawing from the general pool (~20% chance).
  * - Caps length at MAX_LOOKUP_LENGTH (75 chars) so quotes are not excessively long.
  * - Gracefully falls back if the completed list exhausts the uncompleted pool.
  */
-function pickRandomLookupQuote(excludeId?: number): Quote {
+function pickRandomLookupQuote(
+  excludeId?: number,
+  cipher?: CipherType
+): Quote {
   const completedSet = new Set(loadCompletedQuoteIds());
   const flaggedSet = getFlaggedQuoteIds();
 
-  const safeKidPool = KID_LOOKUP_POOL.filter(q => !flaggedSet.has(q.id));
-  const safeGeneralPool = GENERAL_LOOKUP_POOL.filter(q => !flaggedSet.has(q.id));
+  const safeKidPool = KID_LOOKUP_POOL.filter(
+    q => !flaggedSet.has(q.id) && isQuoteEligibleForCipher(q, cipher)
+  );
+  const safeGeneralPool = GENERAL_LOOKUP_POOL.filter(
+    q => !flaggedSet.has(q.id) && isQuoteEligibleForCipher(q, cipher)
+  );
 
   // Filter out completed quotes (and current quote if requesting "New") from both pools
   const uncompletedKid = safeKidPool.filter(
@@ -90,28 +132,38 @@ function pickRandomLookupQuote(excludeId?: number): Quote {
   const primary = preferKid ? kidCandidates : generalCandidates;
   const secondary = preferKid ? generalCandidates : kidCandidates;
 
+  const fallbackEligible = LOOKUP_ELIGIBLE_QUOTES.filter(q =>
+    isQuoteEligibleForCipher(q, cipher)
+  );
+
   const chosenPool =
     primary.length > 0
       ? primary
       : secondary.length > 0
       ? secondary
+      : fallbackEligible.length > 0
+      ? fallbackEligible
       : LOOKUP_ELIGIBLE_QUOTES;
 
   return chosenPool[Math.floor(Math.random() * chosenPool.length)] ?? ALL_QUOTES[0];
 }
 
 /**
- * Resolves a quote for symbol lookup drills:
+ * Resolves a quote for symbol lookup / cipher exercises:
  * - If `preferredId` is specified (e.g. via deep-link URL ?q=123):
  *   Returns the Quote if found, or null if the quote does not exist (removed or retired).
  * - If `preferredId` is undefined:
- *   Returns a random eligible lookup quote (optionally excluding `excludeId`).
+ *   Returns a random eligible lookup quote for `cipher` (optionally excluding `excludeId`).
  */
-export function pickLookupQuote(preferredId?: number, excludeId?: number): Quote | null {
+export function pickLookupQuote(
+  preferredId?: number,
+  excludeId?: number,
+  cipher?: CipherType
+): Quote | null {
   if (preferredId !== undefined) {
     return getQuoteById(preferredId) ?? null;
   }
-  return pickRandomLookupQuote(excludeId);
+  return pickRandomLookupQuote(excludeId, cipher);
 }
 
 export function getQuotesByTier(tier: CryptanalysisTier): Quote[] {

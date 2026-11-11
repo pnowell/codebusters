@@ -140,7 +140,7 @@ function buildStarterQuestions(existingTests: readonly TestPacket[]): EditableQu
   }
   const ciphers: TestableCipherType[] = ['atbash', 'pigpen', 'galactic'];
   const pickedItems = ciphers.map((cipher) => {
-    const picked = pickRandomCleanLookupQuote(used);
+    const picked = pickRandomCleanLookupQuote(used, cipher);
     used.add(picked.id);
     return { cipher, quote: picked };
   });
@@ -572,7 +572,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
     const nextCipher = cycleCiphers[questions.length % cycleCiphers.length];
     const nextCaesarOffset =
       nextCipher === 'caesar' ? pickRandomCaesarOffset('pm3') : undefined;
-    const picked = pickRandomCleanLookupQuote(freshQuoteExcludeIds);
+    const picked = pickRandomCleanLookupQuote(freshQuoteExcludeIds, nextCipher);
     const uid = createClientUid('q', qSeqRef.current);
     qSeqRef.current += 1;
 
@@ -636,7 +636,10 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
 
   const handlePickRandomForQuestion = (question: EditableQuestion) => {
     if (isContentLocked) return;
-    const picked = pickRandomCleanLookupQuote(freshQuoteExcludeIds);
+    const picked = pickRandomCleanLookupQuote(
+      freshQuoteExcludeIds,
+      question.cipher
+    );
     const prevQuote = getQuoteById(question.quoteId);
     const prevDefault = buildAutoPrompt(
       question.cipher,
@@ -2316,6 +2319,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
 
           <QuoteBrowserPanel
             mode="picker"
+            targetCipher={pickerTargetQuestion.cipher}
             selectedQuoteId={pickerTargetQuestion.quoteId}
             usedInCurrentTestIds={usedInCurrentTestIds}
             usedInTestsByQuoteId={usedInOtherTestsByQuoteId}

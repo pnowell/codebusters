@@ -6,6 +6,7 @@ import React, {
   useState,
 } from 'react';
 import type {
+  CipherType,
   CryptanalysisTier,
   Quote,
   QuoteBrowserApostropheFilter,
@@ -18,7 +19,11 @@ import type {
   QuoteCategory,
   QuoteFlag,
 } from '../../types';
-import { getAllQuotes, MAX_LOOKUP_LENGTH } from '../../data/quotes';
+import {
+  getAllQuotes,
+  isQuoteEligibleForCipher,
+  MAX_LOOKUP_LENGTH,
+} from '../../data/quotes';
 import {
   getQuoteFlagsMap,
   removeQuoteFlag,
@@ -36,6 +41,7 @@ export type { QuoteBrowserMode };
 
 export interface QuoteBrowserPanelProps {
   mode?: QuoteBrowserMode;
+  targetCipher?: CipherType;
   selectedQuoteId?: number;
   usedInCurrentTestIds?: ReadonlySet<number>;
   usedInTestsByQuoteId?: ReadonlyMap<number, string[]>;
@@ -87,6 +93,7 @@ function findOffsetIndex(offsets: Float64Array, scrollTop: number): number {
 
 export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
   mode = 'standalone',
+  targetCipher,
   selectedQuoteId,
   usedInCurrentTestIds,
   usedInTestsByQuoteId,
@@ -349,6 +356,14 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
     const parsedMaxChi = maxChi.trim() !== '' ? Number(maxChi) : null;
 
     const result = allQuotes.filter((q) => {
+      if (
+        targetCipher &&
+        selectedQuoteId !== q.id &&
+        !isQuoteEligibleForCipher(q, targetCipher)
+      ) {
+        return false;
+      }
+
       const isFlagged = flagsMap.has(q.id);
       if (flagFilter === 'unflagged' && isFlagged) return false;
       if (flagFilter === 'flagged' && !isFlagged) return false;
@@ -457,6 +472,7 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
     return sorted;
   }, [
     allQuotes,
+    targetCipher,
     flagsMap,
     flagFilter,
     hideUsedInTests,
