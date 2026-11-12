@@ -23,6 +23,7 @@ export interface ResolvedCohortInfo {
 export interface PendingCellOp {
   qIdx: number;
   charIdx: number;
+  row?: 'plain' | 'key';
   value: string;
   seq: number;
   editedAt: number;
@@ -117,6 +118,13 @@ function sanitizeLetterInput(val: unknown): string {
   return isLetter(upper) ? upper : '';
 }
 
+export function getCellInputFieldKey(
+  charIdx: number,
+  row: 'plain' | 'key' = 'plain'
+): string {
+  return row === 'key' ? `k${charIdx}` : String(charIdx);
+}
+
 /**
  * Reconstructs typed QuestionWorkspace objects for all questions on a test from raw
  * Firestore workspace data (supporting both per-cell `inputs` maps and legacy `userInputs` arrays).
@@ -148,6 +156,9 @@ export function deserializeWorkspacesFromFirestore(
     const rawInputsArr = Array.isArray(rawEntry?.userInputs)
       ? (rawEntry.userInputs as unknown[])
       : null;
+    const rawKeyInputsArr = Array.isArray(rawEntry?.keyInputs)
+      ? (rawEntry.keyInputs as unknown[])
+      : null;
 
     let filledAlpha = 0;
     let totalAlpha = 0;
@@ -171,6 +182,25 @@ export function deserializeWorkspacesFromFirestore(
       return clean;
     });
 
+    const keyInputs =
+      q.cipher === 'vigenere'
+        ? chars.map((ch, cIdx) => {
+            if (!isLetter(ch)) {
+              return ch;
+            }
+            const rawKeyVal = rawInputsMap
+              ? rawInputsMap[`k${cIdx}`]
+              : rawKeyInputsArr
+                ? rawKeyInputsArr[cIdx]
+                : '';
+            const cleanKey = sanitizeLetterInput(rawKeyVal);
+            if (cleanKey !== '') {
+              inputsRecord[`k${cIdx}`] = cleanKey;
+            }
+            return cleanKey;
+          })
+        : undefined;
+
     const completed = totalAlpha > 0 && filledAlpha === totalAlpha;
     const lastEditedAt =
       typeof rawEntry?.lastEditedAt === 'number' ? rawEntry.lastEditedAt : 0;
@@ -179,6 +209,7 @@ export function deserializeWorkspacesFromFirestore(
 
     result[idx] = {
       userInputs,
+      ...(keyInputs ? { keyInputs } : {}),
       inputs: inputsRecord,
       completed,
       lastEditedAt,
@@ -190,7 +221,7 @@ export function deserializeWorkspacesFromFirestore(
 }
 
 /**
- * Serializes in-memory workspaces into compact Firestore map structures (`inputs` keyed by charIdx)
+ * Serializes in-memory workspaces into compact Firestore map structures (`inputs` keyed by charIdx / `k${charIdx}`)
  * without arrays so concurrent dot-path updates never overwrite sibling cells.
  */
 export function serializeWorkspacesForFirestore(
@@ -218,6 +249,12 @@ export function serializeWorkspacesForFirestore(
         inputs[String(cIdx)] = clean;
         filledAlpha += 1;
       }
+      if (q.cipher === 'vigenere' && ws.keyInputs) {
+        const cleanKey = sanitizeLetterInput(ws.keyInputs[cIdx]);
+        if (cleanKey !== '') {
+          inputs[`k${cIdx}`] = cleanKey;
+        }
+      }
     });
 
     const entry: Record<string, unknown> = {
@@ -235,7 +272,7 @@ export function serializeWorkspacesForFirestore(
 }
 
 /**
- * Computes character-level diffs between two `userInputs` arrays for a single question.
+ * Computes character-level diffs between two character input arrays for a single question.
  */
 export function diffQuestionInputs(
   prevInputs: readonly string[],
@@ -275,21 +312,47 @@ export function applyPendingCellOps(
     const existing = cloned[op.qIdx];
     if (!existing) continue;
     if (!touchedQuestions.has(op.qIdx)) {
+      const q = questions[op.qIdx];
+      const quote = q ? getQuote(q.quoteId) : undefined;
+      const chars = quote ? quote.quote.toUpperCase().split('') : [];
       cloned[op.qIdx] = {
         ...existing,
         userInputs: [...existing.userInputs],
+        ...(existing.keyInputs
+          ? { keyInputs: [...existing.keyInputs] }
+          : q?.cipher === 'vigenere'
+            ? { keyInputs: chars.map((ch) => (isLetter(ch) ? '' : ch)) }
+            : {}),
         inputs: { ...(existing.inputs ?? {}) },
       };
       touchedQuestions.add(op.qIdx);
     }
     const target = cloned[op.qIdx];
-    if (op.charIdx >= 0 && op.charIdx < target.userInputs.length) {
+    const rowKind = op.row ?? 'plain';
+    const fieldKey = getCellInputFieldKey(op.charIdx, rowKind);
+
+    if (rowKind === 'key') {
+      if (target.keyInputs && op.charIdx >= 0 && op.charIdx < target.keyInputs.length) {
+        target.keyInputs[op.charIdx] = op.value;
+        if (target.inputs) {
+          if (op.value) {
+            target.inputs[fieldKey] = op.value;
+          } else {
+            delete target.inputs[fieldKey];
+          }
+        }
+        target.lastEditedAt = Math.max(target.lastEditedAt, op.editedAt);
+        if (op.editedBy) {
+          target.lastEditedBy = op.editedBy;
+        }
+      }
+    } else if (op.charIdx >= 0 && op.charIdx < target.userInputs.length) {
       target.userInputs[op.charIdx] = op.value;
       if (target.inputs) {
         if (op.value) {
-          target.inputs[String(op.charIdx)] = op.value;
+          target.inputs[fieldKey] = op.value;
         } else {
-          delete target.inputs[String(op.charIdx)];
+          delete target.inputs[fieldKey];
         }
       }
       target.lastEditedAt = Math.max(target.lastEditedAt, op.editedAt);

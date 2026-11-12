@@ -1,5 +1,10 @@
 import type { Quote, TestableCipherType } from '../types';
-import { formatSignedOffset, isLetter, letterToTapPair } from './ciphers';
+import {
+  formatSignedOffset,
+  isLetter,
+  letterToTapPair,
+  sanitizeVigenereKeyword,
+} from './ciphers';
 
 export interface QuoteCipherStats {
   letterCount: number;
@@ -28,6 +33,7 @@ const CIPHER_LABELS: Record<TestableCipherType, string> = {
   tap: 'Tap Code',
   knights: 'Knights Templar',
   caesar: 'Caesar',
+  vigenere: 'Vigenère',
 };
 
 const CIPHER_SEEDS: Record<TestableCipherType, number> = {
@@ -37,6 +43,7 @@ const CIPHER_SEEDS: Record<TestableCipherType, number> = {
   tap: 4,
   knights: 5,
   caesar: 6,
+  vigenere: 7,
 };
 
 /**
@@ -193,17 +200,21 @@ export function getQuestionPointGuidance(
     otherPoints?: readonly number[];
     questionIndex?: number;
     caesarOffset?: number;
+    vigenereKeyword?: string;
   }
 ): QuestionPointGuidance {
   const cipherLabel = CIPHER_LABELS[cipher] ?? 'Cipher';
+  const cleanVigKey = sanitizeVigenereKeyword(options?.vigenereKeyword);
   const seed =
     (quote?.id ?? 0) +
     (CIPHER_SEEDS[cipher] ?? 0) +
     (options?.questionIndex ?? 0) +
-    Math.abs(options?.caesarOffset ?? 0);
+    Math.abs(options?.caesarOffset ?? 0) +
+    cleanVigKey.length;
 
   if (!quote) {
-    const fallbackBase = cipher === 'caesar' ? 104 : 68;
+    const fallbackBase =
+      cipher === 'vigenere' ? 114 : cipher === 'caesar' ? 104 : 68;
     const fallbackMin = fallbackBase - 5;
     const fallbackMax = fallbackBase + 5;
     const fallbackSuggested = pickNonRoundScore({
@@ -221,8 +232,10 @@ export function getQuestionPointGuidance(
       letterCount: 0,
       uniqueLetters: 0,
       tapCount: 0,
-      recommendedMinLetters: cipher === 'caesar' ? 30 : 25,
-      recommendedMaxLetters: cipher === 'caesar' ? 75 : 60,
+      recommendedMinLetters:
+        cipher === 'caesar' || cipher === 'vigenere' ? 30 : 25,
+      recommendedMaxLetters:
+        cipher === 'caesar' ? 75 : cipher === 'vigenere' ? 70 : 60,
       lengthWarning: null,
       tooltipSummary: `Suggested: ${fallbackSuggested} pts (range ${fallbackMin}–${fallbackMax})`,
     };
@@ -302,6 +315,18 @@ export function getQuestionPointGuidance(
       detailStats = `${L} letters, ${U} unique, shift ${formatSignedOffset(effOffset)}, min word ${quote.minWordLength}`;
       break;
     }
+    case 'vigenere': {
+      // Toebes Division A CipherVigenereEncoder (decode given key):
+      // Scales with message length and keyword period (2 * len + 5 * keyLen), range ±10
+      const keyLen = cleanVigKey.length >= 2 ? cleanVigKey.length : 5;
+      rawBase = Math.max(25, Math.round(2 * L + 5 * keyLen));
+      min = Math.max(20, rawBase - 10);
+      max = rawBase + 10;
+      recommendedMinLetters = 30;
+      recommendedMaxLetters = 70;
+      detailStats = `${L} letters, key ${cleanVigKey || `(${keyLen} chars)`}`;
+      break;
+    }
   }
 
   const suggested = pickNonRoundScore({
@@ -312,11 +337,13 @@ export function getQuestionPointGuidance(
     seed,
   });
 
-  let lengthWarning: string | null = null;
+  let lengthWarning: string | null;
   if (L < recommendedMinLetters) {
     lengthWarning = `Short quote for ${cipherLabel}: ${L} letters (recommended ${recommendedMinLetters}–${recommendedMaxLetters} letters)`;
   } else if (L > recommendedMaxLetters) {
     lengthWarning = `Long quote for ${cipherLabel}: ${L} letters (recommended ${recommendedMinLetters}–${recommendedMaxLetters} letters)`;
+  } else {
+    lengthWarning = null;
   }
 
   const tooltipSummary = `Suggested: ${suggested} pts (range ${min}–${max}, non-multiples of 5) · ${cipherLabel}: ${detailStats}${
@@ -346,6 +373,7 @@ export function suggestPointsForPacket(
     cipher: TestableCipherType;
     quote: Quote | undefined;
     caesarOffset?: number;
+    vigenereKeyword?: string;
   }[]
 ): number[] {
   const assigned: number[] = [];
@@ -354,6 +382,7 @@ export function suggestPointsForPacket(
       otherPoints: assigned,
       questionIndex: idx,
       caesarOffset: q.caesarOffset,
+      vigenereKeyword: q.vigenereKeyword,
     });
     assigned.push(guidance.suggested);
   });

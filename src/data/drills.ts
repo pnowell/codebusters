@@ -79,7 +79,7 @@ export const DRILLS = [
   },
   {
     id: 'caesar',
-    name: 'Caesar (±3) & Letter Math',
+    name: 'Caesar (±3) & ABC ± #',
     shortTitle: 'Caesar',
     menuLabel: 'Caesar',
     kind: 'analysis',
@@ -90,11 +90,11 @@ export const DRILLS = [
   },
   {
     id: 'vigenere',
-    name: 'Vigenère Cipher',
+    name: 'Vigenère & ABC ± ABC',
     shortTitle: 'Vigenère',
     menuLabel: 'Vigenère',
     kind: 'analysis',
-    implemented: false,
+    implemented: true,
     defaultEnabled: false,
     hasFlashcardDrill: false,
     hasQuoteWorkspace: true,
@@ -175,13 +175,27 @@ export function isCipherAccessible(
   id: CipherType,
   section: 'memorize' | 'cipher',
   flags: Partial<Record<CipherType, boolean>>,
-  hasPreviewAccess: boolean
+  hasPreviewAccess: boolean,
+  letterMathMode?: 'easy' | 'hard' | 'letterEasy' | 'letterHard'
 ): boolean {
   const drill = getDrill(id);
   if (!drill.implemented) return false;
   if (section === 'memorize' && !drill.hasFlashcardDrill) return false;
   if (section === 'cipher' && !drill.hasQuoteWorkspace) return false;
-  return hasPreviewAccess || isCipherEnabledForStudent(id, flags);
+  if (hasPreviewAccess) return true;
+  if (id === 'letterMath') {
+    if (letterMathMode === 'letterEasy' || letterMathMode === 'letterHard') {
+      return isCipherEnabledForStudent('vigenere', flags);
+    }
+    if (letterMathMode === 'easy' || letterMathMode === 'hard') {
+      return isCipherEnabledForStudent('caesar', flags);
+    }
+    return (
+      isCipherEnabledForStudent('caesar', flags) ||
+      isCipherEnabledForStudent('vigenere', flags)
+    );
+  }
+  return isCipherEnabledForStudent(id, flags);
 }
 
 /**

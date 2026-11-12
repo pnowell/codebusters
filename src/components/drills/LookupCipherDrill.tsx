@@ -7,9 +7,11 @@ import { ResultBanner } from './shared/ResultBanner';
 import { QuoteTileGrid } from './shared/QuoteTileGrid';
 import {
   deterministicCaesarOffset,
+  deterministicVigenereKeyword,
   evaluateSolution,
   isLetter,
   pickRandomCaesarOffset,
+  pickRandomVigenereKeyword,
   shouldCountQuoteCompleted,
 } from '../../utils/ciphers';
 import { pickLookupQuote } from '../../data/quotes';
@@ -35,14 +37,20 @@ interface LookupCipherDrillProps {
 interface PuzzleState {
   quote: Quote;
   userInputs: string[];
+  keyInputs: string[];
   caesarOffset?: number;
+  vigenereKeyword?: string;
 }
 
 function freshPuzzle(
   quote: Quote,
   cipher: TestableCipherType,
   caesarRange: CaesarRangeMode,
-  options?: { deterministic?: boolean; prevOffset?: number }
+  options?: {
+    deterministic?: boolean;
+    prevOffset?: number;
+    prevKeyword?: string;
+  }
 ): PuzzleState {
   const chars = quote.quote.toUpperCase().split('');
   const caesarOffset =
@@ -51,10 +59,18 @@ function freshPuzzle(
         ? deterministicCaesarOffset(quote.id, caesarRange)
         : pickRandomCaesarOffset(caesarRange, options?.prevOffset)
       : undefined;
+  const vigenereKeyword =
+    cipher === 'vigenere'
+      ? options?.deterministic
+        ? deterministicVigenereKeyword(quote.id)
+        : pickRandomVigenereKeyword(options?.prevKeyword)
+      : undefined;
   return {
     quote,
     userInputs: chars.map((c) => (isLetter(c) ? '' : c)),
+    keyInputs: chars.map((c) => (isLetter(c) ? '' : c)),
     caesarOffset,
+    vigenereKeyword,
   };
 }
 
@@ -94,6 +110,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
   const quote = puzzle?.quote;
   const quoteId = quote?.id;
   const userInputs = puzzle?.userInputs ?? EMPTY_USER_INPUTS;
+  const keyInputs = puzzle?.keyInputs ?? EMPTY_USER_INPUTS;
   const [result, setResult] = useState<EvaluationResult | null>(null);
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
   const startTimeRef = useRef<number>(0);
@@ -123,13 +140,15 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
   ).length;
   const isAllFilled = totalLetters > 0 && filledLetters === totalLetters;
 
-  const cipherParams = useMemo<CipherWorkspaceParams | undefined>(
-    () =>
-      cipher === 'caesar'
-        ? { caesarOffset: puzzle?.caesarOffset ?? 1, caesarRange }
-        : undefined,
-    [caesarRange, cipher, puzzle?.caesarOffset]
-  );
+  const cipherParams = useMemo<CipherWorkspaceParams | undefined>(() => {
+    if (cipher === 'caesar') {
+      return { caesarOffset: puzzle?.caesarOffset ?? 1, caesarRange };
+    }
+    if (cipher === 'vigenere') {
+      return { vigenereKeyword: puzzle?.vigenereKeyword ?? 'KEY' };
+    }
+    return undefined;
+  }, [caesarRange, cipher, puzzle?.caesarOffset, puzzle?.vigenereKeyword]);
 
   const loadNewQuote = useCallback(() => {
     const nextQ = pickLookupQuote(undefined, quoteId, cipher);
@@ -138,6 +157,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
       setPuzzle((prev) =>
         freshPuzzle(nextQ, cipher, caesarRange, {
           prevOffset: prev?.caesarOffset,
+          prevKeyword: prev?.vigenereKeyword,
         })
       );
       setResult(null);
@@ -176,6 +196,10 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
 
   const handleChangeUserInputs = useCallback((nextInputs: string[]) => {
     setPuzzle((prev) => (prev ? { ...prev, userInputs: nextInputs } : null));
+  }, []);
+
+  const handleChangeKeyInputs = useCallback((nextKeyInputs: string[]) => {
+    setPuzzle((prev) => (prev ? { ...prev, keyInputs: nextKeyInputs } : null));
   }, []);
 
   const baseTitle =
@@ -256,6 +280,10 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
         quote={quote}
         userInputs={userInputs}
         onChangeUserInputs={handleChangeUserInputs}
+        keyInputs={cipher === 'vigenere' ? keyInputs : undefined}
+        onChangeKeyInputs={
+          cipher === 'vigenere' ? handleChangeKeyInputs : undefined
+        }
         disabled={isSubmitted}
         showEvaluation={isSubmitted}
         onEnterSubmit={handleSubmit}

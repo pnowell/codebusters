@@ -36,9 +36,14 @@ import {
   CAESAR_PM3_OFFSETS,
   caesarChar,
   deterministicCaesarOffset,
+  deterministicVigenereKeyword,
   formatSignedOffset,
   isValidCaesarPm3Offset,
+  isValidVigenereKeyword,
   pickRandomCaesarOffset,
+  pickRandomVigenereKeyword,
+  sanitizeVigenereKeyword,
+  vigenereEncryptChar,
 } from '../../utils/ciphers';
 import {
   getQuestionPointGuidance,
@@ -56,6 +61,7 @@ interface EditableQuestion {
   quoteId: number;
   points: number;
   caesarOffset?: number;
+  vigenereKeyword?: string;
   isPointsManual: boolean;
   isTiebreaker: boolean;
   description: string;
@@ -86,6 +92,7 @@ const CIPHER_OPTIONS: { id: TestableCipherType; label: string; promptName: strin
   { id: 'tap', label: 'Tap Code', promptName: 'Tap Code Cipher' },
   { id: 'knights', label: 'Knights Templar', promptName: 'Knights Templar Cipher' },
   { id: 'caesar', label: 'Caesar', promptName: 'Caesar Cipher' },
+  { id: 'vigenere', label: 'Vigenère', promptName: 'Vigenère Cipher' },
 ];
 
 const CATEGORY_SHORT_LABELS: Record<QuoteCategory, string> = {
@@ -114,7 +121,8 @@ function createClientUid(prefix: string, seq: number): string {
 function buildAutoPrompt(
   cipher: TestableCipherType,
   isTiebreaker: boolean,
-  author?: string
+  author?: string,
+  vigenereKeyword?: string
 ): string {
   const cipherMeta =
     CIPHER_OPTIONS.find((c) => c.id === cipher)?.promptName ?? 'Cipher';
@@ -123,7 +131,10 @@ function buildAutoPrompt(
     author && author.trim() && author.trim().toLowerCase() !== 'unknown'
       ? ` attributed to ${author.trim()}`
       : '';
-  return `${prefix}Decode this ${cipherMeta} message${byline}.`;
+  const cleanKey = sanitizeVigenereKeyword(vigenereKeyword);
+  const keyClause =
+    cipher === 'vigenere' && cleanKey ? ` using key ${cleanKey}` : '';
+  return `${prefix}Decode this ${cipherMeta} message${byline}${keyClause}.`;
 }
 
 function buildStarterQuestions(existingTests: readonly TestPacket[]): EditableQuestion[] {
@@ -176,6 +187,9 @@ function serializeDraftSnapshot(params: {
       points: Math.round(q.points),
       ...(q.cipher === 'caesar' && q.caesarOffset !== undefined
         ? { caesarOffset: q.caesarOffset }
+        : {}),
+      ...(q.cipher === 'vigenere'
+        ? { vigenereKeyword: sanitizeVigenereKeyword(q.vigenereKeyword) }
         : {}),
       isTiebreaker: Boolean(q.isTiebreaker),
       description: q.description.trim(),
@@ -231,9 +245,17 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
               ? q.caesarOffset
               : deterministicCaesarOffset(q.quoteId + idx, 'pm3')
             : undefined;
+        const cleanedVig = sanitizeVigenereKeyword(q.vigenereKeyword);
+        const vigenereKeyword =
+          q.cipher === 'vigenere'
+            ? isValidVigenereKeyword(cleanedVig)
+              ? cleanedVig
+              : deterministicVigenereKeyword(q.quoteId + idx)
+            : undefined;
         const guidance = getQuestionPointGuidance(q.cipher, quote, {
           questionIndex: idx,
           caesarOffset,
+          vigenereKeyword,
         });
         return {
           uid: createClientUid('q', idx + 1),
@@ -241,6 +263,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
           quoteId: q.quoteId,
           points: q.points,
           ...(caesarOffset !== undefined ? { caesarOffset } : {}),
+          ...(vigenereKeyword !== undefined ? { vigenereKeyword } : {}),
           isPointsManual: !isPointsMatchingGuidance(q.points, guidance),
           isTiebreaker: Boolean(q.isTiebreaker),
           description: q.description ?? '',
@@ -535,6 +558,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
           cipher: q.cipher,
           quote: getQuoteById(q.quoteId),
           caesarOffset: q.caesarOffset,
+          vigenereKeyword: q.vigenereKeyword,
         }))
       ),
     [questions]
@@ -556,6 +580,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
           cipher: q.cipher,
           quote: getQuoteById(q.quoteId),
           caesarOffset: q.caesarOffset,
+          vigenereKeyword: q.vigenereKeyword,
         }))
       );
       return prev.map((q, idx) => ({
@@ -572,6 +597,8 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
     const nextCipher = cycleCiphers[questions.length % cycleCiphers.length];
     const nextCaesarOffset =
       nextCipher === 'caesar' ? pickRandomCaesarOffset('pm3') : undefined;
+    const nextVigenereKeyword =
+      nextCipher === 'vigenere' ? pickRandomVigenereKeyword() : undefined;
     const picked = pickRandomCleanLookupQuote(freshQuoteExcludeIds, nextCipher);
     const uid = createClientUid('q', qSeqRef.current);
     qSeqRef.current += 1;
@@ -582,6 +609,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
         otherPoints,
         questionIndex: prev.length,
         caesarOffset: nextCaesarOffset,
+        vigenereKeyword: nextVigenereKeyword,
       });
       return [
         ...prev,
@@ -593,9 +621,17 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
           ...(nextCaesarOffset !== undefined
             ? { caesarOffset: nextCaesarOffset }
             : {}),
+          ...(nextVigenereKeyword !== undefined
+            ? { vigenereKeyword: nextVigenereKeyword }
+            : {}),
           isPointsManual: false,
           isTiebreaker: false,
-          description: buildAutoPrompt(nextCipher, false, picked.author),
+          description: buildAutoPrompt(
+            nextCipher,
+            false,
+            picked.author,
+            nextVigenereKeyword
+          ),
         },
       ];
     });
@@ -644,7 +680,8 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
     const prevDefault = buildAutoPrompt(
       question.cipher,
       question.isTiebreaker,
-      prevQuote?.author
+      prevQuote?.author,
+      question.vigenereKeyword
     );
     const shouldRefreshPrompt =
       !question.description.trim() || question.description.trim() === prevDefault;
@@ -660,6 +697,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
       otherPoints,
       questionIndex: qIdx,
       caesarOffset: question.caesarOffset,
+      vigenereKeyword: question.vigenereKeyword,
     });
 
     handleUpdateQuestion(question.uid, {
@@ -670,7 +708,8 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
             description: buildAutoPrompt(
               question.cipher,
               question.isTiebreaker,
-              picked.author
+              picked.author,
+              question.vigenereKeyword
             ),
           }
         : {}),
@@ -686,7 +725,8 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
       const prevDefault = buildAutoPrompt(
         targetQ.cipher,
         targetQ.isTiebreaker,
-        prevQuote?.author
+        prevQuote?.author,
+        targetQ.vigenereKeyword
       );
       const shouldRefreshPrompt =
         !targetQ.description.trim() || targetQ.description.trim() === prevDefault;
@@ -698,6 +738,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
         otherPoints,
         questionIndex: targetIdx,
         caesarOffset: targetQ.caesarOffset,
+        vigenereKeyword: targetQ.vigenereKeyword,
       });
 
       handleUpdateQuestion(targetQ.uid, {
@@ -708,7 +749,8 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
               description: buildAutoPrompt(
                 targetQ.cipher,
                 targetQ.isTiebreaker,
-                picked.author
+                picked.author,
+                targetQ.vigenereKeyword
               ),
             }
           : {}),
@@ -1014,6 +1056,14 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
       ...(q.cipher === 'caesar' && q.caesarOffset !== undefined
         ? { caesarOffset: q.caesarOffset }
         : {}),
+      ...(q.cipher === 'vigenere'
+        ? {
+            vigenereKeyword:
+              q.vigenereKeyword !== undefined
+                ? sanitizeVigenereKeyword(q.vigenereKeyword)
+                : deterministicVigenereKeyword(q.quoteId + idx),
+          }
+        : {}),
       ...(q.isTiebreaker ? { isTiebreaker: true } : {}),
       ...(q.description.trim() ? { description: q.description.trim() } : {}),
     }));
@@ -1088,6 +1138,20 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
       handleSwitchTab('questions');
       setErrorMsg('Add at least one question before saving.');
       return;
+    }
+    if (!isContentLocked) {
+      const badVigIdx = questions.findIndex(
+        (q) =>
+          q.cipher === 'vigenere' &&
+          !isValidVigenereKeyword(sanitizeVigenereKeyword(q.vigenereKeyword))
+      );
+      if (badVigIdx !== -1) {
+        handleSwitchTab('questions');
+        setErrorMsg(
+          `Question ${badVigIdx + 1}: Vigenère keyword must be 2 to 14 letters (A–Z).`
+        );
+        return;
+      }
     }
 
     const existingIds = new Set(existingTests.map((t) => t.testId));
@@ -1413,6 +1477,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                   otherPoints,
                   questionIndex: idx,
                   caesarOffset: q.caesarOffset,
+                  vigenereKeyword: q.vigenereKeyword,
                 });
                 const hasDuplicatePoints = duplicatePointValuesInDraft.has(q.points);
                 const isGuidanceMatch = isPointsMatchingGuidance(q.points, guidance);
@@ -1450,7 +1515,8 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                                 const prevDefault = buildAutoPrompt(
                                   q.cipher,
                                   q.isTiebreaker,
-                                  quote?.author
+                                  quote?.author,
+                                  q.vigenereKeyword
                                 );
                                 const shouldRefreshPrompt =
                                   !q.description.trim() ||
@@ -1461,6 +1527,15 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                                       ? q.caesarOffset
                                       : pickRandomCaesarOffset('pm3')
                                     : undefined;
+                                const cleanedExistingVigKey = sanitizeVigenereKeyword(
+                                  q.vigenereKeyword
+                                );
+                                const nextVigenereKeyword =
+                                  opt.id === 'vigenere'
+                                    ? isValidVigenereKeyword(cleanedExistingVigKey)
+                                      ? cleanedExistingVigKey
+                                      : pickRandomVigenereKeyword()
+                                    : undefined;
                                 const nextGuidance = getQuestionPointGuidance(
                                   opt.id,
                                   quote,
@@ -1468,11 +1543,13 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                                     otherPoints,
                                     questionIndex: idx,
                                     caesarOffset: nextCaesarOffset,
+                                    vigenereKeyword: nextVigenereKeyword,
                                   }
                                 );
                                 handleUpdateQuestion(q.uid, {
                                   cipher: opt.id,
                                   caesarOffset: nextCaesarOffset,
+                                  vigenereKeyword: nextVigenereKeyword,
                                   ...(!q.isPointsManual
                                     ? { points: nextGuidance.suggested }
                                     : {}),
@@ -1481,7 +1558,8 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                                         description: buildAutoPrompt(
                                           opt.id,
                                           q.isTiebreaker,
-                                          quote?.author
+                                          quote?.author,
+                                          nextVigenereKeyword
                                         ),
                                       }
                                     : {}),
@@ -1553,7 +1631,8 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                             const prevDefault = buildAutoPrompt(
                               q.cipher,
                               q.isTiebreaker,
-                              quote?.author
+                              quote?.author,
+                              q.vigenereKeyword
                             );
                             const shouldRefreshPrompt =
                               !q.description.trim() ||
@@ -1565,7 +1644,8 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                                     description: buildAutoPrompt(
                                       q.cipher,
                                       nextTb,
-                                      quote?.author
+                                      quote?.author,
+                                      q.vigenereKeyword
                                     ),
                                   }
                                 : {}),
@@ -1674,6 +1754,128 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                               ? q.caesarOffset
                               : 1
                           )}
+                        </span>
+                      </div>
+                    )}
+
+                    {q.cipher === 'vigenere' && (
+                      <div
+                        className="editor-caesar-shift-row"
+                        role="group"
+                        aria-label={`Question ${idx + 1} Vigenère keyword`}
+                      >
+                        <label
+                          className="editor-caesar-shift-label"
+                          htmlFor={`vigenere-key-${q.uid}`}
+                        >
+                          Vigenère Key:
+                        </label>
+                        <input
+                          id={`vigenere-key-${q.uid}`}
+                          type="text"
+                          className="editor-vigenere-key-input"
+                          placeholder="e.g., SCIENCE"
+                          maxLength={14}
+                          disabled={isContentLocked}
+                          value={q.vigenereKeyword ?? ''}
+                          onChange={(e) => {
+                            const nextKey = sanitizeVigenereKeyword(e.target.value);
+                            const prevDefault = buildAutoPrompt(
+                              'vigenere',
+                              q.isTiebreaker,
+                              quote?.author,
+                              q.vigenereKeyword
+                            );
+                            const shouldRefreshPrompt =
+                              !q.description.trim() ||
+                              q.description.trim() === prevDefault;
+                            const nextGuidance = getQuestionPointGuidance(
+                              'vigenere',
+                              quote,
+                              {
+                                otherPoints,
+                                questionIndex: idx,
+                                vigenereKeyword: nextKey,
+                              }
+                            );
+                            handleUpdateQuestion(q.uid, {
+                              vigenereKeyword: nextKey,
+                              ...(!q.isPointsManual
+                                ? { points: nextGuidance.suggested }
+                                : {}),
+                              ...(shouldRefreshPrompt
+                                ? {
+                                    description: buildAutoPrompt(
+                                      'vigenere',
+                                      q.isTiebreaker,
+                                      quote?.author,
+                                      nextKey
+                                    ),
+                                  }
+                                : {}),
+                            });
+                          }}
+                        />
+                        {!isContentLocked && (
+                          <button
+                            type="button"
+                            className="btn-simple editor-btn-quote-rand"
+                            onClick={() => {
+                              const nextKey = pickRandomVigenereKeyword(
+                                q.vigenereKeyword
+                              );
+                              const prevDefault = buildAutoPrompt(
+                                'vigenere',
+                                q.isTiebreaker,
+                                quote?.author,
+                                q.vigenereKeyword
+                              );
+                              const shouldRefreshPrompt =
+                                !q.description.trim() ||
+                                q.description.trim() === prevDefault;
+                              const nextGuidance = getQuestionPointGuidance(
+                                'vigenere',
+                                quote,
+                                {
+                                  otherPoints,
+                                  questionIndex: idx,
+                                  vigenereKeyword: nextKey,
+                                }
+                              );
+                              handleUpdateQuestion(q.uid, {
+                                vigenereKeyword: nextKey,
+                                ...(!q.isPointsManual
+                                  ? { points: nextGuidance.suggested }
+                                  : {}),
+                                ...(shouldRefreshPrompt
+                                  ? {
+                                      description: buildAutoPrompt(
+                                        'vigenere',
+                                        q.isTiebreaker,
+                                        quote?.author,
+                                        nextKey
+                                      ),
+                                    }
+                                  : {}),
+                              });
+                            }}
+                            title="Pick a random Vigenère keyword"
+                          >
+                            🎲 Random Key
+                          </button>
+                        )}
+                        <span
+                          className="editor-caesar-shift-example"
+                          title="First letter of key encodes plaintext A to this ciphertext letter"
+                        >
+                          {(() => {
+                            const firstKeyChar =
+                              sanitizeVigenereKeyword(q.vigenereKeyword)[0] ?? 'K';
+                            return `A + ${firstKeyChar} → ${vigenereEncryptChar(
+                              'A',
+                              firstKeyChar
+                            )}`;
+                          })()}
                         </span>
                       </div>
                     )}
@@ -1801,7 +2003,8 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                               description: buildAutoPrompt(
                                 q.cipher,
                                 q.isTiebreaker,
-                                quote?.author
+                                quote?.author,
+                                q.vigenereKeyword
                               ),
                             })
                           }
@@ -1835,7 +2038,13 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                                     : 1,
                                   caesarRange: 'pm3',
                                 }
-                              : undefined
+                              : q.cipher === 'vigenere'
+                                ? {
+                                    vigenereKeyword:
+                                      sanitizeVigenereKeyword(q.vigenereKeyword) ||
+                                      'KEY',
+                                  }
+                                : undefined
                           }
                           quote={quote}
                           userInputs={EMPTY_INPUTS}

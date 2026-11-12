@@ -95,12 +95,25 @@ export const MainMenu: React.FC<MainMenuProps> = ({
     return () => mql.removeEventListener('change', handleChange);
   }, []);
 
-  const isLetterMathVisible =
+  const isNumMathVisible =
     hasPreviewAccess ||
-    isCipherEnabledForStudent('letterMath', generalPracticeCiphers);
-  const isLetterMathUnpublished =
+    isCipherEnabledForStudent('caesar', generalPracticeCiphers);
+  const isNumMathUnpublished =
     hasPreviewAccess &&
-    !isCipherEnabledForStudent('letterMath', generalPracticeCiphers);
+    !isCipherEnabledForStudent('caesar', generalPracticeCiphers);
+
+  const isLetterToLetterMathVisible =
+    hasPreviewAccess ||
+    isCipherEnabledForStudent('vigenere', generalPracticeCiphers);
+  const isLetterToLetterMathUnpublished =
+    hasPreviewAccess &&
+    !isCipherEnabledForStudent('vigenere', generalPracticeCiphers);
+
+  const isLetterMathVisible = isNumMathVisible || isLetterToLetterMathVisible;
+  const areAllVisibleLetterMathRowsUnpublished =
+    isLetterMathVisible &&
+    (!isNumMathVisible || isNumMathUnpublished) &&
+    (!isLetterToLetterMathVisible || isLetterToLetterMathUnpublished);
 
   const visibleFlashcardDrills = DRILLS.filter(
     (d) =>
@@ -118,14 +131,26 @@ export const MainMenu: React.FC<MainMenuProps> = ({
       (hasPreviewAccess || isCipherEnabledForStudent(d.id, generalPracticeCiphers))
   );
 
-  const comingSoonDrills = DRILLS.filter(
-    (d) =>
-      d.id !== 'offsets' &&
-      d.hasFlashcardDrill &&
-      (!d.implemented ||
-        (!hasPreviewAccess &&
-          !isCipherEnabledForStudent(d.id, generalPracticeCiphers)))
-  );
+  const comingSoonDrillLabels: { key: string; label: string }[] = [];
+  if (!isNumMathVisible && !isLetterToLetterMathVisible) {
+    comingSoonDrillLabels.push({ key: 'letterMath', label: 'Letter Math' });
+  } else if (!isNumMathVisible) {
+    comingSoonDrillLabels.push({ key: 'letterMathNum', label: 'ABC ± #' });
+  } else if (!isLetterToLetterMathVisible) {
+    comingSoonDrillLabels.push({ key: 'letterMathLetter', label: 'ABC ± ABC' });
+  }
+  for (const d of DRILLS) {
+    if (d.id === 'offsets' || d.id === 'letterMath' || !d.hasFlashcardDrill) {
+      continue;
+    }
+    if (
+      !d.implemented ||
+      (!hasPreviewAccess &&
+        !isCipherEnabledForStudent(d.id, generalPracticeCiphers))
+    ) {
+      comingSoonDrillLabels.push({ key: d.id, label: d.menuLabel });
+    }
+  }
 
   const comingSoonCiphers = DRILLS.filter(
     (d) =>
@@ -542,50 +567,107 @@ export const MainMenu: React.FC<MainMenuProps> = ({
                         >
                           Letter Math
                         </span>
-                        {isLetterMathUnpublished &&
+                        {areAllVisibleLetterMathRowsUnpublished &&
                           renderPreviewStatusBadge(
-                            'Beta preview — enable Caesar (±3) & Letter Math in Settings'
+                            'Beta preview — enable Caesar / Vigenère in Settings'
                           )}
                       </div>
 
-                      <div
-                        className="menu-labeled-row menu-labeled-row-nested"
-                        role="group"
-                        aria-labelledby="menu-letter-math-num-label"
-                      >
-                        <span
-                          id="menu-letter-math-num-label"
-                          className="menu-labeled-row-title"
+                      {isNumMathVisible && (
+                        <div
+                          className="menu-labeled-row menu-labeled-row-nested"
+                          role="group"
+                          aria-labelledby="menu-letter-math-num-label"
                         >
-                          ABC ± #
-                        </span>
-                        <div className="menu-labeled-row-actions">
-                          <button
-                            type="button"
-                            className="menu-drill-btn menu-inline-pill-btn"
-                            onClick={() =>
-                              onSelectDrill('letterMath', 'memorize', {
-                                letterMathMode: 'easy',
-                              })
-                            }
-                            aria-label="Letter Math ABC plus or minus Number: Easy (up to 3)"
-                          >
-                            Easy
-                          </button>
-                          <button
-                            type="button"
-                            className="menu-drill-btn menu-inline-pill-btn"
-                            onClick={() =>
-                              onSelectDrill('letterMath', 'memorize', {
-                                letterMathMode: 'hard',
-                              })
-                            }
-                            aria-label="Letter Math ABC plus or minus Number: Hard (any offset)"
-                          >
-                            Hard
-                          </button>
+                          <div className="menu-labeled-row-left">
+                            <span
+                              id="menu-letter-math-num-label"
+                              className="menu-labeled-row-title"
+                            >
+                              ABC ± #
+                            </span>
+                            {!areAllVisibleLetterMathRowsUnpublished &&
+                              isNumMathUnpublished &&
+                              renderPreviewStatusBadge(
+                                'Beta preview — enable Caesar (±3) & ABC ± # in Settings'
+                              )}
+                          </div>
+                          <div className="menu-labeled-row-actions">
+                            <button
+                              type="button"
+                              className="menu-drill-btn menu-inline-pill-btn"
+                              onClick={() =>
+                                onSelectDrill('letterMath', 'memorize', {
+                                  letterMathMode: 'easy',
+                                })
+                              }
+                              aria-label="Letter Math ABC plus or minus Number: Easy (up to 3)"
+                            >
+                              Easy
+                            </button>
+                            <button
+                              type="button"
+                              className="menu-drill-btn menu-inline-pill-btn"
+                              onClick={() =>
+                                onSelectDrill('letterMath', 'memorize', {
+                                  letterMathMode: 'hard',
+                                })
+                              }
+                              aria-label="Letter Math ABC plus or minus Number: Hard (any offset)"
+                            >
+                              Hard
+                            </button>
+                          </div>
                         </div>
-                      </div>
+                      )}
+
+                      {isLetterToLetterMathVisible && (
+                        <div
+                          className="menu-labeled-row menu-labeled-row-nested"
+                          role="group"
+                          aria-labelledby="menu-letter-math-let-label"
+                        >
+                          <div className="menu-labeled-row-left">
+                            <span
+                              id="menu-letter-math-let-label"
+                              className="menu-labeled-row-title"
+                            >
+                              ABC ± ABC
+                            </span>
+                            {!areAllVisibleLetterMathRowsUnpublished &&
+                              isLetterToLetterMathUnpublished &&
+                              renderPreviewStatusBadge(
+                                'Beta preview — enable Vigenère & ABC ± ABC in Settings'
+                              )}
+                          </div>
+                          <div className="menu-labeled-row-actions">
+                            <button
+                              type="button"
+                              className="menu-drill-btn menu-inline-pill-btn"
+                              onClick={() =>
+                                onSelectDrill('letterMath', 'memorize', {
+                                  letterMathMode: 'letterEasy',
+                                })
+                              }
+                              aria-label="Letter Math ABC plus or minus ABC: Easy"
+                            >
+                              Easy
+                            </button>
+                            <button
+                              type="button"
+                              className="menu-drill-btn menu-inline-pill-btn"
+                              onClick={() =>
+                                onSelectDrill('letterMath', 'memorize', {
+                                  letterMathMode: 'letterHard',
+                                })
+                              }
+                              aria-label="Letter Math ABC plus or minus ABC: Hard"
+                            >
+                              Hard
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -608,20 +690,20 @@ export const MainMenu: React.FC<MainMenuProps> = ({
                     );
                   })}
 
-                  {comingSoonDrills.length > 0 && (
+                  {comingSoonDrillLabels.length > 0 && (
                     <>
                       <div className="menu-divider coming-soon-divider">
                         <span>Coming Soon</span>
                       </div>
                       <div className="menu-buttons-list disabled-list">
-                        {comingSoonDrills.map((d) => (
+                        {comingSoonDrillLabels.map((item) => (
                           <button
-                            key={d.id}
+                            key={item.key}
                             type="button"
                             className="menu-drill-btn btn-disabled"
                             disabled
                           >
-                            {d.id === 'letterMath' ? 'Letter Math' : d.menuLabel}
+                            {item.label}
                           </button>
                         ))}
                       </div>

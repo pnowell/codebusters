@@ -202,7 +202,17 @@ export function offsetsModeToDrillId(mode: OffsetsMode): DrillId {
 }
 
 export function letterMathModeToDrillId(mode: LetterMathMode): DrillId {
-  return mode === 'hard' ? 'letterMathHard' : 'letterMathEasy';
+  switch (mode) {
+    case 'hard':
+      return 'letterMathHard';
+    case 'letterEasy':
+      return 'letterMathLetterEasy';
+    case 'letterHard':
+      return 'letterMathLetterHard';
+    case 'easy':
+    default:
+      return 'letterMathEasy';
+  }
 }
 
 export type DrillProgressRecord = Partial<Record<DrillId, DrillProgress>>;
@@ -357,6 +367,8 @@ const VALID_DRILL_IDS: ReadonlySet<string> = new Set<DrillId>([
   'offsetsNumToLetter',
   'letterMathEasy',
   'letterMathHard',
+  'letterMathLetterEasy',
+  'letterMathLetterHard',
   'atbash',
   'pigpen',
   'galactic',

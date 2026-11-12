@@ -39,6 +39,10 @@ export const ReferenceSheet: React.FC<Props> = ({ cipher, cipherParams }) => {
     );
   }
 
+  if (cipher === 'vigenere') {
+    return <TabulaRecta variant="vigenere" />;
+  }
+
   if (cipher === 'tap') {
     return (
       <div className="tap-ref-wrapper">

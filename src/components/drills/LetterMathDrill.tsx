@@ -25,9 +25,14 @@ interface LetterMathDrillProps {
 
 export const HINT_DELAY_MS = 4000;
 
-const MODES: readonly { readonly id: LetterMathMode; readonly label: string }[] = [
+const NUMBER_MODES: readonly { readonly id: LetterMathMode; readonly label: string }[] = [
   { id: 'easy', label: 'Easy (±3)' },
   { id: 'hard', label: 'Hard (Any)' },
+];
+
+const LETTER_MODES: readonly { readonly id: LetterMathMode; readonly label: string }[] = [
+  { id: 'letterEasy', label: 'Easy' },
+  { id: 'letterHard', label: 'Hard' },
 ];
 
 const NON_ANSWER_KEYS = new Set([
@@ -65,6 +70,8 @@ const LetterMathSession: React.FC<LetterMathSessionProps> = ({
 }) => {
   const { isAllowed } = useAuth();
   const drillId = letterMathModeToDrillId(mode);
+  const isLetterOperand = mode === 'letterEasy' || mode === 'letterHard';
+  const isHardMode = mode === 'hard' || mode === 'letterHard';
 
   const [cardState, setCardState] = useState<{
     seq: number;
@@ -133,7 +140,7 @@ const LetterMathSession: React.FC<LetterMathSessionProps> = ({
   const advanceProblem = useCallback(() => {
     setCardState((prev) => ({
       seq: prev.seq + 1,
-      problem: generateLetterMathProblem(mode, 'number', prev.problem.key),
+      problem: generateLetterMathProblem(mode, undefined, prev.problem.key),
     }));
   }, [mode]);
 
@@ -260,10 +267,11 @@ const LetterMathSession: React.FC<LetterMathSessionProps> = ({
   }, [flushSession, mode, sessionBest60s, workoutContext]);
 
   const isLargeStage = useIsLargeDrillStage();
-  const modeLabel = mode === 'hard' ? 'Hard' : 'Easy';
+  const baseTitleLabel = isLetterOperand ? 'ABC ± ABC' : 'ABC ± #';
+  const modeLabel = isHardMode ? 'Hard' : 'Easy';
   const headerTitle = workoutContext
-    ? `Warm-up: ABC ± # (${modeLabel})`
-    : `ABC ± # (${modeLabel})`;
+    ? `Warm-up: ${baseTitleLabel} (${modeLabel})`
+    : `${baseTitleLabel} (${modeLabel})`;
 
   const headerRight = (
     <WarmupHeaderRight
@@ -272,7 +280,7 @@ const LetterMathSession: React.FC<LetterMathSessionProps> = ({
       onSkipWarmup={onSkipWarmup}
       onAdvanceWarmup={handleAdvanceWarmup}
       menuProps={{
-        modeOptions: MODES,
+        modeOptions: isLetterOperand ? LETTER_MODES : NUMBER_MODES,
         activeMode: mode,
         onSelectMode: (newMode) => onModeChange(newMode as LetterMathMode),
         onOpenLeaderboard:

@@ -532,7 +532,8 @@ export const App: React.FC = () => {
         screen.drill,
         screen.section,
         generalPracticeCiphers,
-        hasPreviewAccess
+        hasPreviewAccess,
+        screen.letterMathMode
       )
     ) {
       queueMicrotask(() => {
@@ -1339,7 +1340,8 @@ export const App: React.FC = () => {
           screen.drill,
           screen.section,
           generalPracticeCiphers,
-          false
+          false,
+          screen.letterMathMode
         )));
 
   return (
@@ -1413,8 +1415,14 @@ export const App: React.FC = () => {
 
       {screen.kind === 'drill' && canRenderDrillScreen && screen.drill === 'letterMath' && (
         <LetterMathDrill
-          key={workoutContext ? `workout-${workoutContext.round}-${workoutContext.stepIndex}` : 'standalone'}
-          initialMode={screen.letterMathMode}
+          key={workoutContext ? `workout-${workoutContext.round}-${workoutContext.stepIndex}` : `standalone:${screen.letterMathMode === 'letterEasy' || screen.letterMathMode === 'letterHard' ? 'letter' : 'num'}`}
+          initialMode={
+            screen.letterMathMode ??
+            (!hasPreviewAccess &&
+            !isCipherAccessible('letterMath', 'memorize', generalPracticeCiphers, false, 'easy')
+              ? 'letterEasy'
+              : 'easy')
+          }
           onModeChange={handleLetterMathModeChange}
           onBack={navigateToMenu}
           workoutContext={workoutContext}

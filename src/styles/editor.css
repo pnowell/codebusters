@@ -549,6 +549,31 @@
   border-radius: 999px;
 }
 
+.editor-vigenere-key-input {
+  width: 138px;
+  padding: 0.24rem 0.52rem;
+  border-radius: 6px;
+  border: 1px solid rgba(184, 196, 212, 0.42);
+  background: rgba(15, 23, 42, 0.88);
+  color: #f8fafc;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  outline: none;
+}
+
+.editor-vigenere-key-input:focus {
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.22);
+}
+
+.editor-vigenere-key-input:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .editor-pts-label {
   display: inline-flex;
   align-items: center;

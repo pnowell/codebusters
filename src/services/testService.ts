@@ -29,10 +29,14 @@ import type {
 } from '../types';
 import {
   deterministicCaesarOffset,
+  deterministicVigenereKeyword,
   isValidCaesarPm3Offset,
+  isValidVigenereKeyword,
+  sanitizeVigenereKeyword,
 } from '../utils/ciphers';
 import {
   evaluateTestPacket,
+  getCellInputFieldKey,
   getCohortAttemptId,
   normalizeTestAttempt,
   normalizeUidList,
@@ -170,6 +174,13 @@ function normalizeTestQuestions(raw: unknown): TestQuestion[] {
           ? obj.caesarOffset
           : deterministicCaesarOffset(quoteId + index, 'pm3')
         : undefined;
+    const cleanedVigKey = sanitizeVigenereKeyword(obj.vigenereKeyword);
+    const vigenereKeyword =
+      cipher === 'vigenere'
+        ? isValidVigenereKeyword(cleanedVigKey)
+          ? cleanedVigKey
+          : deterministicVigenereKeyword(quoteId + index)
+        : undefined;
     const description =
       typeof obj.description === 'string' && obj.description.trim().length > 0
         ? obj.description.trim().slice(0, 240)
@@ -181,6 +192,7 @@ function normalizeTestQuestions(raw: unknown): TestQuestion[] {
       quoteId,
       points,
       ...(caesarOffset !== undefined ? { caesarOffset } : {}),
+      ...(vigenereKeyword !== undefined ? { vigenereKeyword } : {}),
       ...(isTiebreaker ? { isTiebreaker: true } : {}),
       ...(description ? { description } : {}),
     });
@@ -588,7 +600,8 @@ export async function flushWorkspaceCellOps(
 
     const touchedQuestions = new Set<number>();
     for (const op of ops) {
-      payload[`workspaces.${op.qIdx}.inputs.${op.charIdx}`] = op.value;
+      const fieldKey = getCellInputFieldKey(op.charIdx, op.row);
+      payload[`workspaces.${op.qIdx}.inputs.${fieldKey}`] = op.value;
       touchedQuestions.add(op.qIdx);
     }
 
@@ -918,6 +931,17 @@ export async function saveTestPacket(
           ? q.caesarOffset
           : deterministicCaesarOffset(quoteId + i, 'pm3')
         : undefined;
+    let vigenereKeyword: string | undefined;
+    if (q.cipher === 'vigenere') {
+      const cleanedVigKey = sanitizeVigenereKeyword(q.vigenereKeyword);
+      if (!isValidVigenereKeyword(cleanedVigKey)) {
+        return {
+          ok: false,
+          error: `Question ${i + 1}: Vigenère keyword must be 2 to 14 letters (A–Z).`,
+        };
+      }
+      vigenereKeyword = cleanedVigKey;
+    }
     const cleanDesc =
       typeof q.description === 'string' && q.description.trim().length > 0
         ? q.description.trim().slice(0, 250)
@@ -929,6 +953,7 @@ export async function saveTestPacket(
       quoteId,
       points,
       ...(caesarOffset !== undefined ? { caesarOffset } : {}),
+      ...(vigenereKeyword !== undefined ? { vigenereKeyword } : {}),
       ...(q.isTiebreaker ? { isTiebreaker: true } : {}),
       ...(cleanDesc ? { description: cleanDesc } : {}),
     });

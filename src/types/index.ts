@@ -5,13 +5,15 @@ import type {
 } from '../data/drills';
 export type { CipherType, LookupCipherType, TestableCipherType };
 
-export type LetterMathMode = 'easy' | 'hard';
+export type LetterMathMode = 'easy' | 'hard' | 'letterEasy' | 'letterHard';
 export type CaesarRangeMode = 'pm3' | 'any';
 export type MainMenuTab = 'drills' | 'ciphers';
 
 export interface CipherWorkspaceParams {
   caesarOffset?: number;
   caesarRange?: CaesarRangeMode;
+  vigenereKeyword?: string;
+  vigenereKeyChar?: string;
 }
 
 export type QuoteCategory =
@@ -71,6 +73,8 @@ export type DrillId =
   | 'offsetsNumToLetter'
   | 'letterMathEasy'
   | 'letterMathHard'
+  | 'letterMathLetterEasy'
+  | 'letterMathLetterHard'
   | 'atbash'
   | 'pigpen'
   | 'galactic'
@@ -162,6 +166,7 @@ export interface TestQuestion {
   quoteId: number;
   points: number;
   caesarOffset?: number;
+  vigenereKeyword?: string;
   isTiebreaker?: boolean;
   description?: string;
 }
@@ -185,6 +190,7 @@ export interface TestPacket {
 
 export interface QuestionWorkspace {
   userInputs: string[];
+  keyInputs?: string[];
   inputs?: Record<string, string>;
   completed: boolean;
   lastEditedAt: number;

@@ -55,6 +55,8 @@ const DRILL_BENCHMARKS: Record<DrillId, DrillBenchmark> = {
   offsetsNumToLetter: { target60s: 30, hasDeck: true },
   letterMathEasy: { target60s: 22, hasDeck: false },
   letterMathHard: { target60s: 16, hasDeck: false },
+  letterMathLetterEasy: { target60s: 16, hasDeck: false },
+  letterMathLetterHard: { target60s: 12, hasDeck: false },
   atbash: { target60s: 28, hasDeck: true },
   pigpen: { target60s: 25, hasDeck: true },
   galactic: { target60s: 25, hasDeck: true },
@@ -180,6 +182,14 @@ export function getWarmupCandidates(unlockedCiphers: CipherType[]): WarmupChoice
       drillId: 'letterMathEasy',
       cipher: 'letterMath',
       letterMathMode: 'easy',
+    });
+  }
+
+  if (unlockedCiphers.includes('vigenere')) {
+    choices.push({
+      drillId: 'letterMathLetterEasy',
+      cipher: 'letterMath',
+      letterMathMode: 'letterEasy',
     });
   }
 

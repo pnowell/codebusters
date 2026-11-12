@@ -165,7 +165,199 @@ export function formatSignedOffset(offset: number): string {
   return String(offset);
 }
 
+// ============================================================================
+// Vigenère Cipher Helpers & Curated Keyword Bank
+// ============================================================================
+
+export const VIGENERE_KEYWORDS: readonly string[] = [
+  'KEY',
+  'STAR',
+  'CODE',
+  'MOON',
+  'MATH',
+  'ATOM',
+  'WAVE',
+  'NOVA',
+  'MARS',
+  'GOLD',
+  'WIND',
+  'TIME',
+  'BOOK',
+  'FIRE',
+  'BLUE',
+  'FROG',
+  'ORBIT',
+  'LASER',
+  'SOLAR',
+  'COMET',
+  'PRISM',
+  'LIGHT',
+  'SPACE',
+  'ROBOT',
+  'EARTH',
+  'CLOUD',
+  'MUSIC',
+  'TIGER',
+  'OCEAN',
+  'SPARK',
+  'PIXEL',
+  'SOUND',
+  'BRAVE',
+  'MAGIC',
+  'QUEST',
+  'CROWN',
+  'GALAXY',
+  'PLANET',
+  'CIPHER',
+  'ROCKET',
+  'ENERGY',
+  'VECTOR',
+  'MATRIX',
+  'FALCON',
+  'PUZZLE',
+  'LEGEND',
+  'DRAGON',
+  'SCIENCE',
+];
+
+const VALID_VIGENERE_KEY_RE = /^[A-Z]{2,14}$/;
+
+export function sanitizeVigenereKeyword(raw: unknown): string {
+  if (typeof raw !== 'string') return '';
+  return raw.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 14);
+}
+
+export function isValidVigenereKeyword(val: unknown): val is string {
+  return typeof val === 'string' && VALID_VIGENERE_KEY_RE.test(val);
+}
+
+/**
+ * Encrypts a single plaintext A-Z letter with `keyChar` modulo 26 (`(P + K) mod 26`).
+ * Non-alphabetic characters are returned unchanged.
+ */
+export function vigenereEncryptChar(plainChar: string, keyChar: string): string {
+  const pOff = letterToOffset(plainChar);
+  const kOff = letterToOffset(keyChar);
+  if (pOff === -1 || kOff === -1) return plainChar;
+  return offsetToLetter((pOff + kOff) % 26);
+}
+
+/**
+ * Decrypts a single ciphertext A-Z letter with `keyChar` modulo 26 (`(C - K) mod 26`).
+ * Non-alphabetic characters are returned unchanged.
+ */
+export function vigenereDecryptChar(cipherChar: string, keyChar: string): string {
+  const cOff = letterToOffset(cipherChar);
+  const kOff = letterToOffset(keyChar);
+  if (cOff === -1 || kOff === -1) return cipherChar;
+  return offsetToLetter((((cOff - kOff) % 26) + 26) % 26);
+}
+
+/**
+ * Maps each character index of `plaintext` to its aligned uppercase Vigenère key letter
+ * (advancing the keyword strictly on A-Z letters and returning `''` for spaces/punctuation).
+ */
+export function computeVigenereKeySequence(
+  plaintext: string,
+  keyword: string
+): string[] {
+  const cleanKey = sanitizeVigenereKeyword(keyword) || 'KEY';
+  const chars = plaintext.toUpperCase().split('');
+  let letterSeq = 0;
+  return chars.map((ch) => {
+    if (!isLetter(ch)) return '';
+    const keyChar = cleanKey[letterSeq % cleanKey.length];
+    letterSeq += 1;
+    return keyChar;
+  });
+}
+
+/**
+ * Deterministic Vigenère keyword derived from an integer seed (e.g. `quoteId`),
+ * used for stable URL deep links (`?cipher=vigenere&q=123`) and fallback normalization.
+ */
+export function deterministicVigenereKeyword(seed: number): string {
+  const idx = Math.abs(Math.trunc(seed * 13 + 5)) % VIGENERE_KEYWORDS.length;
+  return VIGENERE_KEYWORDS[idx];
+}
+
+/**
+ * Picks a random Vigenère keyword from `VIGENERE_KEYWORDS`, optionally avoiding `excludeKeyword`.
+ */
+export function pickRandomVigenereKeyword(
+  excludeKeyword?: string,
+  rng: () => number = Math.random
+): string {
+  const upperExclude = excludeKeyword?.toUpperCase();
+  const filtered = upperExclude
+    ? VIGENERE_KEYWORDS.filter((w) => w !== upperExclude)
+    : VIGENERE_KEYWORDS;
+  const pool = filtered.length > 0 ? filtered : VIGENERE_KEYWORDS;
+  return pool[Math.floor(rng() * pool.length)];
+}
+
+// ============================================================================
+// Modulo-26 Letter Arithmetic (`ABC ± #` & `ABC ± ABC`)
+// ============================================================================
+
 export type ArithmeticOperandKind = 'number' | 'letter';
+
+/**
+ * Relative sampling weights for `ABC ± ABC (Easy)` across `A (0) .. Z (25)`:
+ * - Favors lower letters (`A–E`), tapering smoothly down through `K (10)`
+ * - Zero weight on middle/upper letters `L–W (11..22)`
+ * - Small non-zero tail on `X, Y, Z (23..25)` (`-3, -2, -1` mod 26)
+ */
+export const LETTER_MATH_EASY_LETTER_WEIGHTS: readonly number[] = [
+  6,   // A (0)
+  14,  // B (1)
+  13,  // C (2)
+  12,  // D (3)
+  10,  // E (4)
+  8,   // F (5)
+  6,   // G (6)
+  5,   // H (7)
+  4,   // I (8)
+  3,   // J (9)
+  2,   // K (10)
+  0,   // L (11)
+  0,   // M (12)
+  0,   // N (13)
+  0,   // O (14)
+  0,   // P (15)
+  0,   // Q (16)
+  0,   // R (17)
+  0,   // S (18)
+  0,   // T (19)
+  0,   // U (20)
+  0,   // V (21)
+  0,   // W (22)
+  1,   // X (23)
+  1.5, // Y (24)
+  2,   // Z (25)
+];
+
+const LETTER_MATH_EASY_WEIGHT_TOTAL = LETTER_MATH_EASY_LETTER_WEIGHTS.reduce(
+  (sum, w) => sum + w,
+  0
+);
+
+function drawWeightedLetterOffset(
+  weights: readonly number[],
+  totalWeight: number,
+  rng: () => number
+): number {
+  let cursor = rng() * totalWeight;
+  for (let i = 0; i < weights.length; i += 1) {
+    const w = weights[i];
+    if (w <= 0) continue;
+    cursor -= w;
+    if (cursor <= 0) {
+      return i;
+    }
+  }
+  return 0;
+}
 
 export interface LetterMathProblem {
   key: string;
@@ -180,9 +372,11 @@ export interface LetterMathProblem {
 }
 
 /**
- * Generates a modulo-26 letter arithmetic card (`ABC ± #` or future `ABC ± ABC`).
- * - `easy`: non-zero delta in `1..3`
- * - `hard`: non-zero delta in `1..25`
+ * Generates a modulo-26 letter arithmetic card (`ABC ± #` or `ABC ± ABC`):
+ * - `ABC ± #`: `easy` uses non-zero delta `1..3`; `hard` uses non-zero delta `1..25`.
+ * - `ABC ± ABC`: `letterEasy` draws both letters from `LETTER_MATH_EASY_LETTER_WEIGHTS`
+ *   (favoring lower letters tapering around `K`, plus a small tail on `X, Y, Z`);
+ *   `letterHard` draws both letters uniformly across `A–Z` (`0..25`).
  */
 export function generateLetterMathProblem(
   mode: LetterMathMode,
@@ -190,22 +384,47 @@ export function generateLetterMathProblem(
   excludeKey?: string,
   rng: () => number = Math.random
 ): LetterMathProblem {
-  const maxDelta = mode === 'easy' ? 3 : 25;
+  const resolvedKind: ArithmeticOperandKind =
+    mode === 'letterEasy' || mode === 'letterHard' ? 'letter' : operandKind;
+  const isHard = mode === 'hard' || mode === 'letterHard';
+  const maxNumberDelta = isHard ? 25 : 3;
   let candidate: LetterMathProblem | null = null;
 
   for (let attempt = 0; attempt < 12; attempt += 1) {
-    const baseOffset = Math.floor(rng() * 26);
     const op: '+' | '-' = rng() < 0.5 ? '+' : '-';
-    const delta = 1 + Math.floor(rng() * maxDelta);
+    let baseOffset: number;
+    let delta: number;
+
+    if (resolvedKind === 'letter') {
+      if (isHard) {
+        baseOffset = Math.floor(rng() * 26);
+        delta = Math.floor(rng() * 26);
+      } else {
+        baseOffset = drawWeightedLetterOffset(
+          LETTER_MATH_EASY_LETTER_WEIGHTS,
+          LETTER_MATH_EASY_WEIGHT_TOTAL,
+          rng
+        );
+        delta = drawWeightedLetterOffset(
+          LETTER_MATH_EASY_LETTER_WEIGHTS,
+          LETTER_MATH_EASY_WEIGHT_TOTAL,
+          rng
+        );
+      }
+    } else {
+      baseOffset = Math.floor(rng() * 26);
+      delta = 1 + Math.floor(rng() * maxNumberDelta);
+    }
+
     const signedDelta = op === '+' ? delta : -delta;
     const answerOffset = (((baseOffset + signedDelta) % 26) + 26) % 26;
     const baseLetter = offsetToLetter(baseOffset);
     const answerLetter = offsetToLetter(answerOffset);
 
     const bottomOperandLabel =
-      operandKind === 'letter' ? offsetToLetter(delta) : String(delta);
+      resolvedKind === 'letter' ? offsetToLetter(delta) : String(delta);
     const bottomOperandOffsetHint =
-      operandKind === 'letter' ? delta : undefined;
+      resolvedKind === 'letter' ? delta : undefined;
     const key = `${baseLetter}${op}${bottomOperandLabel}`;
 
     candidate = {

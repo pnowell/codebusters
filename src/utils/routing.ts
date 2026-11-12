@@ -29,7 +29,12 @@ function isOffsetsMode(val: string | null): val is OffsetsMode {
 }
 
 function isLetterMathMode(val: string | null): val is LetterMathMode {
-  return val === 'easy' || val === 'hard';
+  return (
+    val === 'easy' ||
+    val === 'hard' ||
+    val === 'letterEasy' ||
+    val === 'letterHard'
+  );
 }
 
 function isCaesarRangeMode(val: string | null): val is CaesarRangeMode {

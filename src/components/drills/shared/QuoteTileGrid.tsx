@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { CipherGlyph } from './CipherGlyph';
 import {
-  isLetter,
-  isRetainedInContinuousStream,
+  computeVigenereKeySequence,
   findLetterIndex,
   groupIntoWords,
+  isLetter,
+  isRetainedInContinuousStream,
+  sanitizeVigenereKeyword,
 } from '../../../utils/ciphers';
 import { useKeepInView } from '../../../hooks/useKeepInView';
 import type {
@@ -13,11 +15,15 @@ import type {
   TestableCipherType,
 } from '../../../types';
 
+type ActiveGridRow = 'key' | 'plain';
+
 interface QuoteTileGridProps {
   cipher: TestableCipherType;
   quote: Quote;
   userInputs: string[];
   onChangeUserInputs: (inputs: string[]) => void;
+  keyInputs?: string[];
+  onChangeKeyInputs?: (inputs: string[]) => void;
   disabled?: boolean;
   showEvaluation?: boolean;
   onEnterSubmit?: () => void;
@@ -29,49 +35,183 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
   quote,
   userInputs,
   onChangeUserInputs,
+  keyInputs,
+  onChangeKeyInputs,
   disabled = false,
   showEvaluation = false,
   onEnterSubmit,
   cipherParams,
 }) => {
+  const isVigenere = cipher === 'vigenere';
+  const hasEditableKeyRow = isVigenere && Boolean(onChangeKeyInputs);
   const chars = useMemo(() => quote.quote.toUpperCase().split(''), [quote.quote]);
   const words = useMemo(() => groupIntoWords(chars), [chars]);
   const firstLetterIdx = useMemo(() => chars.findIndex(isLetter), [chars]);
 
-  const [prevQuoteId, setPrevQuoteId] = useState<number>(quote.id);
-  const [activeIdx, setActiveIdx] = useState<number>(() =>
-    firstLetterIdx >= 0 ? firstLetterIdx : 0
+  const activeKeyword = useMemo(
+    () =>
+      isVigenere
+        ? sanitizeVigenereKeyword(cipherParams?.vigenereKeyword) || 'KEY'
+        : '',
+    [cipherParams?.vigenereKeyword, isVigenere]
   );
 
-  if (prevQuoteId !== quote.id) {
-    setPrevQuoteId(quote.id);
-    setActiveIdx(firstLetterIdx >= 0 ? firstLetterIdx : 0);
+  const vigenereKeyChars = useMemo(
+    () =>
+      isVigenere ? computeVigenereKeySequence(quote.quote, activeKeyword) : [],
+    [activeKeyword, isVigenere, quote.quote]
+  );
+
+  const computeDefaultFocusState = useCallback((): {
+    row: ActiveGridRow;
+    idx: number;
+  } => {
+    const startIdx = firstLetterIdx >= 0 ? firstLetterIdx : 0;
+    if (!hasEditableKeyRow) {
+      return { row: 'plain', idx: startIdx };
+    }
+    const allKeyFilled = chars.every(
+      (ch, idx) => !isLetter(ch) || Boolean(keyInputs?.[idx])
+    );
+    if (allKeyFilled) {
+      const firstBlankPlain = chars.findIndex(
+        (ch, idx) => isLetter(ch) && !userInputs[idx]
+      );
+      return {
+        row: 'plain',
+        idx: firstBlankPlain >= 0 ? firstBlankPlain : startIdx,
+      };
+    }
+    const firstBlankKey = chars.findIndex(
+      (ch, idx) => isLetter(ch) && !keyInputs?.[idx]
+    );
+    return {
+      row: 'key',
+      idx: firstBlankKey >= 0 ? firstBlankKey : startIdx,
+    };
+  }, [chars, firstLetterIdx, hasEditableKeyRow, keyInputs, userInputs]);
+
+  const puzzleIdentity = `${cipher}:${quote.id}`;
+  const [prevPuzzleIdentity, setPrevPuzzleIdentity] =
+    useState<string>(puzzleIdentity);
+  const [activeRow, setActiveRow] = useState<ActiveGridRow>(
+    () => computeDefaultFocusState().row
+  );
+  const [activeIdx, setActiveIdx] = useState<number>(
+    () => computeDefaultFocusState().idx
+  );
+
+  if (prevPuzzleIdentity !== puzzleIdentity) {
+    setPrevPuzzleIdentity(puzzleIdentity);
+    const nextFocus = computeDefaultFocusState();
+    setActiveRow(nextFocus.row);
+    setActiveIdx(nextFocus.idx);
   }
 
+  const keyInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const scrollPanelRef = useRef<HTMLDivElement | null>(null);
 
-  const focusTile = useCallback(
-    (index: number) => {
+  const effectiveActiveRow: ActiveGridRow = hasEditableKeyRow ? activeRow : 'plain';
+
+  const focusCell = useCallback(
+    (row: ActiveGridRow, index: number) => {
       if (disabled) return;
+      const targetRow: ActiveGridRow = hasEditableKeyRow ? row : 'plain';
+      setActiveRow(targetRow);
       setActiveIdx(index);
-      inputRefs.current[index]?.focus({ preventScroll: true });
+      const refList = targetRow === 'key' ? keyInputRefs : inputRefs;
+      refList.current[index]?.focus({ preventScroll: true });
     },
-    [disabled]
+    [disabled, hasEditableKeyRow]
   );
 
-  // Refocus active tile when quote changes, or blur all inputs when disabled/submitted
+  // Refocus active cell when puzzle or disabled state changes
   useEffect(() => {
     if (disabled) {
+      keyInputRefs.current.forEach((el) => el?.blur());
       inputRefs.current.forEach((el) => el?.blur());
-    } else {
-      inputRefs.current[activeIdx]?.focus({ preventScroll: true });
+    } else if (activeIdx >= 0) {
+      const refList =
+        effectiveActiveRow === 'key' ? keyInputRefs : inputRefs;
+      refList.current[activeIdx]?.focus({ preventScroll: true });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- refocus only when quote or disabled state changes
-  }, [quote.id, disabled]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refocus only when puzzle identity or disabled state changes
+  }, [puzzleIdentity, disabled]);
 
   // Keep focused character tile visible horizontally and vertically
-  useKeepInView(scrollPanelRef, () => inputRefs.current[activeIdx], activeIdx);
+  const keepInViewKey = activeIdx * 2 + (effectiveActiveRow === 'key' ? 0 : 1);
+  useKeepInView(
+    scrollPanelRef,
+    () =>
+      activeIdx >= 0
+        ? effectiveActiveRow === 'key'
+          ? keyInputRefs.current[activeIdx]
+          : inputRefs.current[activeIdx]
+        : null,
+    keepInViewKey
+  );
+
+  const buildMutableKeyInputs = (): string[] => {
+    if (keyInputs && keyInputs.length === chars.length) {
+      return [...keyInputs];
+    }
+    return chars.map((ch, i) => (isLetter(ch) ? keyInputs?.[i] || '' : ch));
+  };
+
+  const handleKeyCellChange = (index: number, val: string) => {
+    if (disabled || !onChangeKeyInputs) return;
+    const lastChar = val.slice(-1).toUpperCase();
+    const updated = buildMutableKeyInputs();
+
+    if (isLetter(lastChar)) {
+      updated[index] = lastChar;
+      onChangeKeyInputs(updated);
+      // Advance horizontally to the keyword cell of the next letter (never down to plaintext)
+      const nextIdx = findLetterIndex(chars, index, 1);
+      if (nextIdx === index) {
+        // Unfocus once the final keyword slot is filled so rapid repeated
+        // keyword typing does not overwrite the last slot.
+        setActiveRow('plain');
+        setActiveIdx(-1);
+        keyInputRefs.current[index]?.blur();
+      } else {
+        focusCell('key', nextIdx);
+      }
+    } else if (val === '') {
+      updated[index] = '';
+      onChangeKeyInputs(updated);
+    }
+  };
+
+  const handleKeyCellKeyDown = (
+    index: number,
+    e: React.KeyboardEvent<HTMLInputElement>
+  ) => {
+    if (disabled || !onChangeKeyInputs) return;
+    if (e.key === 'Backspace') {
+      if (!keyInputs?.[index]) {
+        e.preventDefault();
+        const prevIdx = findLetterIndex(chars, index, -1);
+        const updated = buildMutableKeyInputs();
+        updated[prevIdx] = '';
+        onChangeKeyInputs(updated);
+        focusCell('key', prevIdx);
+      }
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      focusCell('key', findLetterIndex(chars, index, -1));
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      focusCell('key', findLetterIndex(chars, index, 1));
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      focusCell('plain', index);
+    } else if (e.key === 'Enter' && onEnterSubmit) {
+      e.preventDefault();
+      onEnterSubmit();
+    }
+  };
 
   const handleTileChange = (index: number, val: string) => {
     if (disabled) return;
@@ -82,7 +222,7 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
       updated[index] = lastChar;
       onChangeUserInputs(updated);
       const nextIdx = findLetterIndex(chars, index, 1);
-      focusTile(nextIdx);
+      focusCell('plain', nextIdx);
     } else if (val === '') {
       updated[index] = '';
       onChangeUserInputs(updated);
@@ -98,14 +238,17 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
         const updated = [...userInputs];
         updated[prevIdx] = '';
         onChangeUserInputs(updated);
-        focusTile(prevIdx);
+        focusCell('plain', prevIdx);
       }
     } else if (e.key === 'ArrowLeft') {
       e.preventDefault();
-      focusTile(findLetterIndex(chars, index, -1));
+      focusCell('plain', findLetterIndex(chars, index, -1));
     } else if (e.key === 'ArrowRight') {
       e.preventDefault();
-      focusTile(findLetterIndex(chars, index, 1));
+      focusCell('plain', findLetterIndex(chars, index, 1));
+    } else if (e.key === 'ArrowUp' && hasEditableKeyRow) {
+      e.preventDefault();
+      focusCell('key', index);
     } else if (e.key === 'Enter' && onEnterSubmit) {
       e.preventDefault();
       onEnterSubmit();
@@ -125,12 +268,19 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
     const isAlpha = isLetter(char);
     const isActive = !disabled && isAlpha && activeIdx === index;
     const userVal = userInputs[index] || '';
+    const keyVal = keyInputs?.[index] || '';
     const isCorrect = showEvaluation && isAlpha && userVal === char;
     const isWrong = showEvaluation && isAlpha && userVal !== char;
     const isFilled = !showEvaluation && isAlpha && Boolean(userVal);
 
+    const tileCipherParams =
+      isVigenere && isAlpha
+        ? { ...cipherParams, vigenereKeyChar: vigenereKeyChars[index] }
+        : cipherParams;
+
     const tileClasses = [
       'char-tile',
+      isVigenere ? 'vigenere-tile' : '',
       !isAlpha ? 'punct-tile' : '',
       isActive ? 'active-tile' : '',
       isCorrect ? 'correct-tile' : '',
@@ -144,11 +294,58 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
       <div
         key={index}
         className={tileClasses}
-        onClick={() => isAlpha && !disabled && focusTile(index)}
+        onClick={() =>
+          isAlpha && !disabled && focusCell(effectiveActiveRow, index)
+        }
       >
         <div className="tile-cipher">
-          <CipherGlyph cipher={cipher} char={char} cipherParams={cipherParams} />
+          <CipherGlyph
+            cipher={cipher}
+            char={char}
+            cipherParams={tileCipherParams}
+          />
         </div>
+
+        {isVigenere &&
+          (isAlpha ? (
+            <input
+              ref={(el) => {
+                keyInputRefs.current[index] = el;
+              }}
+              type="text"
+              size={1}
+              inputMode="text"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              autoComplete="off"
+              spellCheck="false"
+              enterKeyHint="next"
+              aria-label={`Keyword cell ${index + 1}`}
+              className={`tile-key-input${
+                isActive && effectiveActiveRow === 'key' ? ' active-subcell' : ''
+              }`}
+              value={keyVal}
+              disabled={disabled || !onChangeKeyInputs}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!disabled && onChangeKeyInputs) {
+                  focusCell('key', index);
+                }
+              }}
+              onChange={(e) => handleKeyCellChange(index, e.target.value)}
+              onKeyDown={(e) => handleKeyCellKeyDown(index, e)}
+              onFocus={() => {
+                if (!disabled && onChangeKeyInputs) {
+                  setActiveRow('key');
+                  setActiveIdx(index);
+                }
+              }}
+              maxLength={2}
+            />
+          ) : (
+            <div className="tile-key-punct" aria-hidden="true" />
+          ))}
+
         {isAlpha ? (
           <input
             ref={(el) => {
@@ -162,12 +359,28 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
             autoComplete="off"
             spellCheck="false"
             enterKeyHint={onEnterSubmit ? 'done' : 'next'}
-            className="tile-native-input"
+            aria-label={isVigenere ? `Plaintext cell ${index + 1}` : undefined}
+            className={`tile-native-input${
+              isVigenere && isActive && effectiveActiveRow === 'plain'
+                ? ' active-subcell'
+                : ''
+            }`}
             value={userVal}
             disabled={disabled}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!disabled) {
+                focusCell('plain', index);
+              }
+            }}
             onChange={(e) => handleTileChange(index, e.target.value)}
             onKeyDown={(e) => handleTileKeyDown(index, e)}
-            onFocus={() => !disabled && setActiveIdx(index)}
+            onFocus={() => {
+              if (!disabled) {
+                setActiveRow('plain');
+                setActiveIdx(index);
+              }
+            }}
             maxLength={2}
           />
         ) : (
@@ -183,6 +396,13 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
       ref={scrollPanelRef}
     >
       <div className="quote-content-canvas">
+        {isVigenere && activeKeyword && (
+          <div className="vigenere-key-banner">
+            <span className="vigenere-key-label">Key:</span>
+            <span className="vigenere-key-value">{activeKeyword}</span>
+          </div>
+        )}
+
         <div className={`quote-display-grid${isContinuousStream ? ' tap-quote-grid' : ''}`}>
           {isContinuousStream
             ? streamItems.map(renderTile)

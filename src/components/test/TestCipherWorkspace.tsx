@@ -10,6 +10,8 @@ interface TestCipherWorkspaceProps {
   quote: Quote;
   userInputs: string[];
   onChangeUserInputs: (inputs: string[]) => void;
+  keyInputs?: string[];
+  onChangeKeyInputs?: (inputs: string[]) => void;
   disabled?: boolean;
 }
 
@@ -18,6 +20,8 @@ export const TestCipherWorkspace: React.FC<TestCipherWorkspaceProps> = ({
   quote,
   userInputs,
   onChangeUserInputs,
+  keyInputs,
+  onChangeKeyInputs,
   disabled = false,
 }) => {
   const chars = useMemo(() => quote.quote.toUpperCase().split(''), [quote.quote]);
@@ -27,13 +31,15 @@ export const TestCipherWorkspace: React.FC<TestCipherWorkspaceProps> = ({
     [chars, userInputs]
   );
 
-  const cipherParams = useMemo<CipherWorkspaceParams | undefined>(
-    () =>
-      question.cipher === 'caesar'
-        ? { caesarOffset: question.caesarOffset ?? 1, caesarRange: 'pm3' }
-        : undefined,
-    [question.caesarOffset, question.cipher]
-  );
+  const cipherParams = useMemo<CipherWorkspaceParams | undefined>(() => {
+    if (question.cipher === 'caesar') {
+      return { caesarOffset: question.caesarOffset ?? 1, caesarRange: 'pm3' };
+    }
+    if (question.cipher === 'vigenere') {
+      return { vigenereKeyword: question.vigenereKeyword ?? 'KEY' };
+    }
+    return undefined;
+  }, [question.caesarOffset, question.cipher, question.vigenereKeyword]);
 
   return (
     <div className="test-cipher-workspace">
@@ -55,6 +61,10 @@ export const TestCipherWorkspace: React.FC<TestCipherWorkspaceProps> = ({
         quote={quote}
         userInputs={userInputs}
         onChangeUserInputs={onChangeUserInputs}
+        keyInputs={question.cipher === 'vigenere' ? keyInputs : undefined}
+        onChangeKeyInputs={
+          question.cipher === 'vigenere' ? onChangeKeyInputs : undefined
+        }
         disabled={disabled}
         cipherParams={cipherParams}
       />

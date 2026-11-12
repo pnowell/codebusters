@@ -82,7 +82,10 @@ export function useWorkoutCircuit({
         currentCipher === 'offsets'
           ? 'Letter Offsets'
           : currentCipher === 'letterMath'
-          ? 'Letter Math'
+          ? workoutSession.letterMathMode === 'letterEasy' ||
+            workoutSession.letterMathMode === 'letterHard'
+            ? 'ABC ± ABC'
+            : 'ABC ± #'
           : getDrill(currentCipher).shortTitle;
 
       const recordedResult: WorkoutStepResult = {

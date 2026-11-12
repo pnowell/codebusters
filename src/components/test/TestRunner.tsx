@@ -432,7 +432,8 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
 
   const handleUserInputsChange = (newInputs: string[]) => {
     if (isFinished || isSpectator) return;
-    const prevInputs = workspaces[activeQIndex]?.userInputs ?? [];
+    const prevWs = workspaces[activeQIndex];
+    const prevInputs = prevWs?.userInputs ?? [];
     const diffs = diffQuestionInputs(prevInputs, newInputs);
     if (diffs.length === 0) return;
 
@@ -447,6 +448,7 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
       pendingCellOpsRef.current.set(`${activeQIndex}:${diff.charIdx}`, {
         qIdx: activeQIndex,
         charIdx: diff.charIdx,
+        row: 'plain',
         value: diff.value,
         seq: opSeqRef.current,
         editedAt: now,
@@ -464,6 +466,68 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
       ...workspaces,
       [activeQIndex]: {
         userInputs: newInputs,
+        ...(prevWs?.keyInputs ? { keyInputs: prevWs.keyInputs } : {}),
+        completed: isComplete,
+        lastEditedAt: now,
+        ...(currentUid !== 'student' ? { lastEditedBy: currentUid } : {}),
+      },
+    };
+
+    setWorkspaces(nextWorkspaces);
+
+    if (currentUid === 'student') {
+      saveLocalTestAttempt({
+        ...attemptRef.current,
+        workspaces: nextWorkspaces,
+      });
+    }
+
+    if (flushTimerRef.current) {
+      clearTimeout(flushTimerRef.current);
+    }
+    flushTimerRef.current = setTimeout(() => {
+      void flushPendingEdits();
+    }, CELL_FLUSH_DEBOUNCE_MS);
+  };
+
+  const handleKeyInputsChange = (newKeyInputs: string[]) => {
+    if (isFinished || isSpectator) return;
+    const prevWs = workspaces[activeQIndex];
+    const prevKeyInputs = prevWs?.keyInputs ?? [];
+    const diffs = diffQuestionInputs(prevKeyInputs, newKeyInputs);
+    if (diffs.length === 0) return;
+
+    const now = Date.now();
+    const existingPlainInputs = prevWs?.userInputs ?? [];
+    const { isComplete } = getQuestionProgress(
+      testPacket.questions[activeQIndex],
+      existingPlainInputs
+    );
+
+    for (const diff of diffs) {
+      opSeqRef.current += 1;
+      pendingCellOpsRef.current.set(`${activeQIndex}:k${diff.charIdx}`, {
+        qIdx: activeQIndex,
+        charIdx: diff.charIdx,
+        row: 'key',
+        value: diff.value,
+        seq: opSeqRef.current,
+        editedAt: now,
+        editedBy: currentUid !== 'student' ? currentUid : undefined,
+      });
+    }
+
+    pendingMetaRef.current[activeQIndex] = {
+      completed: isComplete,
+      lastEditedAt: now,
+      ...(currentUid !== 'student' ? { lastEditedBy: currentUid } : {}),
+    };
+
+    const nextWorkspaces: Record<number, QuestionWorkspace> = {
+      ...workspaces,
+      [activeQIndex]: {
+        userInputs: existingPlainInputs,
+        keyInputs: newKeyInputs,
         completed: isComplete,
         lastEditedAt: now,
         ...(currentUid !== 'student' ? { lastEditedBy: currentUid } : {}),
@@ -872,6 +936,8 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
               quote={currentQuote}
               userInputs={currentWorkspace.userInputs}
               onChangeUserInputs={handleUserInputsChange}
+              keyInputs={currentWorkspace.keyInputs}
+              onChangeKeyInputs={handleKeyInputsChange}
               disabled={isFinished || isSpectator}
             />
           )}

@@ -37,6 +37,18 @@ const LEADERBOARD_TAB_ROWS: readonly (readonly LeaderboardTabConfig[])[] = [
     { id: 'letterMathHard', label: 'ABC ± # (Hard)', cipherId: 'letterMath' },
   ],
   [
+    {
+      id: 'letterMathLetterEasy',
+      label: 'ABC ± ABC (Easy)',
+      cipherId: 'vigenere',
+    },
+    {
+      id: 'letterMathLetterHard',
+      label: 'ABC ± ABC (Hard)',
+      cipherId: 'vigenere',
+    },
+  ],
+  [
     { id: 'atbash', label: 'Atbash', cipherId: 'atbash' },
     { id: 'pigpen', label: 'Pigpen', cipherId: 'pigpen' },
     { id: 'galactic', label: 'Galactic', cipherId: 'galactic' },
@@ -57,6 +69,8 @@ function resolveBoardId(drillOrMode?: DrillId | OffsetsMode): LeaderboardBoardId
   if (
     drillOrMode === 'letterMathEasy' ||
     drillOrMode === 'letterMathHard' ||
+    drillOrMode === 'letterMathLetterEasy' ||
+    drillOrMode === 'letterMathLetterHard' ||
     drillOrMode === 'atbash' ||
     drillOrMode === 'pigpen' ||
     drillOrMode === 'galactic' ||
