@@ -110,10 +110,6 @@ export const MainMenu: React.FC<MainMenuProps> = ({
     !isCipherEnabledForStudent('vigenere', generalPracticeCiphers);
 
   const isLetterMathVisible = isNumMathVisible || isLetterToLetterMathVisible;
-  const areAllVisibleLetterMathRowsUnpublished =
-    isLetterMathVisible &&
-    (!isNumMathVisible || isNumMathUnpublished) &&
-    (!isLetterToLetterMathVisible || isLetterToLetterMathUnpublished);
 
   const visibleFlashcardDrills = DRILLS.filter(
     (d) =>
@@ -567,10 +563,6 @@ export const MainMenu: React.FC<MainMenuProps> = ({
                         >
                           Letter Math
                         </span>
-                        {areAllVisibleLetterMathRowsUnpublished &&
-                          renderPreviewStatusBadge(
-                            'Beta preview — enable Caesar / Vigenère in Settings'
-                          )}
                       </div>
 
                       {isNumMathVisible && (
@@ -586,8 +578,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
                             >
                               ABC ± #
                             </span>
-                            {!areAllVisibleLetterMathRowsUnpublished &&
-                              isNumMathUnpublished &&
+                            {isNumMathUnpublished &&
                               renderPreviewStatusBadge(
                                 'Beta preview — enable Caesar (±3) & ABC ± # in Settings'
                               )}
@@ -634,8 +625,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
                             >
                               ABC ± ABC
                             </span>
-                            {!areAllVisibleLetterMathRowsUnpublished &&
-                              isLetterToLetterMathUnpublished &&
+                            {isLetterToLetterMathUnpublished &&
                               renderPreviewStatusBadge(
                                 'Beta preview — enable Vigenère & ABC ± ABC in Settings'
                               )}
