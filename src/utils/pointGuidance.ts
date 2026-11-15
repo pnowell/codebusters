@@ -1,4 +1,5 @@
 import type { Quote, TestableCipherType } from '../types';
+import { hasHintInQuestionPrompt } from './aristocrat';
 import {
   formatSignedOffset,
   isLetter,
@@ -34,6 +35,7 @@ const CIPHER_LABELS: Record<TestableCipherType, string> = {
   knights: 'Knights Templar',
   caesar: 'Caesar',
   vigenere: 'Vigenère',
+  aristocrat: 'Aristocrat',
 };
 
 const CIPHER_SEEDS: Record<TestableCipherType, number> = {
@@ -44,6 +46,7 @@ const CIPHER_SEEDS: Record<TestableCipherType, number> = {
   knights: 5,
   caesar: 6,
   vigenere: 7,
+  aristocrat: 8,
 };
 
 /**
@@ -201,20 +204,29 @@ export function getQuestionPointGuidance(
     questionIndex?: number;
     caesarOffset?: number;
     vigenereKeyword?: string;
+    description?: string;
   }
 ): QuestionPointGuidance {
   const cipherLabel = CIPHER_LABELS[cipher] ?? 'Cipher';
   const cleanVigKey = sanitizeVigenereKeyword(options?.vigenereKeyword);
+  const hasHint = hasHintInQuestionPrompt(options?.description);
   const seed =
     (quote?.id ?? 0) +
     (CIPHER_SEEDS[cipher] ?? 0) +
     (options?.questionIndex ?? 0) +
     Math.abs(options?.caesarOffset ?? 0) +
-    cleanVigKey.length;
+    cleanVigKey.length +
+    (hasHint ? 11 : 0);
 
   if (!quote) {
     const fallbackBase =
-      cipher === 'vigenere' ? 114 : cipher === 'caesar' ? 104 : 68;
+      cipher === 'aristocrat'
+        ? 188
+        : cipher === 'vigenere'
+          ? 114
+          : cipher === 'caesar'
+            ? 104
+            : 68;
     const fallbackMin = fallbackBase - 5;
     const fallbackMax = fallbackBase + 5;
     const fallbackSuggested = pickNonRoundScore({
@@ -233,9 +245,19 @@ export function getQuestionPointGuidance(
       uniqueLetters: 0,
       tapCount: 0,
       recommendedMinLetters:
-        cipher === 'caesar' || cipher === 'vigenere' ? 30 : 25,
+        cipher === 'aristocrat'
+          ? 55
+          : cipher === 'caesar' || cipher === 'vigenere'
+            ? 30
+            : 25,
       recommendedMaxLetters:
-        cipher === 'caesar' ? 75 : cipher === 'vigenere' ? 70 : 60,
+        cipher === 'aristocrat'
+          ? 115
+          : cipher === 'caesar'
+            ? 75
+            : cipher === 'vigenere'
+              ? 70
+              : 60,
       lengthWarning: null,
       tooltipSummary: `Suggested: ${fallbackSuggested} pts (range ${fallbackMin}–${fallbackMax})`,
     };
@@ -327,6 +349,25 @@ export function getQuestionPointGuidance(
       detailStats = `${L} letters, key ${cleanVigKey || `(${keyLen} chars)`}`;
       break;
     }
+    case 'aristocrat': {
+      // Division A Aristocrat cryptanalysis: scales with letter count, chi-squared skew,
+      // 1-letter word presence, and starter hint discount (~150–250 pts, range ±18)
+      const chiBonus = Math.round(2 * Math.max(0, quote.chi - 18));
+      const oneLetterDiscount = quote.hasOneLetter ? 20 : 0;
+      const hintDiscount = hasHint ? 25 : 0;
+      rawBase = Math.max(
+        110,
+        Math.round(150 + 0.85 * L + chiBonus - oneLetterDiscount - hintDiscount)
+      );
+      min = Math.max(100, rawBase - 18);
+      max = rawBase + 18;
+      recommendedMinLetters = 55;
+      recommendedMaxLetters = 115;
+      detailStats = `${L} letters, ${U} unique, χ² ${quote.chi.toFixed(1)}${
+        hasHint ? ', with hint' : ''
+      }`;
+      break;
+    }
   }
 
   const suggested = pickNonRoundScore({
@@ -374,6 +415,7 @@ export function suggestPointsForPacket(
     quote: Quote | undefined;
     caesarOffset?: number;
     vigenereKeyword?: string;
+    description?: string;
   }[]
 ): number[] {
   const assigned: number[] = [];
@@ -383,6 +425,7 @@ export function suggestPointsForPacket(
       questionIndex: idx,
       caesarOffset: q.caesarOffset,
       vigenereKeyword: q.vigenereKeyword,
+      description: q.description,
     });
     assigned.push(guidance.suggested);
   });

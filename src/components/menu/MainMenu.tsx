@@ -5,6 +5,7 @@ import {
   type CipherType,
 } from '../../data/drills';
 import type {
+  AristocratDifficulty,
   CaesarRangeMode,
   GeneralPracticeCiphers,
   LetterMathMode,
@@ -18,6 +19,7 @@ export interface SelectDrillOptions {
   offsetsMode?: OffsetsMode;
   letterMathMode?: LetterMathMode;
   caesarRange?: CaesarRangeMode;
+  aristocratDifficulty?: AristocratDifficulty;
 }
 
 interface MainMenuProps {
@@ -783,6 +785,65 @@ export const MainMenu: React.FC<MainMenuProps> = ({
                               aria-label="Caesar Cipher: Offset plus or minus 3"
                             >
                               Offset ± 3
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    if (d.id === 'aristocrat') {
+                      return (
+                        <div
+                          key={d.id}
+                          className="menu-labeled-row menu-labeled-row-aristocrat"
+                          role="group"
+                          aria-labelledby="menu-aristocrat-row-label"
+                        >
+                          <div className="menu-labeled-row-left">
+                            <span
+                              id="menu-aristocrat-row-label"
+                              className="menu-labeled-row-title"
+                            >
+                              {d.menuLabel}
+                            </span>
+                            {isUnpublished && renderPreviewStatusBadge()}
+                          </div>
+                          <div className="menu-labeled-row-actions menu-labeled-row-actions-3">
+                            <button
+                              type="button"
+                              className="menu-drill-btn menu-inline-pill-btn menu-inline-pill-compact"
+                              onClick={() =>
+                                onSelectDrill('aristocrat', 'cipher', {
+                                  aristocratDifficulty: 'easy',
+                                })
+                              }
+                              aria-label="Aristocrat Cipher: Easy"
+                            >
+                              Easy
+                            </button>
+                            <button
+                              type="button"
+                              className="menu-drill-btn menu-inline-pill-btn menu-inline-pill-compact"
+                              onClick={() =>
+                                onSelectDrill('aristocrat', 'cipher', {
+                                  aristocratDifficulty: 'medium',
+                                })
+                              }
+                              aria-label="Aristocrat Cipher: Medium"
+                            >
+                              Med
+                            </button>
+                            <button
+                              type="button"
+                              className="menu-drill-btn menu-inline-pill-btn menu-inline-pill-compact"
+                              onClick={() =>
+                                onSelectDrill('aristocrat', 'cipher', {
+                                  aristocratDifficulty: 'hard',
+                                })
+                              }
+                              aria-label="Aristocrat Cipher: Hard"
+                            >
+                              Hard
                             </button>
                           </div>
                         </div>

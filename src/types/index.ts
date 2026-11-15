@@ -7,13 +7,49 @@ export type { CipherType, LookupCipherType, TestableCipherType };
 
 export type LetterMathMode = 'easy' | 'hard' | 'letterEasy' | 'letterHard';
 export type CaesarRangeMode = 'pm3' | 'any';
+export type AristocratDifficulty = 'easy' | 'medium' | 'hard';
+export type AristocratAssistMode = 'linked'; // Extensible later to 'assisted_paper' | 'strict_paper'
+export type AristocratCornerTuple = [string, string, string, string];
 export type MainMenuTab = 'drills' | 'ciphers';
+
+export interface AristocratWorkspaceState {
+  /** Per-character plaintext slots in the quote (graded identically to all other ciphers) */
+  userInputs: string[];
+  /** Replacement Table center guesses keyed by ciphertext letter ('A'..'Z') */
+  replacements: Partial<Record<string, string>>;
+  /** Replacement Table 4-corner notes (TL, TR, BL, BR) keyed by ciphertext letter ('A'..'Z') */
+  corners: Partial<Record<string, AristocratCornerTuple>>;
+}
+
+export type AristocratEditAction =
+  | { kind: 'setCenterByCipher'; cipherLetter: string; plainLetter: string }
+  | { kind: 'setCenterByTile'; index: number; plainLetter: string }
+  | {
+      kind: 'setCorner';
+      cipherLetter: string;
+      cornerIndex: 0 | 1 | 2 | 3;
+      plainLetter: string;
+    }
+  | { kind: 'clearCornersForLetter'; cipherLetter: string }
+  | { kind: 'clearAllCorners' };
 
 export interface CipherWorkspaceParams {
   caesarOffset?: number;
   caesarRange?: CaesarRangeMode;
   vigenereKeyword?: string;
   vigenereKeyChar?: string;
+  aristocratAlphabet?: string;
+  aristocratFrequencies?: Record<string, number>;
+  aristocratReplacements?: Partial<Record<string, string>>;
+  aristocratCorners?: Partial<Record<string, AristocratCornerTuple>>;
+  aristocratActiveCipherLetter?: string | null;
+  aristocratTableFocusNonce?: number;
+  aristocratDisabled?: boolean;
+  onAristocratEdit?: (action: AristocratEditAction) => void;
+  onSelectAristocratCipherLetter?: (
+    cipherLetter: string | null,
+    source?: 'table' | 'grid'
+  ) => void;
 }
 
 export type QuoteCategory =
@@ -167,6 +203,7 @@ export interface TestQuestion {
   points: number;
   caesarOffset?: number;
   vigenereKeyword?: string;
+  aristocratAlphabet?: string;
   isTiebreaker?: boolean;
   description?: string;
 }
@@ -191,6 +228,8 @@ export interface TestPacket {
 export interface QuestionWorkspace {
   userInputs: string[];
   keyInputs?: string[];
+  aristocratReplacements?: Partial<Record<string, string>>;
+  aristocratCorners?: Partial<Record<string, AristocratCornerTuple>>;
   inputs?: Record<string, string>;
   completed: boolean;
   lastEditedAt: number;
@@ -258,6 +297,7 @@ export interface WorkoutStepResult {
   warmup60s?: number;
   offsetsMode?: OffsetsMode;
   letterMathMode?: LetterMathMode;
+  aristocratDifficulty?: AristocratDifficulty;
 }
 
 export interface WorkoutSummaryData {
@@ -272,6 +312,7 @@ export interface WorkoutStepContext {
   totalSteps: number;
   offsetsMode?: OffsetsMode;
   letterMathMode?: LetterMathMode;
+  aristocratDifficulty?: AristocratDifficulty;
   nextCipherTitle?: string;
   isLastStep: boolean;
   onAdvance: (stepResult?: Partial<WorkoutStepResult>) => void;

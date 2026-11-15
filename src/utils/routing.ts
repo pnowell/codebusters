@@ -1,5 +1,6 @@
 import { isCipherType, type CipherType } from '../data/drills';
 import type {
+  AristocratDifficulty,
   CaesarRangeMode,
   LetterMathMode,
   OffsetsMode,
@@ -14,6 +15,7 @@ export interface Route {
   offsetsMode?: OffsetsMode;
   letterMathMode?: LetterMathMode;
   caesarRange?: CaesarRangeMode;
+  aristocratDifficulty?: AristocratDifficulty;
   quoteId?: number;
   testId?: string;
   spectateAttemptId?: string;
@@ -39,6 +41,12 @@ function isLetterMathMode(val: string | null): val is LetterMathMode {
 
 function isCaesarRangeMode(val: string | null): val is CaesarRangeMode {
   return val === 'pm3' || val === 'any';
+}
+
+export function isAristocratDifficulty(
+  val: string | null | undefined
+): val is AristocratDifficulty {
+  return val === 'easy' || val === 'medium' || val === 'hard';
 }
 
 function isTestEditorTab(val: string | null): val is TestEditorTab {
@@ -102,6 +110,12 @@ export function parseUrlRoute(search = window.location.search): Route {
       drill === 'caesar' && section === 'cipher' && isCaesarRangeMode(modeParam)
         ? modeParam
         : undefined,
+    aristocratDifficulty:
+      drill === 'aristocrat' &&
+      section === 'cipher' &&
+      isAristocratDifficulty(modeParam)
+        ? modeParam
+        : undefined,
     quoteId: Number.isNaN(quoteId) ? undefined : quoteId,
     testId,
     spectateAttemptId,
@@ -146,6 +160,12 @@ export function buildRouteUrl(route: Route): string {
     route.caesarRange !== 'pm3'
   ) {
     p.set('mode', route.caesarRange);
+  } else if (
+    route.drill === 'aristocrat' &&
+    route.section === 'cipher' &&
+    route.aristocratDifficulty
+  ) {
+    p.set('mode', route.aristocratDifficulty);
   } else {
     p.delete('mode');
   }

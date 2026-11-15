@@ -574,6 +574,49 @@
   cursor: default;
 }
 
+.editor-aristo-hint-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  flex-wrap: wrap;
+}
+
+.editor-btn-aristo-hint,
+.editor-btn-aristo-hint-clear {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.24rem 0.56rem;
+  min-height: 28px;
+}
+
+.editor-btn-aristo-hint {
+  border-color: rgba(251, 191, 36, 0.38);
+  color: #fde68a;
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.editor-btn-aristo-hint:hover {
+  background: rgba(245, 158, 11, 0.22);
+  border-color: rgba(251, 191, 36, 0.62);
+}
+
+.editor-btn-aristo-hint.active {
+  background: rgba(245, 158, 11, 0.25);
+  border-color: rgba(251, 191, 36, 0.72);
+  color: #fef3c7;
+}
+
+.editor-btn-aristo-hint-clear {
+  border-color: rgba(244, 63, 94, 0.36);
+  color: #fda4af;
+  background: rgba(244, 63, 94, 0.08);
+}
+
+.editor-btn-aristo-hint-clear:hover {
+  background: rgba(244, 63, 94, 0.2);
+  border-color: rgba(244, 63, 94, 0.6);
+}
+
 .editor-pts-label {
   display: inline-flex;
   align-items: center;

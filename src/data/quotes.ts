@@ -1,5 +1,6 @@
 import quotesData from './quotes.json';
 import type {
+  AristocratDifficulty,
   CipherType,
   CryptanalysisTier,
   Quote,
@@ -17,6 +18,9 @@ export const MAX_LOOKUP_LENGTH = 75;
 
 /** Lookup-eligible quotes (not excessively long for mobile tile grids) */
 const LOOKUP_ELIGIBLE_QUOTES = ALL_QUOTES.filter(q => q.length <= MAX_LOOKUP_LENGTH);
+
+/** Aristocrat-eligible quotes (excludes very short lookup-only quotes; uncapped above 75 chars) */
+const ARISTOCRAT_ELIGIBLE_QUOTES = ALL_QUOTES.filter(q => q.tier !== 'short_drill');
 
 const KID_LOOKUP_POOL = LOOKUP_ELIGIBLE_QUOTES.filter(
   q => q.category && q.category !== 'general'
@@ -42,6 +46,7 @@ export function getQuoteById(id: number): Quote | undefined {
  * Returns whether a quote is suitable for random/picker selection for `cipher`.
  * Continuous-stream ciphers (`tap`) exclude quotes with critical non-letter,
  * non-punctuation characters (such as digits `0-9` or `&`).
+ * Aristocrat excludes `short_drill` quotes that lack sufficient cryptanalysis context.
  */
 export function isQuoteEligibleForCipher(
   quote: Quote,
@@ -50,13 +55,16 @@ export function isQuoteEligibleForCipher(
   if (cipher === 'tap') {
     return !hasCriticalNonLetterChars(quote.quote);
   }
+  if (cipher === 'aristocrat') {
+    return quote.tier !== 'short_drill';
+  }
   return true;
 }
 
 /**
- * Picks a random unflagged, non-reserved lookup-eligible quote (excluding any
- * caller-supplied IDs, such as quotes already used in the current practice test),
- * respecting cipher-specific character constraints (e.g. Tap Code).
+ * Picks a random unflagged, non-reserved quote for Practice Test authoring
+ * (excluding any caller-supplied IDs, such as quotes already used in the current practice test),
+ * using the uncapped Aristocrat pool when `cipher === 'aristocrat'`.
  */
 export function pickRandomCleanLookupQuote(
   excludeIds?: ReadonlySet<number>,
@@ -64,7 +72,9 @@ export function pickRandomCleanLookupQuote(
 ): Quote {
   const flaggedIds = getFlaggedQuoteIds();
   const reservedIds = getReservedTestQuoteIds();
-  const cipherEligible = LOOKUP_ELIGIBLE_QUOTES.filter(q =>
+  const basePool =
+    cipher === 'aristocrat' ? ARISTOCRAT_ELIGIBLE_QUOTES : LOOKUP_ELIGIBLE_QUOTES;
+  const cipherEligible = basePool.filter(q =>
     isQuoteEligibleForCipher(q, cipher)
   );
   const candidates = cipherEligible.filter(
@@ -86,34 +96,29 @@ export function pickRandomCleanLookupQuote(
       ? unflagged
       : cipherEligible.length > 0
       ? cipherEligible
-      : LOOKUP_ELIGIBLE_QUOTES;
+      : basePool;
   return pool[Math.floor(Math.random() * pool.length)] ?? ALL_QUOTES[0];
 }
 
-/**
- * Picks a random quote for symbol lookup / cipher exercises:
- * - Filters out quotes flagged by teachers (`quote_flags`), quotes reserved in active
- *   or draft practice tests (`reserved_quotes`), quotes ineligible for `cipher`,
- *   and quotes already completed by the user.
- * - Prefers kid-friendly quotes (~80% chance) while still drawing from the general pool (~20% chance).
- * - Caps length at MAX_LOOKUP_LENGTH (75 chars) so quotes are not excessively long.
- * - Gracefully falls back if the completed list exhausts the uncompleted pool.
- */
-function pickRandomLookupQuote(
-  excludeId?: number,
-  cipher?: CipherType
+function pickFromKidAndGeneralPools(
+  basePool: readonly Quote[],
+  excludeId: number | undefined,
+  cipher: CipherType | undefined
 ): Quote {
   const completedSet = new Set(loadCompletedQuoteIds());
   const flaggedSet = getFlaggedQuoteIds();
   const reservedSet = getReservedTestQuoteIds();
 
-  const safeKidPool = KID_LOOKUP_POOL.filter(
+  const kidPool = basePool.filter(q => q.category && q.category !== 'general');
+  const generalPool = basePool.filter(q => !q.category || q.category === 'general');
+
+  const safeKidPool = kidPool.filter(
     q =>
       !flaggedSet.has(q.id) &&
       !reservedSet.has(q.id) &&
       isQuoteEligibleForCipher(q, cipher)
   );
-  const safeGeneralPool = GENERAL_LOOKUP_POOL.filter(
+  const safeGeneralPool = generalPool.filter(
     q =>
       !flaggedSet.has(q.id) &&
       !reservedSet.has(q.id) &&
@@ -131,7 +136,6 @@ function pickRandomLookupQuote(
   const nonCurrentKid = safeKidPool.filter(q => q.id !== excludeId);
   const nonCurrentGeneral = safeGeneralPool.filter(q => q.id !== excludeId);
 
-  // Determine active candidates (falling back to non-current unflagged/unreserved pools if uncompleted quotes are exhausted)
   const kidCandidates =
     uncompletedKid.length > 0
       ? uncompletedKid
@@ -150,13 +154,13 @@ function pickRandomLookupQuote(
   const primary = preferKid ? kidCandidates : generalCandidates;
   const secondary = preferKid ? generalCandidates : kidCandidates;
 
-  const fallbackEligible = LOOKUP_ELIGIBLE_QUOTES.filter(
+  const fallbackEligible = basePool.filter(
     q =>
       !flaggedSet.has(q.id) &&
       !reservedSet.has(q.id) &&
       isQuoteEligibleForCipher(q, cipher)
   );
-  const cipherFallback = LOOKUP_ELIGIBLE_QUOTES.filter(q =>
+  const cipherFallback = basePool.filter(q =>
     isQuoteEligibleForCipher(q, cipher)
   );
 
@@ -169,9 +173,33 @@ function pickRandomLookupQuote(
       ? fallbackEligible
       : cipherFallback.length > 0
       ? cipherFallback
-      : LOOKUP_ELIGIBLE_QUOTES;
+      : basePool;
 
   return chosenPool[Math.floor(Math.random() * chosenPool.length)] ?? ALL_QUOTES[0];
+}
+
+/**
+ * Picks a random quote for symbol lookup or Aristocrat exercises:
+ * - For `aristocrat`: draws from `ARISTOCRAT_ELIGIBLE_QUOTES` filtered by `aristocratDifficulty` (`easy` | `medium` | `hard`).
+ * - For all other ciphers: caps length at `MAX_LOOKUP_LENGTH` (75 chars) via `LOOKUP_ELIGIBLE_QUOTES`.
+ */
+function pickRandomLookupQuote(
+  excludeId?: number,
+  cipher?: CipherType,
+  aristocratDifficulty?: AristocratDifficulty
+): Quote {
+  if (cipher === 'aristocrat') {
+    const targetTier: AristocratDifficulty = aristocratDifficulty ?? 'easy';
+    const tierPool = ARISTOCRAT_ELIGIBLE_QUOTES.filter(q => q.tier === targetTier);
+    const pool = tierPool.length > 0 ? tierPool : ARISTOCRAT_ELIGIBLE_QUOTES;
+    return pickFromKidAndGeneralPools(pool, excludeId, cipher);
+  }
+
+  return pickFromKidAndGeneralPools(
+    [...KID_LOOKUP_POOL, ...GENERAL_LOOKUP_POOL],
+    excludeId,
+    cipher
+  );
 }
 
 /**
@@ -179,17 +207,18 @@ function pickRandomLookupQuote(
  * - If `preferredId` is specified (e.g. via deep-link URL ?q=123):
  *   Returns the Quote if found, or null if the quote does not exist (removed or retired).
  * - If `preferredId` is undefined:
- *   Returns a random eligible lookup quote for `cipher` (optionally excluding `excludeId`).
+ *   Returns a random eligible quote for `cipher` (optionally filtered by `aristocratDifficulty`).
  */
 export function pickLookupQuote(
   preferredId?: number,
   excludeId?: number,
-  cipher?: CipherType
+  cipher?: CipherType,
+  aristocratDifficulty?: AristocratDifficulty
 ): Quote | null {
   if (preferredId !== undefined) {
     return getQuoteById(preferredId) ?? null;
   }
-  return pickRandomLookupQuote(excludeId, cipher);
+  return pickRandomLookupQuote(excludeId, cipher, aristocratDifficulty);
 }
 
 export function getQuotesByTier(tier: CryptanalysisTier): Quote[] {

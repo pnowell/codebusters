@@ -1,5 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { AristocratCornersOverlay } from './AristocratCornersOverlay';
 import { CipherGlyph } from './CipherGlyph';
+import {
+  aristocratEncryptChar,
+  computeAristocratAnalysis,
+} from '../../../utils/aristocrat';
 import {
   computeVigenereKeySequence,
   findLetterIndex,
@@ -24,6 +29,7 @@ interface QuoteTileGridProps {
   onChangeUserInputs: (inputs: string[]) => void;
   keyInputs?: string[];
   onChangeKeyInputs?: (inputs: string[]) => void;
+  hintText?: string | null;
   disabled?: boolean;
   showEvaluation?: boolean;
   onEnterSubmit?: () => void;
@@ -37,12 +43,14 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
   onChangeUserInputs,
   keyInputs,
   onChangeKeyInputs,
+  hintText,
   disabled = false,
   showEvaluation = false,
   onEnterSubmit,
   cipherParams,
 }) => {
   const isVigenere = cipher === 'vigenere';
+  const isAristocrat = cipher === 'aristocrat';
   const hasEditableKeyRow = isVigenere && Boolean(onChangeKeyInputs);
   const chars = useMemo(() => quote.quote.toUpperCase().split(''), [quote.quote]);
   const words = useMemo(() => groupIntoWords(chars), [chars]);
@@ -60,6 +68,26 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
     () =>
       isVigenere ? computeVigenereKeySequence(quote.quote, activeKeyword) : [],
     [activeKeyword, isVigenere, quote.quote]
+  );
+
+  const aristocratCipherChars = useMemo(
+    () =>
+      isAristocrat
+        ? chars.map((ch) =>
+            isLetter(ch)
+              ? aristocratEncryptChar(ch, cipherParams?.aristocratAlphabet)
+              : ch
+          )
+        : [],
+    [chars, cipherParams?.aristocratAlphabet, isAristocrat]
+  );
+
+  const aristocratAnalysis = useMemo(
+    () =>
+      isAristocrat
+        ? computeAristocratAnalysis(cipherParams?.aristocratReplacements)
+        : null,
+    [cipherParams?.aristocratReplacements, isAristocrat]
   );
 
   const computeDefaultFocusState = useCallback((): {
@@ -108,11 +136,53 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
     setActiveIdx(nextFocus.idx);
   }
 
+  const tableFocusNonce = cipherParams?.aristocratTableFocusNonce ?? 0;
+  const [prevTableFocusNonce, setPrevTableFocusNonce] =
+    useState<number>(tableFocusNonce);
+  if (isAristocrat && prevTableFocusNonce !== tableFocusNonce) {
+    setPrevTableFocusNonce(tableFocusNonce);
+    if (activeIdx !== -1) {
+      setActiveIdx(-1);
+    }
+  }
+
   const keyInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const scrollPanelRef = useRef<HTMLDivElement | null>(null);
 
   const effectiveActiveRow: ActiveGridRow = hasEditableKeyRow ? activeRow : 'plain';
+
+  const onSelectAristocratCipherLetterRef = useRef(
+    cipherParams?.onSelectAristocratCipherLetter
+  );
+  useEffect(() => {
+    onSelectAristocratCipherLetterRef.current =
+      cipherParams?.onSelectAristocratCipherLetter;
+  }, [cipherParams?.onSelectAristocratCipherLetter]);
+
+  // Blur any focused workspace input whenever the user clicks in the Replacement Table
+  useEffect(() => {
+    if (!isAristocrat || tableFocusNonce === 0) return;
+    keyInputRefs.current.forEach((el) => el?.blur());
+    inputRefs.current.forEach((el) => el?.blur());
+  }, [isAristocrat, tableFocusNonce]);
+
+  // Keep parent informed of the active tile's ciphertext letter when a workspace tile is selected
+  useEffect(() => {
+    if (!isAristocrat) return;
+    if (disabled) {
+      onSelectAristocratCipherLetterRef.current?.(null, 'grid');
+      return;
+    }
+    if (activeIdx < 0 || activeIdx >= aristocratCipherChars.length) {
+      return;
+    }
+    const cCh = aristocratCipherChars[activeIdx];
+    onSelectAristocratCipherLetterRef.current?.(
+      isLetter(cCh) ? cCh : null,
+      'grid'
+    );
+  }, [activeIdx, aristocratCipherChars, disabled, isAristocrat]);
 
   const focusCell = useCallback(
     (row: ActiveGridRow, index: number) => {
@@ -216,6 +286,26 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
   const handleTileChange = (index: number, val: string) => {
     if (disabled) return;
     const lastChar = val.slice(-1).toUpperCase();
+
+    if (isAristocrat && cipherParams?.onAristocratEdit) {
+      if (isLetter(lastChar)) {
+        cipherParams.onAristocratEdit({
+          kind: 'setCenterByTile',
+          index,
+          plainLetter: lastChar,
+        });
+        const nextIdx = findLetterIndex(chars, index, 1);
+        focusCell('plain', nextIdx);
+      } else if (val === '') {
+        cipherParams.onAristocratEdit({
+          kind: 'setCenterByTile',
+          index,
+          plainLetter: '',
+        });
+      }
+      return;
+    }
+
     const updated = [...userInputs];
 
     if (isLetter(lastChar)) {
@@ -235,9 +325,17 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
       if (!userInputs[index]) {
         e.preventDefault();
         const prevIdx = findLetterIndex(chars, index, -1);
-        const updated = [...userInputs];
-        updated[prevIdx] = '';
-        onChangeUserInputs(updated);
+        if (isAristocrat && cipherParams?.onAristocratEdit) {
+          cipherParams.onAristocratEdit({
+            kind: 'setCenterByTile',
+            index: prevIdx,
+            plainLetter: '',
+          });
+        } else {
+          const updated = [...userInputs];
+          updated[prevIdx] = '';
+          onChangeUserInputs(updated);
+        }
         focusCell('plain', prevIdx);
       }
     } else if (e.key === 'ArrowLeft') {
@@ -264,6 +362,14 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
     [chars]
   );
 
+  const highlightedCipherLetter = isAristocrat
+    ? activeIdx >= 0 &&
+      activeIdx < aristocratCipherChars.length &&
+      isLetter(aristocratCipherChars[activeIdx])
+      ? aristocratCipherChars[activeIdx]
+      : cipherParams?.aristocratActiveCipherLetter ?? null
+    : null;
+
   const renderTile = ({ char, index }: { char: string; index: number }) => {
     const isAlpha = isLetter(char);
     const isActive = !disabled && isAlpha && activeIdx === index;
@@ -273,6 +379,22 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
     const isWrong = showEvaluation && isAlpha && userVal !== char;
     const isFilled = !showEvaluation && isAlpha && Boolean(userVal);
 
+    const aristoCipherLetter =
+      isAristocrat && isAlpha ? aristocratCipherChars[index] : '';
+    const isPeerCipher =
+      isAristocrat &&
+      !disabled &&
+      !showEvaluation &&
+      isAlpha &&
+      !isActive &&
+      Boolean(highlightedCipherLetter) &&
+      aristoCipherLetter === highlightedCipherLetter;
+    const isAristoConflict =
+      isAristocrat &&
+      !showEvaluation &&
+      isAlpha &&
+      Boolean(aristocratAnalysis?.conflictingCiphers.has(aristoCipherLetter));
+
     const tileCipherParams =
       isVigenere && isAlpha
         ? { ...cipherParams, vigenereKeyChar: vigenereKeyChars[index] }
@@ -281,14 +403,64 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
     const tileClasses = [
       'char-tile',
       isVigenere ? 'vigenere-tile' : '',
+      isAristocrat ? 'aristocrat-tile' : '',
       !isAlpha ? 'punct-tile' : '',
       isActive ? 'active-tile' : '',
+      isPeerCipher ? 'peer-cipher-tile' : '',
+      isAristoConflict ? 'conflict-tile' : '',
       isCorrect ? 'correct-tile' : '',
       isWrong ? 'wrong-tile' : '',
       isFilled ? 'filled-tile' : '',
     ]
       .filter(Boolean)
       .join(' ');
+
+    const tileInputNode = isAlpha ? (
+      <input
+        ref={(el) => {
+          inputRefs.current[index] = el;
+        }}
+        type="text"
+        size={1}
+        inputMode="text"
+        autoCapitalize="characters"
+        autoCorrect="off"
+        autoComplete="off"
+        spellCheck="false"
+        enterKeyHint={onEnterSubmit ? 'done' : 'next'}
+        aria-label={
+          isVigenere
+            ? `Plaintext cell ${index + 1}`
+            : isAristocrat
+              ? `Plaintext guess for ciphertext ${aristoCipherLetter}`
+              : undefined
+        }
+        className={`tile-native-input${
+          isVigenere && isActive && effectiveActiveRow === 'plain'
+            ? ' active-subcell'
+            : ''
+        }`}
+        value={userVal}
+        disabled={disabled}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (!disabled) {
+            focusCell('plain', index);
+          }
+        }}
+        onChange={(e) => handleTileChange(index, e.target.value)}
+        onKeyDown={(e) => handleTileKeyDown(index, e)}
+        onFocus={() => {
+          if (!disabled) {
+            setActiveRow('plain');
+            setActiveIdx(index);
+          }
+        }}
+        maxLength={2}
+      />
+    ) : (
+      <div className="tile-punct">{char}</div>
+    );
 
     return (
       <div
@@ -346,45 +518,20 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
             <div className="tile-key-punct" aria-hidden="true" />
           ))}
 
-        {isAlpha ? (
-          <input
-            ref={(el) => {
-              inputRefs.current[index] = el;
-            }}
-            type="text"
-            size={1}
-            inputMode="text"
-            autoCapitalize="characters"
-            autoCorrect="off"
-            autoComplete="off"
-            spellCheck="false"
-            enterKeyHint={onEnterSubmit ? 'done' : 'next'}
-            aria-label={isVigenere ? `Plaintext cell ${index + 1}` : undefined}
-            className={`tile-native-input${
-              isVigenere && isActive && effectiveActiveRow === 'plain'
-                ? ' active-subcell'
-                : ''
-            }`}
-            value={userVal}
-            disabled={disabled}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!disabled) {
-                focusCell('plain', index);
-              }
-            }}
-            onChange={(e) => handleTileChange(index, e.target.value)}
-            onKeyDown={(e) => handleTileKeyDown(index, e)}
-            onFocus={() => {
-              if (!disabled) {
-                setActiveRow('plain');
-                setActiveIdx(index);
-              }
-            }}
-            maxLength={2}
-          />
+        {isAristocrat && isAlpha ? (
+          <div className="aristo-tile-input-wrap">
+            {!showEvaluation && !disabled && (
+              <AristocratCornersOverlay
+                corners={cipherParams?.aristocratCorners?.[aristoCipherLetter]}
+                hasCenterGuess={Boolean(userVal)}
+                cipherLetter={aristoCipherLetter}
+                plainOwners={aristocratAnalysis?.plainOwners}
+              />
+            )}
+            {tileInputNode}
+          </div>
         ) : (
-          <div className="tile-punct">{char}</div>
+          tileInputNode
         )}
       </div>
     );
@@ -400,6 +547,13 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
           <div className="vigenere-key-banner">
             <span className="vigenere-key-label">Key:</span>
             <span className="vigenere-key-value">{activeKeyword}</span>
+          </div>
+        )}
+
+        {isAristocrat && hintText && (
+          <div className="aristo-hint-banner">
+            <span className="aristo-hint-label">💡 Hint:</span>
+            <span className="aristo-hint-text">{hintText}</span>
           </div>
         )}
 

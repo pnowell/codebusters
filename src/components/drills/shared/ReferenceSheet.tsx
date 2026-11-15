@@ -1,6 +1,7 @@
 import React from 'react';
 import { TAP_CODE_GRID } from '../../../utils/ciphers';
 import type { CipherWorkspaceParams, TestableCipherType } from '../../../types';
+import { AristocratReference } from './AristocratReference';
 import { TabulaRecta } from './TabulaRecta';
 
 const REFERENCE_IMAGES = {
@@ -41,6 +42,20 @@ export const ReferenceSheet: React.FC<Props> = ({ cipher, cipherParams }) => {
 
   if (cipher === 'vigenere') {
     return <TabulaRecta variant="vigenere" />;
+  }
+
+  if (cipher === 'aristocrat') {
+    return (
+      <AristocratReference
+        frequencies={cipherParams?.aristocratFrequencies}
+        replacements={cipherParams?.aristocratReplacements}
+        corners={cipherParams?.aristocratCorners}
+        activeCipherLetter={cipherParams?.aristocratActiveCipherLetter}
+        disabled={cipherParams?.aristocratDisabled}
+        onEdit={cipherParams?.onAristocratEdit}
+        onSelectCipherLetter={cipherParams?.onSelectAristocratCipherLetter}
+      />
+    );
   }
 
   if (cipher === 'tap') {

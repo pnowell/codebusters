@@ -13,6 +13,7 @@ import type {
 import type { TestEditorTab } from '../../utils/routing';
 import {
   getQuoteById,
+  isQuoteEligibleForCipher,
   pickRandomCleanLookupQuote,
 } from '../../data/quotes';
 import {
@@ -46,6 +47,18 @@ import {
   vigenereEncryptChar,
 } from '../../utils/ciphers';
 import {
+  ALPHABET_LETTERS,
+  applyHintToQuestionPrompt,
+  aristocratEncryptText,
+  computeCiphertextFrequencies,
+  deterministicAristocratAlphabet,
+  generateAristocratAlphabet,
+  generateAristocratHint,
+  hasHintInQuestionPrompt,
+  isValidAristocratAlphabet,
+  sanitizeAristocratAlphabet,
+} from '../../utils/aristocrat';
+import {
   getQuestionPointGuidance,
   isPointsMatchingGuidance,
   suggestPointsForPacket,
@@ -62,6 +75,8 @@ interface EditableQuestion {
   points: number;
   caesarOffset?: number;
   vigenereKeyword?: string;
+  aristocratAlphabet?: string;
+  aristocratHintOffset?: number;
   isPointsManual: boolean;
   isTiebreaker: boolean;
   description: string;
@@ -93,6 +108,7 @@ const CIPHER_OPTIONS: { id: TestableCipherType; label: string; promptName: strin
   { id: 'knights', label: 'Knights Templar', promptName: 'Knights Templar Cipher' },
   { id: 'caesar', label: 'Caesar', promptName: 'Caesar Cipher' },
   { id: 'vigenere', label: 'Vigenère', promptName: 'Vigenère Cipher' },
+  { id: 'aristocrat', label: 'Aristocrat', promptName: 'Aristocrat Cipher' },
 ];
 
 const CATEGORY_SHORT_LABELS: Record<QuoteCategory, string> = {
@@ -109,6 +125,34 @@ const DEFAULT_DESCRIPTION =
 
 const EMPTY_INPUTS: string[] = [];
 const NOOP_INPUTS = () => {};
+
+function resolveEditableAristocratAlphabet(
+  aristocratAlphabet: string | undefined,
+  quoteId: number,
+  questionIndex: number
+): string {
+  const cleaned = sanitizeAristocratAlphabet(aristocratAlphabet);
+  return isValidAristocratAlphabet(cleaned)
+    ? cleaned
+    : deterministicAristocratAlphabet(quoteId + questionIndex);
+}
+
+function stripHintSuffix(prompt: string): string {
+  return prompt.replace(/\s*Hint:\s+.*$/i, '').trim();
+}
+
+function detectAutoHintTier(prompt: string): 'easy' | 'medium' | null {
+  const hintMatch = /\bHint:\s+(.*)$/i.exec(prompt);
+  if (!hintMatch) return null;
+  const body = hintMatch[1];
+  if (/\b(starts with the word|ends with the word|contains the word)\b/i.test(body)) {
+    return 'easy';
+  }
+  if (/\b(starts with the letter|Ciphertext\s+[A-Z]\s+maps\s+to\s+[A-Z])\b/i.test(body)) {
+    return 'medium';
+  }
+  return null;
+}
 
 function createClientUid(prefix: string, seq: number): string {
   const rand =
@@ -181,7 +225,7 @@ function serializeDraftSnapshot(params: {
     description: params.description.trim(),
     timeLimitMinutes: Math.round(params.timeLimitMinutes),
     isActive: Boolean(params.isActive),
-    questions: params.questions.map((q) => ({
+    questions: params.questions.map((q, idx) => ({
       cipher: q.cipher,
       quoteId: q.quoteId,
       points: Math.round(q.points),
@@ -190,6 +234,15 @@ function serializeDraftSnapshot(params: {
         : {}),
       ...(q.cipher === 'vigenere'
         ? { vigenereKeyword: sanitizeVigenereKeyword(q.vigenereKeyword) }
+        : {}),
+      ...(q.cipher === 'aristocrat'
+        ? {
+            aristocratAlphabet: resolveEditableAristocratAlphabet(
+              q.aristocratAlphabet,
+              q.quoteId,
+              idx
+            ),
+          }
         : {}),
       isTiebreaker: Boolean(q.isTiebreaker),
       description: q.description.trim(),
@@ -252,10 +305,15 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
               ? cleanedVig
               : deterministicVigenereKeyword(q.quoteId + idx)
             : undefined;
+        const aristocratAlphabet =
+          q.cipher === 'aristocrat'
+            ? resolveEditableAristocratAlphabet(q.aristocratAlphabet, q.quoteId, idx)
+            : undefined;
         const guidance = getQuestionPointGuidance(q.cipher, quote, {
           questionIndex: idx,
           caesarOffset,
           vigenereKeyword,
+          description: q.description,
         });
         return {
           uid: createClientUid('q', idx + 1),
@@ -264,6 +322,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
           points: q.points,
           ...(caesarOffset !== undefined ? { caesarOffset } : {}),
           ...(vigenereKeyword !== undefined ? { vigenereKeyword } : {}),
+          ...(aristocratAlphabet !== undefined ? { aristocratAlphabet } : {}),
           isPointsManual: !isPointsMatchingGuidance(q.points, guidance),
           isTiebreaker: Boolean(q.isTiebreaker),
           description: q.description ?? '',
@@ -559,6 +618,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
           quote: getQuoteById(q.quoteId),
           caesarOffset: q.caesarOffset,
           vigenereKeyword: q.vigenereKeyword,
+          description: q.description,
         }))
       ),
     [questions]
@@ -581,6 +641,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
           quote: getQuoteById(q.quoteId),
           caesarOffset: q.caesarOffset,
           vigenereKeyword: q.vigenereKeyword,
+          description: q.description,
         }))
       );
       return prev.map((q, idx) => ({
@@ -599,17 +660,26 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
       nextCipher === 'caesar' ? pickRandomCaesarOffset('pm3') : undefined;
     const nextVigenereKeyword =
       nextCipher === 'vigenere' ? pickRandomVigenereKeyword() : undefined;
+    const nextAristocratAlphabet =
+      nextCipher === 'aristocrat' ? generateAristocratAlphabet() : undefined;
     const picked = pickRandomCleanLookupQuote(freshQuoteExcludeIds, nextCipher);
     const uid = createClientUid('q', qSeqRef.current);
     qSeqRef.current += 1;
 
     setQuestions((prev) => {
       const otherPoints = prev.map((x) => x.points);
+      const nextDesc = buildAutoPrompt(
+        nextCipher,
+        false,
+        picked.author,
+        nextVigenereKeyword
+      );
       const guidance = getQuestionPointGuidance(nextCipher, picked, {
         otherPoints,
         questionIndex: prev.length,
         caesarOffset: nextCaesarOffset,
         vigenereKeyword: nextVigenereKeyword,
+        description: nextDesc,
       });
       return [
         ...prev,
@@ -624,14 +694,12 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
           ...(nextVigenereKeyword !== undefined
             ? { vigenereKeyword: nextVigenereKeyword }
             : {}),
+          ...(nextAristocratAlphabet !== undefined
+            ? { aristocratAlphabet: nextAristocratAlphabet }
+            : {}),
           isPointsManual: false,
           isTiebreaker: false,
-          description: buildAutoPrompt(
-            nextCipher,
-            false,
-            picked.author,
-            nextVigenereKeyword
-          ),
+          description: nextDesc,
         },
       ];
     });
@@ -670,12 +738,11 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
     });
   };
 
-  const handlePickRandomForQuestion = (question: EditableQuestion) => {
-    if (isContentLocked) return;
-    const picked = pickRandomCleanLookupQuote(
-      freshQuoteExcludeIds,
-      question.cipher
-    );
+  const applyPickedQuoteToQuestion = (
+    question: EditableQuestion,
+    qIdx: number,
+    picked: Quote
+  ) => {
     const prevQuote = getQuoteById(question.quoteId);
     const prevDefault = buildAutoPrompt(
       question.cipher,
@@ -683,13 +750,48 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
       prevQuote?.author,
       question.vigenereKeyword
     );
-    const shouldRefreshPrompt =
-      !question.description.trim() || question.description.trim() === prevDefault;
-
-    const qIdx = Math.max(
-      0,
-      questions.findIndex((q) => q.uid === question.uid)
+    const newDefault = buildAutoPrompt(
+      question.cipher,
+      question.isTiebreaker,
+      picked.author,
+      question.vigenereKeyword
     );
+    const strippedCurrent = stripHintSuffix(question.description);
+    const hintTier =
+      question.cipher === 'aristocrat'
+        ? detectAutoHintTier(question.description)
+        : null;
+
+    let nextDescription: string | undefined;
+    if (question.cipher === 'aristocrat' && hintTier) {
+      const activeAlpha = resolveEditableAristocratAlphabet(
+        question.aristocratAlphabet,
+        picked.id,
+        qIdx
+      );
+      const nextHint = generateAristocratHint(
+        picked,
+        activeAlpha,
+        hintTier,
+        question.aristocratHintOffset ?? 0
+      );
+      const baseForHint =
+        !strippedCurrent || strippedCurrent === prevDefault
+          ? newDefault
+          : strippedCurrent;
+      nextDescription = applyHintToQuestionPrompt(
+        baseForHint,
+        newDefault,
+        nextHint
+      );
+    } else if (
+      !question.description.trim() ||
+      question.description.trim() === prevDefault
+    ) {
+      nextDescription = newDefault;
+    }
+
+    const effectiveDesc = nextDescription ?? question.description;
     const otherPoints = questions
       .filter((q) => q.uid !== question.uid)
       .map((q) => q.points);
@@ -698,22 +800,27 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
       questionIndex: qIdx,
       caesarOffset: question.caesarOffset,
       vigenereKeyword: question.vigenereKeyword,
+      description: effectiveDesc,
     });
 
     handleUpdateQuestion(question.uid, {
       quoteId: picked.id,
       ...(!question.isPointsManual ? { points: nextGuidance.suggested } : {}),
-      ...(shouldRefreshPrompt
-        ? {
-            description: buildAutoPrompt(
-              question.cipher,
-              question.isTiebreaker,
-              picked.author,
-              question.vigenereKeyword
-            ),
-          }
-        : {}),
+      ...(nextDescription !== undefined ? { description: nextDescription } : {}),
     });
+  };
+
+  const handlePickRandomForQuestion = (question: EditableQuestion) => {
+    if (isContentLocked) return;
+    const picked = pickRandomCleanLookupQuote(
+      freshQuoteExcludeIds,
+      question.cipher
+    );
+    const qIdx = Math.max(
+      0,
+      questions.findIndex((q) => q.uid === question.uid)
+    );
+    applyPickedQuoteToQuestion(question, qIdx, picked);
   };
 
   const handleSelectQuoteFromPicker = (picked: Quote) => {
@@ -721,40 +828,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
     const targetIdx = questions.findIndex((q) => q.uid === pickerQuestionUid);
     const targetQ = targetIdx >= 0 ? questions[targetIdx] : undefined;
     if (targetQ) {
-      const prevQuote = getQuoteById(targetQ.quoteId);
-      const prevDefault = buildAutoPrompt(
-        targetQ.cipher,
-        targetQ.isTiebreaker,
-        prevQuote?.author,
-        targetQ.vigenereKeyword
-      );
-      const shouldRefreshPrompt =
-        !targetQ.description.trim() || targetQ.description.trim() === prevDefault;
-
-      const otherPoints = questions
-        .filter((q) => q.uid !== targetQ.uid)
-        .map((q) => q.points);
-      const nextGuidance = getQuestionPointGuidance(targetQ.cipher, picked, {
-        otherPoints,
-        questionIndex: targetIdx,
-        caesarOffset: targetQ.caesarOffset,
-        vigenereKeyword: targetQ.vigenereKeyword,
-      });
-
-      handleUpdateQuestion(targetQ.uid, {
-        quoteId: picked.id,
-        ...(!targetQ.isPointsManual ? { points: nextGuidance.suggested } : {}),
-        ...(shouldRefreshPrompt
-          ? {
-              description: buildAutoPrompt(
-                targetQ.cipher,
-                targetQ.isTiebreaker,
-                picked.author,
-                targetQ.vigenereKeyword
-              ),
-            }
-          : {}),
-      });
+      applyPickedQuoteToQuestion(targetQ, targetIdx, picked);
     }
     closeQuotePicker();
   };
@@ -1062,6 +1136,15 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
               q.vigenereKeyword !== undefined
                 ? sanitizeVigenereKeyword(q.vigenereKeyword)
                 : deterministicVigenereKeyword(q.quoteId + idx),
+          }
+        : {}),
+      ...(q.cipher === 'aristocrat'
+        ? {
+            aristocratAlphabet: resolveEditableAristocratAlphabet(
+              q.aristocratAlphabet,
+              q.quoteId,
+              idx
+            ),
           }
         : {}),
       ...(q.isTiebreaker ? { isTiebreaker: true } : {}),
@@ -1478,6 +1561,7 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                   questionIndex: idx,
                   caesarOffset: q.caesarOffset,
                   vigenereKeyword: q.vigenereKeyword,
+                  description: q.description,
                 });
                 const hasDuplicatePoints = duplicatePointValuesInDraft.has(q.points);
                 const isGuidanceMatch = isPointsMatchingGuidance(q.points, guidance);
@@ -1518,9 +1602,13 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                                   quote?.author,
                                   q.vigenereKeyword
                                 );
+                                const strippedCurrent = stripHintSuffix(q.description);
                                 const shouldRefreshPrompt =
                                   !q.description.trim() ||
-                                  q.description.trim() === prevDefault;
+                                  q.description.trim() === prevDefault ||
+                                  (q.cipher === 'aristocrat' &&
+                                    opt.id !== 'aristocrat' &&
+                                    strippedCurrent === prevDefault);
                                 const nextCaesarOffset =
                                   opt.id === 'caesar'
                                     ? isValidCaesarPm3Offset(q.caesarOffset)
@@ -1536,32 +1624,52 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                                       ? cleanedExistingVigKey
                                       : pickRandomVigenereKeyword()
                                     : undefined;
+                                const cleanedExistingAristo = sanitizeAristocratAlphabet(
+                                  q.aristocratAlphabet
+                                );
+                                const nextAristocratAlphabet =
+                                  opt.id === 'aristocrat'
+                                    ? isValidAristocratAlphabet(cleanedExistingAristo)
+                                      ? cleanedExistingAristo
+                                      : generateAristocratAlphabet()
+                                    : undefined;
+                                const targetQuote =
+                                  !quote || !isQuoteEligibleForCipher(quote, opt.id)
+                                    ? pickRandomCleanLookupQuote(
+                                        freshQuoteExcludeIds,
+                                        opt.id
+                                      )
+                                    : quote;
+                                const nextDescription = shouldRefreshPrompt
+                                  ? buildAutoPrompt(
+                                      opt.id,
+                                      q.isTiebreaker,
+                                      targetQuote?.author,
+                                      nextVigenereKeyword
+                                    )
+                                  : q.description;
                                 const nextGuidance = getQuestionPointGuidance(
                                   opt.id,
-                                  quote,
+                                  targetQuote,
                                   {
                                     otherPoints,
                                     questionIndex: idx,
                                     caesarOffset: nextCaesarOffset,
                                     vigenereKeyword: nextVigenereKeyword,
+                                    description: nextDescription,
                                   }
                                 );
                                 handleUpdateQuestion(q.uid, {
                                   cipher: opt.id,
+                                  quoteId: targetQuote.id,
                                   caesarOffset: nextCaesarOffset,
                                   vigenereKeyword: nextVigenereKeyword,
+                                  aristocratAlphabet: nextAristocratAlphabet,
                                   ...(!q.isPointsManual
                                     ? { points: nextGuidance.suggested }
                                     : {}),
                                   ...(shouldRefreshPrompt
-                                    ? {
-                                        description: buildAutoPrompt(
-                                          opt.id,
-                                          q.isTiebreaker,
-                                          quote?.author,
-                                          nextVigenereKeyword
-                                        ),
-                                      }
+                                    ? { description: nextDescription }
                                     : {}),
                                 });
                               }}
@@ -1634,20 +1742,31 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                               quote?.author,
                               q.vigenereKeyword
                             );
+                            const nextDefault = buildAutoPrompt(
+                              q.cipher,
+                              nextTb,
+                              quote?.author,
+                              q.vigenereKeyword
+                            );
+                            const strippedCurrent = stripHintSuffix(q.description);
+                            const hintMatch = /\s*Hint:\s+(.*)$/i.exec(q.description);
                             const shouldRefreshPrompt =
                               !q.description.trim() ||
-                              q.description.trim() === prevDefault;
+                              q.description.trim() === prevDefault ||
+                              strippedCurrent === prevDefault;
+                            const nextDesc = shouldRefreshPrompt
+                              ? hintMatch
+                                ? applyHintToQuestionPrompt(
+                                    nextDefault,
+                                    nextDefault,
+                                    hintMatch[1]
+                                  )
+                                : nextDefault
+                              : undefined;
                             handleUpdateQuestion(q.uid, {
                               isTiebreaker: nextTb,
-                              ...(shouldRefreshPrompt
-                                ? {
-                                    description: buildAutoPrompt(
-                                      q.cipher,
-                                      nextTb,
-                                      quote?.author,
-                                      q.vigenereKeyword
-                                    ),
-                                  }
+                              ...(nextDesc !== undefined
+                                ? { description: nextDesc }
                                 : {}),
                             });
                           }}
@@ -1880,6 +1999,181 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                       </div>
                     )}
 
+                    {q.cipher === 'aristocrat' && (() => {
+                      const activeAristoAlpha = resolveEditableAristocratAlphabet(
+                        q.aristocratAlphabet,
+                        q.quoteId,
+                        idx
+                      );
+                      const fullMappingTitle = ALPHABET_LETTERS.map(
+                        (ch, mIdx) => `${ch}→${activeAristoAlpha[mIdx]}`
+                      ).join(' ');
+                      const activeHintTier = detectAutoHintTier(q.description);
+                      const hasAnyHint = hasHintInQuestionPrompt(q.description);
+
+                      const handleApplyHintTier = (tier: 'easy' | 'medium') => {
+                        if (!quote) return;
+                        const nextOffset = (q.aristocratHintOffset ?? -1) + 1;
+                        const hint = generateAristocratHint(
+                          quote,
+                          activeAristoAlpha,
+                          tier,
+                          nextOffset
+                        );
+                        const fallbackBase = buildAutoPrompt(
+                          'aristocrat',
+                          q.isTiebreaker,
+                          quote.author
+                        );
+                        const nextDesc = applyHintToQuestionPrompt(
+                          q.description,
+                          fallbackBase,
+                          hint
+                        );
+                        const nextGuidance = getQuestionPointGuidance(
+                          'aristocrat',
+                          quote,
+                          {
+                            otherPoints,
+                            questionIndex: idx,
+                            description: nextDesc,
+                          }
+                        );
+                        handleUpdateQuestion(q.uid, {
+                          aristocratAlphabet: activeAristoAlpha,
+                          aristocratHintOffset: nextOffset,
+                          description: nextDesc,
+                          ...(!q.isPointsManual
+                            ? { points: nextGuidance.suggested }
+                            : {}),
+                        });
+                      };
+
+                      const handleClearHint = () => {
+                        const fallbackBase = buildAutoPrompt(
+                          'aristocrat',
+                          q.isTiebreaker,
+                          quote?.author
+                        );
+                        const stripped = applyHintToQuestionPrompt(
+                          q.description,
+                          fallbackBase,
+                          null
+                        );
+                        const nextDesc = hasHintInQuestionPrompt(stripped)
+                          ? fallbackBase
+                          : stripped || fallbackBase;
+                        const nextGuidance = getQuestionPointGuidance(
+                          'aristocrat',
+                          quote,
+                          {
+                            otherPoints,
+                            questionIndex: idx,
+                            description: nextDesc,
+                          }
+                        );
+                        handleUpdateQuestion(q.uid, {
+                          description: nextDesc,
+                          ...(!q.isPointsManual
+                            ? { points: nextGuidance.suggested }
+                            : {}),
+                        });
+                      };
+
+                      return (
+                        <div
+                          className="editor-caesar-shift-row editor-aristocrat-options-row"
+                          role="group"
+                          aria-label={`Question ${idx + 1} Aristocrat options`}
+                        >
+                          <span className="editor-caesar-shift-label">
+                            Mapping:
+                          </span>
+                          <span
+                            className="editor-caesar-shift-example"
+                            title={`Derangement mapping: ${fullMappingTitle}`}
+                          >
+                            {`A→${activeAristoAlpha[0]} B→${activeAristoAlpha[1]} C→${activeAristoAlpha[2]} …`}
+                          </span>
+                          {!isContentLocked && (
+                            <button
+                              type="button"
+                              className="btn-simple editor-btn-quote-rand"
+                              onClick={() => {
+                                const nextAlpha = generateAristocratAlphabet(
+                                  Math.random,
+                                  activeAristoAlpha
+                                );
+                                let nextDesc: string | undefined;
+                                if (quote && activeHintTier === 'medium') {
+                                  const refreshedHint = generateAristocratHint(
+                                    quote,
+                                    nextAlpha,
+                                    'medium',
+                                    q.aristocratHintOffset ?? 0
+                                  );
+                                  const fallbackBase = buildAutoPrompt(
+                                    'aristocrat',
+                                    q.isTiebreaker,
+                                    quote.author
+                                  );
+                                  nextDesc = applyHintToQuestionPrompt(
+                                    q.description,
+                                    fallbackBase,
+                                    refreshedHint
+                                  );
+                                }
+                                handleUpdateQuestion(q.uid, {
+                                  aristocratAlphabet: nextAlpha,
+                                  ...(nextDesc !== undefined
+                                    ? { description: nextDesc }
+                                    : {}),
+                                });
+                              }}
+                              title="Generate a new random 26-letter derangement alphabet"
+                            >
+                              🎲 Shuffle Alphabet
+                            </button>
+                          )}
+
+                          {!isContentLocked && quote && (
+                            <div className="editor-aristo-hint-group">
+                              <button
+                                type="button"
+                                className={`btn-simple editor-btn-aristo-hint ${
+                                  activeHintTier === 'easy' ? 'active' : ''
+                                }`}
+                                onClick={() => handleApplyHintTier('easy')}
+                                title="Insert or cycle a word-level starter hint in the question prompt"
+                              >
+                                💡 Hint: Easy
+                              </button>
+                              <button
+                                type="button"
+                                className={`btn-simple editor-btn-aristo-hint ${
+                                  activeHintTier === 'medium' ? 'active' : ''
+                                }`}
+                                onClick={() => handleApplyHintTier('medium')}
+                                title="Insert or cycle a single-letter starter hint in the question prompt"
+                              >
+                                💡 Hint: Medium
+                              </button>
+                              {hasAnyHint && (
+                                <button
+                                  type="button"
+                                  className="btn-simple editor-btn-aristo-hint-clear"
+                                  onClick={handleClearHint}
+                                  title="Remove starter hint from the question prompt"
+                                >
+                                  ✕ Clear Hint
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
                     {/* Selected Quote Box */}
                     <div className="editor-quote-box">
                       <div className="editor-quote-meta-row">
@@ -1986,28 +2280,54 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                         type="text"
                         className="editor-input editor-prompt-input"
                         placeholder="Optional question prompt (e.g., Decode this Pigpen Cipher quote...)"
-                        maxLength={200}
+                        maxLength={240}
                         disabled={isContentLocked}
                         value={q.description}
-                        onChange={(e) =>
-                          handleUpdateQuestion(q.uid, { description: e.target.value })
-                        }
+                        onChange={(e) => {
+                          const nextVal = e.target.value;
+                          const nextGuidance =
+                            q.cipher === 'aristocrat' && !q.isPointsManual
+                              ? getQuestionPointGuidance(q.cipher, quote, {
+                                  otherPoints,
+                                  questionIndex: idx,
+                                  description: nextVal,
+                                })
+                              : null;
+                          handleUpdateQuestion(q.uid, {
+                            description: nextVal,
+                            ...(nextGuidance
+                              ? { points: nextGuidance.suggested }
+                              : {}),
+                          });
+                        }}
                         aria-label={`Question ${idx + 1} prompt`}
                       />
                       {!isContentLocked && (
                         <button
                           type="button"
                           className="btn-simple editor-btn-autoprompt"
-                          onClick={() =>
+                          onClick={() => {
+                            const nextDesc = buildAutoPrompt(
+                              q.cipher,
+                              q.isTiebreaker,
+                              quote?.author,
+                              q.vigenereKeyword
+                            );
+                            const nextGuidance =
+                              q.cipher === 'aristocrat' && !q.isPointsManual
+                                ? getQuestionPointGuidance(q.cipher, quote, {
+                                    otherPoints,
+                                    questionIndex: idx,
+                                    description: nextDesc,
+                                  })
+                                : null;
                             handleUpdateQuestion(q.uid, {
-                              description: buildAutoPrompt(
-                                q.cipher,
-                                q.isTiebreaker,
-                                quote?.author,
-                                q.vigenereKeyword
-                              ),
-                            })
-                          }
+                              description: nextDesc,
+                              ...(nextGuidance
+                                ? { points: nextGuidance.suggested }
+                                : {}),
+                            });
+                          }}
                           title="Fill default prompt for selected cipher and author"
                         >
                           ✨ Auto-Prompt
@@ -2044,7 +2364,27 @@ export const TestEditorView: React.FC<TestEditorViewProps> = ({
                                       sanitizeVigenereKeyword(q.vigenereKeyword) ||
                                       'KEY',
                                   }
-                                : undefined
+                                : q.cipher === 'aristocrat'
+                                  ? (() => {
+                                      const previewAlpha =
+                                        resolveEditableAristocratAlphabet(
+                                          q.aristocratAlphabet,
+                                          q.quoteId,
+                                          idx
+                                        );
+                                      return {
+                                        aristocratAlphabet: previewAlpha,
+                                        aristocratFrequencies:
+                                          computeCiphertextFrequencies(
+                                            aristocratEncryptText(
+                                              quote.quote,
+                                              previewAlpha
+                                            )
+                                          ),
+                                        aristocratDisabled: true,
+                                      };
+                                    })()
+                                  : undefined
                           }
                           quote={quote}
                           userInputs={EMPTY_INPUTS}

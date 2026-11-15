@@ -1,4 +1,5 @@
 import type {
+  AristocratCornerTuple,
   MemberPresence,
   QuestionResult,
   QuestionWorkspace,
@@ -10,6 +11,15 @@ import type {
   TestPacket,
   TestQuestion,
 } from '../types';
+import {
+  ALPHABET_LETTERS,
+  aristocratEncryptText,
+  deriveReplacementsFromInputs,
+  deserializeCornerTuple,
+  deterministicAristocratAlphabet,
+  isValidAristocratAlphabet,
+  serializeCornerTuple,
+} from './aristocrat';
 import { evaluateSolution, isLetter } from './ciphers';
 
 export interface ResolvedCohortInfo {
@@ -24,6 +34,7 @@ export interface PendingCellOp {
   qIdx: number;
   charIdx: number;
   row?: 'plain' | 'key';
+  fieldKey?: string;
   value: string;
   seq: number;
   editedAt: number;
@@ -125,6 +136,39 @@ export function getCellInputFieldKey(
   return row === 'key' ? `k${charIdx}` : String(charIdx);
 }
 
+export function resolveQuestionAristocratAlphabet(
+  q: TestQuestion,
+  qIdx: number
+): string {
+  return isValidAristocratAlphabet(q.aristocratAlphabet)
+    ? q.aristocratAlphabet
+    : deterministicAristocratAlphabet(q.quoteId + qIdx);
+}
+
+/**
+ * Strips all Aristocrat corner candidate notes across all workspaces (invoked upon submission).
+ */
+export function clearCornersInWorkspaces(
+  workspaces: Record<number, QuestionWorkspace>
+): Record<number, QuestionWorkspace> {
+  const cleaned: Record<number, QuestionWorkspace> = {};
+  for (const [key, ws] of Object.entries(workspaces)) {
+    const qIdx = Number(key);
+    if (!ws) continue;
+    const nextInputs = ws.inputs
+      ? Object.fromEntries(
+          Object.entries(ws.inputs).filter(([k]) => !k.startsWith('cor_'))
+        )
+      : undefined;
+    cleaned[qIdx] = {
+      ...ws,
+      ...(ws.aristocratCorners !== undefined ? { aristocratCorners: {} } : {}),
+      ...(nextInputs ? { inputs: nextInputs } : {}),
+    };
+  }
+  return cleaned;
+}
+
 /**
  * Reconstructs typed QuestionWorkspace objects for all questions on a test from raw
  * Firestore workspace data (supporting both per-cell `inputs` maps and legacy `userInputs` arrays).
@@ -132,7 +176,8 @@ export function getCellInputFieldKey(
 export function deserializeWorkspacesFromFirestore(
   rawWorkspaces: unknown,
   questions: readonly TestQuestion[],
-  getQuote: (quoteId: number) => Quote | undefined
+  getQuote: (quoteId: number) => Quote | undefined,
+  options?: { clearCorners?: boolean }
 ): Record<number, QuestionWorkspace> {
   const rawMap =
     rawWorkspaces && typeof rawWorkspaces === 'object'
@@ -201,6 +246,46 @@ export function deserializeWorkspacesFromFirestore(
           })
         : undefined;
 
+    let aristocratReplacements: Partial<Record<string, string>> | undefined;
+    let aristocratCorners: Partial<Record<string, AristocratCornerTuple>> | undefined;
+
+    if (q.cipher === 'aristocrat') {
+      const alpha = resolveQuestionAristocratAlphabet(q, idx);
+      const cipherChars = quote
+        ? aristocratEncryptText(quote.quote, alpha).split('')
+        : [];
+      const explicitReps: Partial<Record<string, string>> = {};
+      const cornersMap: Partial<Record<string, AristocratCornerTuple>> = {};
+
+      if (rawInputsMap) {
+        for (const cCh of ALPHABET_LETTERS) {
+          const repField = `rep_${cCh}`;
+          if (repField in rawInputsMap) {
+            const cleanRep = sanitizeLetterInput(rawInputsMap[repField]);
+            explicitReps[cCh] = cleanRep;
+            if (cleanRep) {
+              inputsRecord[repField] = cleanRep;
+            }
+          }
+          if (!options?.clearCorners) {
+            const corField = `cor_${cCh}`;
+            const parsedCorners = deserializeCornerTuple(rawInputsMap[corField]);
+            if (parsedCorners) {
+              cornersMap[cCh] = parsedCorners;
+              inputsRecord[corField] = serializeCornerTuple(parsedCorners);
+            }
+          }
+        }
+      }
+
+      aristocratReplacements = deriveReplacementsFromInputs(
+        userInputs,
+        cipherChars,
+        explicitReps
+      );
+      aristocratCorners = options?.clearCorners ? {} : cornersMap;
+    }
+
     const completed = totalAlpha > 0 && filledAlpha === totalAlpha;
     const lastEditedAt =
       typeof rawEntry?.lastEditedAt === 'number' ? rawEntry.lastEditedAt : 0;
@@ -210,6 +295,8 @@ export function deserializeWorkspacesFromFirestore(
     result[idx] = {
       userInputs,
       ...(keyInputs ? { keyInputs } : {}),
+      ...(aristocratReplacements ? { aristocratReplacements } : {}),
+      ...(aristocratCorners ? { aristocratCorners } : {}),
       inputs: inputsRecord,
       completed,
       lastEditedAt,
@@ -221,13 +308,14 @@ export function deserializeWorkspacesFromFirestore(
 }
 
 /**
- * Serializes in-memory workspaces into compact Firestore map structures (`inputs` keyed by charIdx / `k${charIdx}`)
+ * Serializes in-memory workspaces into compact Firestore map structures (`inputs` keyed by charIdx / `k${charIdx}` / `rep_${C}` / `cor_${C}`)
  * without arrays so concurrent dot-path updates never overwrite sibling cells.
  */
 export function serializeWorkspacesForFirestore(
   workspaces: Record<number, QuestionWorkspace>,
   questions: readonly TestQuestion[],
-  getQuote: (quoteId: number) => Quote | undefined
+  getQuote: (quoteId: number) => Quote | undefined,
+  options?: { clearCorners?: boolean }
 ): Record<string, Record<string, unknown>> {
   const serialized: Record<string, Record<string, unknown>> = {};
 
@@ -256,6 +344,25 @@ export function serializeWorkspacesForFirestore(
         }
       }
     });
+
+    if (q.cipher === 'aristocrat') {
+      if (ws.aristocratReplacements) {
+        for (const cCh of ALPHABET_LETTERS) {
+          const cleanRep = sanitizeLetterInput(ws.aristocratReplacements[cCh]);
+          if (cleanRep) {
+            inputs[`rep_${cCh}`] = cleanRep;
+          }
+        }
+      }
+      if (!options?.clearCorners && ws.aristocratCorners) {
+        for (const cCh of ALPHABET_LETTERS) {
+          const encoded = serializeCornerTuple(ws.aristocratCorners[cCh]);
+          if (encoded) {
+            inputs[`cor_${cCh}`] = encoded;
+          }
+        }
+      }
+    }
 
     const entry: Record<string, unknown> = {
       inputs,
@@ -323,15 +430,50 @@ export function applyPendingCellOps(
           : q?.cipher === 'vigenere'
             ? { keyInputs: chars.map((ch) => (isLetter(ch) ? '' : ch)) }
             : {}),
+        ...(existing.aristocratReplacements || q?.cipher === 'aristocrat'
+          ? { aristocratReplacements: { ...(existing.aristocratReplacements ?? {}) } }
+          : {}),
+        ...(existing.aristocratCorners || q?.cipher === 'aristocrat'
+          ? { aristocratCorners: { ...(existing.aristocratCorners ?? {}) } }
+          : {}),
         inputs: { ...(existing.inputs ?? {}) },
       };
       touchedQuestions.add(op.qIdx);
     }
+
     const target = cloned[op.qIdx];
     const rowKind = op.row ?? 'plain';
-    const fieldKey = getCellInputFieldKey(op.charIdx, rowKind);
+    const fieldKey = op.fieldKey ?? getCellInputFieldKey(op.charIdx, rowKind);
 
-    if (rowKind === 'key') {
+    if (fieldKey.startsWith('rep_')) {
+      const cCh = fieldKey.slice(4).toUpperCase();
+      if (isLetter(cCh) && target.aristocratReplacements) {
+        const cleanVal = sanitizeLetterInput(op.value);
+        if (cleanVal) {
+          target.aristocratReplacements[cCh] = cleanVal;
+          if (target.inputs) target.inputs[fieldKey] = cleanVal;
+        } else {
+          delete target.aristocratReplacements[cCh];
+          if (target.inputs) delete target.inputs[fieldKey];
+        }
+        target.lastEditedAt = Math.max(target.lastEditedAt, op.editedAt);
+        if (op.editedBy) target.lastEditedBy = op.editedBy;
+      }
+    } else if (fieldKey.startsWith('cor_')) {
+      const cCh = fieldKey.slice(4).toUpperCase();
+      if (isLetter(cCh) && target.aristocratCorners) {
+        const parsed = deserializeCornerTuple(op.value);
+        if (parsed) {
+          target.aristocratCorners[cCh] = parsed;
+          if (target.inputs) target.inputs[fieldKey] = serializeCornerTuple(parsed);
+        } else {
+          delete target.aristocratCorners[cCh];
+          if (target.inputs) delete target.inputs[fieldKey];
+        }
+        target.lastEditedAt = Math.max(target.lastEditedAt, op.editedAt);
+        if (op.editedBy) target.lastEditedBy = op.editedBy;
+      }
+    } else if (rowKind === 'key') {
       if (target.keyInputs && op.charIdx >= 0 && op.charIdx < target.keyInputs.length) {
         target.keyInputs[op.charIdx] = op.value;
         if (target.inputs) {
@@ -476,9 +618,12 @@ export function normalizeTestAttempt(
       ? statusRaw
       : 'in_progress';
 
+  const isDone = status === 'submitted' || status === 'expired';
   const workspaces: Record<number, QuestionWorkspace> =
     questions && getQuote
-      ? deserializeWorkspacesFromFirestore(raw.workspaces, questions, getQuote)
+      ? deserializeWorkspacesFromFirestore(raw.workspaces, questions, getQuote, {
+          clearCorners: isDone,
+        })
       : ((raw.workspaces as Record<number, QuestionWorkspace> | undefined) ?? {});
 
   return {

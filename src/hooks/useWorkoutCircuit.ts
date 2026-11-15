@@ -6,6 +6,7 @@ import {
 } from '../utils/workoutWeights';
 import type { DrillSection } from '../utils/routing';
 import type {
+  AristocratDifficulty,
   CipherType,
   LetterMathMode,
   OffsetsMode,
@@ -22,6 +23,7 @@ interface WorkoutSession {
   startTime: number;
   offsetsMode?: OffsetsMode;
   letterMathMode?: LetterMathMode;
+  aristocratDifficulty?: AristocratDifficulty;
 }
 
 interface UseWorkoutCircuitOptions {
@@ -32,9 +34,15 @@ interface UseWorkoutCircuitOptions {
     quoteId?: number,
     replaceHistory?: boolean,
     offsetsMode?: OffsetsMode,
-    letterMathMode?: LetterMathMode
+    letterMathMode?: LetterMathMode,
+    caesarRange?: undefined,
+    aristocratDifficulty?: AristocratDifficulty
   ) => void;
   onExitToMenu: () => void;
+}
+
+function pickWorkoutAristocratDifficulty(): AristocratDifficulty {
+  return Math.random() < 0.65 ? 'easy' : 'medium';
 }
 
 export function useWorkoutCircuit({
@@ -82,11 +90,17 @@ export function useWorkoutCircuit({
         currentCipher === 'offsets'
           ? 'Letter Offsets'
           : currentCipher === 'letterMath'
-          ? workoutSession.letterMathMode === 'letterEasy' ||
-            workoutSession.letterMathMode === 'letterHard'
-            ? 'ABC ± ABC'
-            : 'ABC ± #'
-          : getDrill(currentCipher).shortTitle;
+            ? workoutSession.letterMathMode === 'letterEasy' ||
+              workoutSession.letterMathMode === 'letterHard'
+              ? 'ABC ± ABC'
+              : 'ABC ± #'
+            : currentCipher === 'aristocrat' && workoutSession.aristocratDifficulty
+              ? `Aristocrat (${
+                  workoutSession.aristocratDifficulty === 'medium'
+                    ? 'Medium'
+                    : 'Easy'
+                })`
+              : getDrill(currentCipher).shortTitle;
 
       const recordedResult: WorkoutStepResult = {
         cipherId: currentCipher,
@@ -100,12 +114,26 @@ export function useWorkoutCircuit({
 
       if (nextStepIndex < workoutSession.steps.length) {
         const nextCipher = workoutSession.steps[nextStepIndex];
+        const nextAristocratDifficulty =
+          nextCipher === 'aristocrat'
+            ? pickWorkoutAristocratDifficulty()
+            : undefined;
         setWorkoutSession({
           ...workoutSession,
           currentStepIndex: nextStepIndex,
           results: updatedResults,
+          aristocratDifficulty: nextAristocratDifficulty,
         });
-        onNavigateToDrill(nextCipher, 'cipher', undefined, true);
+        onNavigateToDrill(
+          nextCipher,
+          'cipher',
+          undefined,
+          true,
+          undefined,
+          undefined,
+          undefined,
+          nextAristocratDifficulty
+        );
       } else {
         const totalTimeSeconds = Math.round((Date.now() - workoutSession.startTime) / 1000);
         setWorkoutSummary({
@@ -136,6 +164,7 @@ export function useWorkoutCircuit({
       totalSteps: workoutSession.steps.length,
       offsetsMode: workoutSession.offsetsMode,
       letterMathMode: workoutSession.letterMathMode,
+      aristocratDifficulty: workoutSession.aristocratDifficulty,
       nextCipherTitle:
         workoutSession.currentStepIndex + 1 < workoutSession.steps.length
           ? getDrill(workoutSession.steps[workoutSession.currentStepIndex + 1]).shortTitle

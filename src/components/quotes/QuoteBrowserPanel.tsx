@@ -102,7 +102,8 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
   onSelectQuote,
 }) => {
   const allQuotes = useMemo(() => getAllQuotes(), []);
-  const defaultPickerMaxLen = String(MAX_LOOKUP_LENGTH);
+  const defaultPickerMaxLen =
+    targetCipher === 'aristocrat' ? '' : String(MAX_LOOKUP_LENGTH);
 
   const validQuoteIds = useMemo(
     () => new Set(allQuotes.map((q) => q.id)),
@@ -157,7 +158,13 @@ export const QuoteBrowserPanel: React.FC<QuoteBrowserPanelProps> = ({
     initialPrefs.tierFilter
   );
   const [minLength, setMinLength] = useState<string>(initialPrefs.minLength);
-  const [maxLength, setMaxLength] = useState<string>(initialPrefs.maxLength);
+  const [maxLength, setMaxLength] = useState<string>(() =>
+    mode === 'picker' &&
+    targetCipher === 'aristocrat' &&
+    initialPrefs.maxLength === String(MAX_LOOKUP_LENGTH)
+      ? ''
+      : initialPrefs.maxLength
+  );
   const [minChi, setMinChi] = useState<string>(initialPrefs.minChi);
   const [maxChi, setMaxChi] = useState<string>(initialPrefs.maxChi);
   const [minWordFilter, setMinWordFilter] = useState<QuoteBrowserMinWordFilter>(

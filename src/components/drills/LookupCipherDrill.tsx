@@ -1,10 +1,19 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { DrillHeader } from './shared/DrillHeader';
+import { DrillOverflowMenu, type DrillModeOption } from './shared/DrillOverflowMenu';
 import { CollapsibleReference } from './shared/CollapsibleReference';
 import { ReferenceSheet } from './shared/ReferenceSheet';
 import { DrillActionRow } from './shared/DrillActionRow';
 import { ResultBanner } from './shared/ResultBanner';
 import { QuoteTileGrid } from './shared/QuoteTileGrid';
+import {
+  applyAristocratEdit,
+  aristocratEncryptText,
+  computeCiphertextFrequencies,
+  deterministicAristocratAlphabet,
+  generateAristocratAlphabet,
+  generateAristocratHint,
+} from '../../utils/aristocrat';
 import {
   deterministicCaesarOffset,
   deterministicVigenereKeyword,
@@ -14,10 +23,14 @@ import {
   pickRandomVigenereKeyword,
   shouldCountQuoteCompleted,
 } from '../../utils/ciphers';
+import { isAristocratDifficulty } from '../../utils/routing';
 import { pickLookupQuote } from '../../data/quotes';
 import { getDrill, type TestableCipherType } from '../../data/drills';
 import { saveCompletedQuoteId, recordCipherPractice } from '../../services/storage';
 import type {
+  AristocratDifficulty,
+  AristocratEditAction,
+  AristocratWorkspaceState,
   CaesarRangeMode,
   CipherWorkspaceParams,
   EvaluationResult,
@@ -25,9 +38,23 @@ import type {
   WorkoutStepContext,
 } from '../../types';
 
+const ARISTOCRAT_DIFFICULTY_OPTIONS: readonly DrillModeOption<AristocratDifficulty>[] = [
+  { id: 'easy', label: 'Easy' },
+  { id: 'medium', label: 'Medium' },
+  { id: 'hard', label: 'Hard' },
+];
+
+const ARISTOCRAT_DIFFICULTY_LABELS: Record<AristocratDifficulty, string> = {
+  easy: 'Easy',
+  medium: 'Medium',
+  hard: 'Hard',
+};
+
 interface LookupCipherDrillProps {
   cipher: TestableCipherType;
   caesarRange?: CaesarRangeMode;
+  aristocratDifficulty?: AristocratDifficulty;
+  onAristocratDifficultyChange?: (nextMode: AristocratDifficulty) => void;
   onBack: () => void;
   initialQuoteId?: number;
   onQuoteChange?: (quoteId: number) => void;
@@ -40,19 +67,27 @@ interface PuzzleState {
   keyInputs: string[];
   caesarOffset?: number;
   vigenereKeyword?: string;
+  aristocratAlphabet?: string;
+  aristocratCipherChars?: string[];
+  aristocratFrequencies?: Record<string, number>;
+  aristocratState?: AristocratWorkspaceState;
+  aristocratHint?: string | null;
 }
 
 function freshPuzzle(
   quote: Quote,
   cipher: TestableCipherType,
   caesarRange: CaesarRangeMode,
+  aristocratDifficulty: AristocratDifficulty,
   options?: {
     deterministic?: boolean;
     prevOffset?: number;
     prevKeyword?: string;
+    prevAlphabet?: string;
   }
 ): PuzzleState {
   const chars = quote.quote.toUpperCase().split('');
+  const emptyInputs = chars.map((c) => (isLetter(c) ? '' : c));
   const caesarOffset =
     cipher === 'caesar'
       ? options?.deterministic
@@ -65,9 +100,38 @@ function freshPuzzle(
         ? deterministicVigenereKeyword(quote.id)
         : pickRandomVigenereKeyword(options?.prevKeyword)
       : undefined;
+
+  if (cipher === 'aristocrat') {
+    const aristocratAlphabet = options?.deterministic
+      ? deterministicAristocratAlphabet(quote.id)
+      : generateAristocratAlphabet(Math.random, options?.prevAlphabet);
+    const cipherText = aristocratEncryptText(quote.quote, aristocratAlphabet);
+    const aristocratCipherChars = cipherText.split('');
+    const aristocratFrequencies = computeCiphertextFrequencies(cipherText);
+    const aristocratHint = generateAristocratHint(
+      quote,
+      aristocratAlphabet,
+      aristocratDifficulty
+    );
+    return {
+      quote,
+      userInputs: emptyInputs,
+      keyInputs: chars.map((c) => (isLetter(c) ? '' : c)),
+      aristocratAlphabet,
+      aristocratCipherChars,
+      aristocratFrequencies,
+      aristocratState: {
+        userInputs: emptyInputs,
+        replacements: {},
+        corners: {},
+      },
+      aristocratHint,
+    };
+  }
+
   return {
     quote,
-    userInputs: chars.map((c) => (isLetter(c) ? '' : c)),
+    userInputs: emptyInputs,
     keyInputs: chars.map((c) => (isLetter(c) ? '' : c)),
     caesarOffset,
     vigenereKeyword,
@@ -79,22 +143,40 @@ const EMPTY_USER_INPUTS: string[] = [];
 export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
   cipher,
   caesarRange = 'pm3',
+  aristocratDifficulty,
+  onAristocratDifficultyChange,
   onBack,
   initialQuoteId,
   onQuoteChange,
   workoutContext,
 }) => {
+  const effectiveAristocratDifficulty: AristocratDifficulty =
+    workoutContext?.aristocratDifficulty ?? aristocratDifficulty ?? 'easy';
+
   const [initialResolved] = useState<{
     quote: Quote | null;
     notFoundId?: number;
     deterministic?: boolean;
   }>(() => {
     if (initialQuoteId !== undefined) {
-      const q = pickLookupQuote(initialQuoteId, undefined, cipher);
+      const q = pickLookupQuote(
+        initialQuoteId,
+        undefined,
+        cipher,
+        effectiveAristocratDifficulty
+      );
       if (q) return { quote: q, deterministic: true };
       return { quote: null, notFoundId: initialQuoteId };
     }
-    return { quote: pickLookupQuote(undefined, undefined, cipher), deterministic: false };
+    return {
+      quote: pickLookupQuote(
+        undefined,
+        undefined,
+        cipher,
+        effectiveAristocratDifficulty
+      ),
+      deterministic: false,
+    };
   });
 
   const [notFoundId, setNotFoundId] = useState<number | undefined>(
@@ -102,14 +184,38 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
   );
   const [puzzle, setPuzzle] = useState<PuzzleState | null>(() =>
     initialResolved.quote
-      ? freshPuzzle(initialResolved.quote, cipher, caesarRange, {
-          deterministic: initialResolved.deterministic,
-        })
+      ? freshPuzzle(
+          initialResolved.quote,
+          cipher,
+          caesarRange,
+          effectiveAristocratDifficulty,
+          {
+            deterministic: initialResolved.deterministic,
+          }
+        )
       : null
   );
+  const [activeCipherLetter, setActiveCipherLetter] = useState<string | null>(
+    null
+  );
+  const [tableFocusNonce, setTableFocusNonce] = useState<number>(0);
+
+  const handleSelectAristocratCipherLetter = useCallback(
+    (letter: string | null, source?: 'table' | 'grid') => {
+      setActiveCipherLetter(letter);
+      if (source === 'table') {
+        setTableFocusNonce((n) => n + 1);
+      }
+    },
+    []
+  );
+
   const quote = puzzle?.quote;
   const quoteId = quote?.id;
-  const userInputs = puzzle?.userInputs ?? EMPTY_USER_INPUTS;
+  const userInputs =
+    cipher === 'aristocrat'
+      ? puzzle?.aristocratState?.userInputs ?? EMPTY_USER_INPUTS
+      : puzzle?.userInputs ?? EMPTY_USER_INPUTS;
   const keyInputs = puzzle?.keyInputs ?? EMPTY_USER_INPUTS;
   const [result, setResult] = useState<EvaluationResult | null>(null);
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
@@ -140,6 +246,25 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
   ).length;
   const isAllFilled = totalLetters > 0 && filledLetters === totalLetters;
 
+  const handleAristocratEdit = useCallback((action: AristocratEditAction) => {
+    setPuzzle((prev) => {
+      if (!prev || !prev.aristocratState || !prev.aristocratCipherChars) {
+        return prev;
+      }
+      const nextAristo = applyAristocratEdit(
+        prev.aristocratState,
+        action,
+        prev.aristocratCipherChars,
+        'linked'
+      );
+      return {
+        ...prev,
+        userInputs: nextAristo.userInputs,
+        aristocratState: nextAristo,
+      };
+    });
+  }, []);
+
   const cipherParams = useMemo<CipherWorkspaceParams | undefined>(() => {
     if (cipher === 'caesar') {
       return { caesarOffset: puzzle?.caesarOffset ?? 1, caesarRange };
@@ -147,25 +272,79 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     if (cipher === 'vigenere') {
       return { vigenereKeyword: puzzle?.vigenereKeyword ?? 'KEY' };
     }
+    if (cipher === 'aristocrat') {
+      return {
+        aristocratAlphabet: puzzle?.aristocratAlphabet,
+        aristocratFrequencies: puzzle?.aristocratFrequencies,
+        aristocratReplacements: puzzle?.aristocratState?.replacements,
+        aristocratCorners: puzzle?.aristocratState?.corners,
+        aristocratActiveCipherLetter: activeCipherLetter,
+        aristocratTableFocusNonce: tableFocusNonce,
+        aristocratDisabled: isSubmitted,
+        onAristocratEdit: handleAristocratEdit,
+        onSelectAristocratCipherLetter: handleSelectAristocratCipherLetter,
+      };
+    }
     return undefined;
-  }, [caesarRange, cipher, puzzle?.caesarOffset, puzzle?.vigenereKeyword]);
+  }, [
+    activeCipherLetter,
+    caesarRange,
+    cipher,
+    handleAristocratEdit,
+    handleSelectAristocratCipherLetter,
+    isSubmitted,
+    puzzle?.aristocratAlphabet,
+    puzzle?.aristocratFrequencies,
+    puzzle?.aristocratState?.corners,
+    puzzle?.aristocratState?.replacements,
+    puzzle?.caesarOffset,
+    puzzle?.vigenereKeyword,
+    tableFocusNonce,
+  ]);
 
   const loadNewQuote = useCallback(() => {
-    const nextQ = pickLookupQuote(undefined, quoteId, cipher);
+    const nextQ = pickLookupQuote(
+      undefined,
+      quoteId,
+      cipher,
+      effectiveAristocratDifficulty
+    );
     if (nextQ) {
       setNotFoundId(undefined);
       setPuzzle((prev) =>
-        freshPuzzle(nextQ, cipher, caesarRange, {
-          prevOffset: prev?.caesarOffset,
-          prevKeyword: prev?.vigenereKeyword,
-        })
+        freshPuzzle(
+          nextQ,
+          cipher,
+          caesarRange,
+          effectiveAristocratDifficulty,
+          {
+            prevOffset: prev?.caesarOffset,
+            prevKeyword: prev?.vigenereKeyword,
+            prevAlphabet: prev?.aristocratAlphabet,
+          }
+        )
       );
+      setActiveCipherLetter(null);
       setResult(null);
       setIsSubmitted(false);
       startTimeRef.current = Date.now();
       onQuoteChange?.(nextQ.id);
     }
-  }, [caesarRange, cipher, onQuoteChange, quoteId]);
+  }, [
+    caesarRange,
+    cipher,
+    effectiveAristocratDifficulty,
+    onQuoteChange,
+    quoteId,
+  ]);
+
+  const handleSelectAristocratDifficulty = useCallback(
+    (modeId: string) => {
+      if (!isAristocratDifficulty(modeId)) return;
+      onAristocratDifficultyChange?.(modeId);
+    },
+    [onAristocratDifficultyChange]
+  );
 
   const handleNext = useCallback(() => {
     if (workoutContext) {
@@ -177,15 +356,43 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
         timeSeconds: elapsed,
         accuracy,
         author: quote?.author,
+        ...(cipher === 'aristocrat'
+          ? { aristocratDifficulty: effectiveAristocratDifficulty }
+          : {}),
       });
     } else {
       loadNewQuote();
     }
-  }, [workoutContext, result, quote?.author, loadNewQuote]);
+  }, [
+    workoutContext,
+    result,
+    quote?.author,
+    cipher,
+    effectiveAristocratDifficulty,
+    loadNewQuote,
+  ]);
 
   const handleSubmit = useCallback(() => {
     if (!quote || isSubmitted || !isAllFilled) return;
     const res = evaluateSolution(quote.quote, userInputs.join(''));
+    if (cipher === 'aristocrat') {
+      // Clear all corner candidate notes on submission so only Center guesses display
+      setPuzzle((prev) => {
+        if (!prev || !prev.aristocratState || !prev.aristocratCipherChars) {
+          return prev;
+        }
+        return {
+          ...prev,
+          aristocratState: applyAristocratEdit(
+            prev.aristocratState,
+            { kind: 'clearAllCorners' },
+            prev.aristocratCipherChars,
+            'linked'
+          ),
+        };
+      });
+      setActiveCipherLetter(null);
+    }
     setResult(res);
     setIsSubmitted(true);
     if (shouldCountQuoteCompleted(res)) {
@@ -207,7 +414,30 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
       ? caesarRange === 'any'
         ? 'Caesar (Any)'
         : 'Caesar (±3)'
-      : getDrill(cipher).shortTitle;
+      : cipher === 'aristocrat'
+        ? `Aristocrat (${ARISTOCRAT_DIFFICULTY_LABELS[effectiveAristocratDifficulty]})`
+        : getDrill(cipher).shortTitle;
+
+  const rightControls = workoutContext ? (
+    <span className="workout-step-tag">Round {workoutContext.round}</span>
+  ) : (
+    <div className="drill-header-actions-group">
+      <button
+        className="btn-simple btn-reload"
+        onClick={loadNewQuote}
+        title="New Quote"
+      >
+        New ↻
+      </button>
+      {cipher === 'aristocrat' && onAristocratDifficultyChange && (
+        <DrillOverflowMenu
+          modeOptions={ARISTOCRAT_DIFFICULTY_OPTIONS}
+          activeMode={effectiveAristocratDifficulty}
+          onSelectMode={handleSelectAristocratDifficulty}
+        />
+      )}
+    </div>
+  );
 
   if (notFoundId !== undefined && !puzzle) {
     return (
@@ -215,15 +445,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
         <DrillHeader
           title={baseTitle}
           onBack={onBack}
-          right={
-            <button
-              className="btn-simple btn-reload"
-              onClick={loadNewQuote}
-              title="Pick Random Quote"
-            >
-              New ↻
-            </button>
-          }
+          right={rightControls}
         />
 
         <div className="quote-not-found-card">
@@ -253,24 +475,16 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
             : baseTitle
         }
         onBack={onBack}
-        right={
-          workoutContext ? (
-            <span className="workout-step-tag">Round {workoutContext.round}</span>
-          ) : (
-            <button
-              className="btn-simple btn-reload"
-              onClick={loadNewQuote}
-              title="New Quote"
-            >
-              New ↻
-            </button>
-          )
-        }
+        right={rightControls}
       />
 
       <CollapsibleReference
         className="sticky-ref-container reference-sheet"
-        showLabel="Show Reference Table"
+        showLabel={
+          cipher === 'aristocrat'
+            ? 'Show Replacement & Frequency Tables'
+            : 'Show Reference Table'
+        }
       >
         <ReferenceSheet cipher={cipher} cipherParams={cipherParams} />
       </CollapsibleReference>
@@ -284,6 +498,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
         onChangeKeyInputs={
           cipher === 'vigenere' ? handleChangeKeyInputs : undefined
         }
+        hintText={cipher === 'aristocrat' ? puzzle.aristocratHint : undefined}
         disabled={isSubmitted}
         showEvaluation={isSubmitted}
         onEnterSubmit={handleSubmit}

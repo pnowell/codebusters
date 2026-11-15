@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
+  AristocratEditAction,
   MemberPresence,
   QuestionWorkspace,
   TestAttempt,
@@ -7,6 +8,12 @@ import type {
   TestPacket,
 } from '../../types';
 import { getQuoteById } from '../../data/quotes';
+import {
+  ALPHABET_LETTERS,
+  applyAristocratEdit,
+  aristocratEncryptText,
+  serializeCornerTuple,
+} from '../../utils/aristocrat';
 import { formatClock } from '../../utils/format';
 import { getQuestionProgress } from '../../utils/testProgress';
 import {
@@ -15,6 +22,7 @@ import {
   diffQuestionInputs,
   getActiveTeammateUidsForTab,
   PRESENCE_STALE_MS,
+  resolveQuestionAristocratAlphabet,
   resolveTeamNameForMembers,
   resolveUserCohort,
   type PendingCellOp,
@@ -551,6 +559,124 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
     }, CELL_FLUSH_DEBOUNCE_MS);
   };
 
+  const handleAristocratEdit = (action: AristocratEditAction) => {
+    if (isFinished || isSpectator) return;
+    const question = testPacket.questions[activeQIndex];
+    if (!question || question.cipher !== 'aristocrat') return;
+    const quote = getQuoteById(question.quoteId);
+    if (!quote) return;
+
+    const alpha = resolveQuestionAristocratAlphabet(question, activeQIndex);
+    const cipherChars = aristocratEncryptText(quote.quote, alpha).split('');
+    const prevWs = workspaces[activeQIndex];
+    const prevInputs = prevWs?.userInputs ?? [];
+    const prevReps = prevWs?.aristocratReplacements ?? {};
+    const prevCorners = prevWs?.aristocratCorners ?? {};
+
+    const nextAristo = applyAristocratEdit(
+      {
+        userInputs: prevInputs,
+        replacements: prevReps,
+        corners: prevCorners,
+      },
+      action,
+      cipherChars,
+      'linked'
+    );
+
+    const now = Date.now();
+    const editedBy = currentUid !== 'student' ? currentUid : undefined;
+    let hasChanges = false;
+
+    const charDiffs = diffQuestionInputs(prevInputs, nextAristo.userInputs);
+    for (const diff of charDiffs) {
+      hasChanges = true;
+      opSeqRef.current += 1;
+      pendingCellOpsRef.current.set(`${activeQIndex}:${diff.charIdx}`, {
+        qIdx: activeQIndex,
+        charIdx: diff.charIdx,
+        row: 'plain',
+        value: diff.value,
+        seq: opSeqRef.current,
+        editedAt: now,
+        editedBy,
+      });
+    }
+
+    for (const cCh of ALPHABET_LETTERS) {
+      const prevRepVal = prevReps[cCh] ?? '';
+      const nextRepVal = nextAristo.replacements[cCh] ?? '';
+      if (prevRepVal !== nextRepVal) {
+        hasChanges = true;
+        opSeqRef.current += 1;
+        const fieldKey = `rep_${cCh}`;
+        pendingCellOpsRef.current.set(`${activeQIndex}:${fieldKey}`, {
+          qIdx: activeQIndex,
+          charIdx: -1,
+          fieldKey,
+          value: nextRepVal,
+          seq: opSeqRef.current,
+          editedAt: now,
+          editedBy,
+        });
+      }
+
+      const prevCorEnc = serializeCornerTuple(prevCorners[cCh]);
+      const nextCorEnc = serializeCornerTuple(nextAristo.corners[cCh]);
+      if (prevCorEnc !== nextCorEnc) {
+        hasChanges = true;
+        opSeqRef.current += 1;
+        const fieldKey = `cor_${cCh}`;
+        pendingCellOpsRef.current.set(`${activeQIndex}:${fieldKey}`, {
+          qIdx: activeQIndex,
+          charIdx: -1,
+          fieldKey,
+          value: nextCorEnc,
+          seq: opSeqRef.current,
+          editedAt: now,
+          editedBy,
+        });
+      }
+    }
+
+    if (!hasChanges) return;
+
+    const { isComplete } = getQuestionProgress(question, nextAristo.userInputs);
+    pendingMetaRef.current[activeQIndex] = {
+      completed: isComplete,
+      lastEditedAt: now,
+      ...(editedBy ? { lastEditedBy: editedBy } : {}),
+    };
+
+    const nextWorkspaces: Record<number, QuestionWorkspace> = {
+      ...workspaces,
+      [activeQIndex]: {
+        userInputs: nextAristo.userInputs,
+        aristocratReplacements: nextAristo.replacements,
+        aristocratCorners: nextAristo.corners,
+        completed: isComplete,
+        lastEditedAt: now,
+        ...(editedBy ? { lastEditedBy: editedBy } : {}),
+      },
+    };
+
+    setWorkspaces(nextWorkspaces);
+
+    if (currentUid === 'student') {
+      saveLocalTestAttempt({
+        ...attemptRef.current,
+        workspaces: nextWorkspaces,
+      });
+    }
+
+    if (flushTimerRef.current) {
+      clearTimeout(flushTimerRef.current);
+    }
+    flushTimerRef.current = setTimeout(() => {
+      void flushPendingEdits();
+    }, CELL_FLUSH_DEBOUNCE_MS);
+  };
+
   const switchTab = (nextIndex: number) => {
     if (nextIndex === activeQIndex) return;
     if (pendingCellOpsRef.current.size > 0) {
@@ -933,11 +1059,15 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
             <TestCipherWorkspace
               key={currentQuestion.questionNumber}
               question={currentQuestion}
+              questionIndex={activeQIndex}
               quote={currentQuote}
               userInputs={currentWorkspace.userInputs}
               onChangeUserInputs={handleUserInputsChange}
               keyInputs={currentWorkspace.keyInputs}
               onChangeKeyInputs={handleKeyInputsChange}
+              aristocratReplacements={currentWorkspace.aristocratReplacements}
+              aristocratCorners={currentWorkspace.aristocratCorners}
+              onAristocratEdit={handleAristocratEdit}
               disabled={isFinished || isSpectator}
             />
           )}

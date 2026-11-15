@@ -3,6 +3,7 @@ import { PigpenGlyph } from '../../symbols/PigpenGlyph';
 import { GalacticGlyph } from '../../symbols/GalacticGlyph';
 import { TapCodeGlyph } from '../../symbols/TapCodeGlyph';
 import { KnightsTemplarGlyph } from '../../symbols/KnightsTemplarGlyph';
+import { aristocratEncryptChar } from '../../../utils/aristocrat';
 import {
   atbashChar,
   caesarChar,
@@ -36,6 +37,8 @@ export const CipherGlyph: React.FC<CipherGlyphProps> = ({
       return <>{caesarChar(upper, cipherParams?.caesarOffset ?? 1)}</>;
     case 'vigenere':
       return <>{vigenereEncryptChar(upper, cipherParams?.vigenereKeyChar ?? 'A')}</>;
+    case 'aristocrat':
+      return <>{aristocratEncryptChar(upper, cipherParams?.aristocratAlphabet)}</>;
     case 'pigpen':
       return <PigpenGlyph letter={upper} size={size} color={color} />;
     case 'galactic':

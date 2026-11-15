@@ -28,6 +28,11 @@ import type {
   TestQuestion,
 } from '../types';
 import {
+  deterministicAristocratAlphabet,
+  isValidAristocratAlphabet,
+  sanitizeAristocratAlphabet,
+} from '../utils/aristocrat';
+import {
   deterministicCaesarOffset,
   deterministicVigenereKeyword,
   isValidCaesarPm3Offset,
@@ -35,12 +40,14 @@ import {
   sanitizeVigenereKeyword,
 } from '../utils/ciphers';
 import {
+  clearCornersInWorkspaces,
   evaluateTestPacket,
   getCellInputFieldKey,
   getCohortAttemptId,
   normalizeTestAttempt,
   normalizeUidList,
   resolveUserCohort,
+  serializeWorkspacesForFirestore,
   type PendingCellOp,
 } from '../utils/testSync';
 
@@ -181,6 +188,13 @@ function normalizeTestQuestions(raw: unknown): TestQuestion[] {
           ? cleanedVigKey
           : deterministicVigenereKeyword(quoteId + index)
         : undefined;
+    const cleanedAristoAlpha = sanitizeAristocratAlphabet(obj.aristocratAlphabet);
+    const aristocratAlphabet =
+      cipher === 'aristocrat'
+        ? isValidAristocratAlphabet(cleanedAristoAlpha)
+          ? cleanedAristoAlpha
+          : deterministicAristocratAlphabet(quoteId + index)
+        : undefined;
     const description =
       typeof obj.description === 'string' && obj.description.trim().length > 0
         ? obj.description.trim().slice(0, 240)
@@ -193,6 +207,7 @@ function normalizeTestQuestions(raw: unknown): TestQuestion[] {
       points,
       ...(caesarOffset !== undefined ? { caesarOffset } : {}),
       ...(vigenereKeyword !== undefined ? { vigenereKeyword } : {}),
+      ...(aristocratAlphabet !== undefined ? { aristocratAlphabet } : {}),
       ...(isTiebreaker ? { isTiebreaker: true } : {}),
       ...(description ? { description } : {}),
     });
@@ -600,7 +615,7 @@ export async function flushWorkspaceCellOps(
 
     const touchedQuestions = new Set<number>();
     for (const op of ops) {
-      const fieldKey = getCellInputFieldKey(op.charIdx, op.row);
+      const fieldKey = op.fieldKey ?? getCellInputFieldKey(op.charIdx, op.row);
       payload[`workspaces.${op.qIdx}.inputs.${fieldKey}`] = op.value;
       touchedQuestions.add(op.qIdx);
     }
@@ -665,15 +680,17 @@ export async function setEarlySubmitReadyState(
   if (!db || currentUid === 'student') {
     if (!ready || !localFallbackAttempt) return localFallbackAttempt ?? null;
     const now = Date.now();
+    const cleanedWs = clearCornersInWorkspaces(localFallbackAttempt.workspaces);
     const evaluated = evaluateTestPacket(
       testPacket,
-      localFallbackAttempt.workspaces,
+      cleanedWs,
       localFallbackAttempt.startedAt,
       getQuote,
       now
     );
     const finalized: TestAttempt = {
       ...localFallbackAttempt,
+      workspaces: cleanedWs,
       submittedAt: now,
       status: 'submitted',
       results: evaluated,
@@ -717,9 +734,10 @@ export async function setEarlySubmitReadyState(
 
     if (allConfirmed) {
       const submittedAt = Date.now();
+      const cleanedWs = clearCornersInWorkspaces(existing.workspaces);
       const evaluated = evaluateTestPacket(
         testPacket,
-        existing.workspaces,
+        cleanedWs,
         existing.startedAt,
         getQuote,
         submittedAt
@@ -730,12 +748,19 @@ export async function setEarlySubmitReadyState(
           status: 'submitted',
           submittedAt,
           submitReadyUids: nextVotes,
+          workspaces: serializeWorkspacesForFirestore(
+            cleanedWs,
+            testPacket.questions,
+            getQuote,
+            { clearCorners: true }
+          ),
           results: evaluated,
           updatedAt: serverTimestamp(),
         })
       );
       return {
         ...existing,
+        workspaces: cleanedWs,
         status: 'submitted',
         submittedAt,
         submitReadyUids: nextVotes,
@@ -771,15 +796,17 @@ export async function expireTestAttemptTransaction(
   if (!db || currentUid === 'student') {
     if (!localFallbackAttempt) return null;
     const now = Date.now();
+    const cleanedWs = clearCornersInWorkspaces(localFallbackAttempt.workspaces);
     const evaluated = evaluateTestPacket(
       testPacket,
-      localFallbackAttempt.workspaces,
+      cleanedWs,
       localFallbackAttempt.startedAt,
       getQuote,
       now
     );
     const expired: TestAttempt = {
       ...localFallbackAttempt,
+      workspaces: cleanedWs,
       submittedAt: now,
       status: 'expired',
       results: evaluated,
@@ -806,9 +833,10 @@ export async function expireTestAttemptTransaction(
     }
 
     const submittedAt = Date.now();
+    const cleanedWs = clearCornersInWorkspaces(existing.workspaces);
     const evaluated = evaluateTestPacket(
       testPacket,
-      existing.workspaces,
+      cleanedWs,
       existing.startedAt,
       getQuote,
       submittedAt
@@ -819,6 +847,12 @@ export async function expireTestAttemptTransaction(
       withVersionStamp({
         status: 'expired',
         submittedAt,
+        workspaces: serializeWorkspacesForFirestore(
+          cleanedWs,
+          testPacket.questions,
+          getQuote,
+          { clearCorners: true }
+        ),
         results: evaluated,
         updatedAt: serverTimestamp(),
       })
@@ -826,6 +860,7 @@ export async function expireTestAttemptTransaction(
 
     return {
       ...existing,
+      workspaces: cleanedWs,
       status: 'expired',
       submittedAt,
       results: evaluated,
@@ -942,6 +977,13 @@ export async function saveTestPacket(
       }
       vigenereKeyword = cleanedVigKey;
     }
+    const cleanedAristoAlpha = sanitizeAristocratAlphabet(q.aristocratAlphabet);
+    const aristocratAlphabet =
+      q.cipher === 'aristocrat'
+        ? isValidAristocratAlphabet(cleanedAristoAlpha)
+          ? cleanedAristoAlpha
+          : deterministicAristocratAlphabet(quoteId + i)
+        : undefined;
     const cleanDesc =
       typeof q.description === 'string' && q.description.trim().length > 0
         ? q.description.trim().slice(0, 250)
@@ -954,6 +996,7 @@ export async function saveTestPacket(
       points,
       ...(caesarOffset !== undefined ? { caesarOffset } : {}),
       ...(vigenereKeyword !== undefined ? { vigenereKeyword } : {}),
+      ...(aristocratAlphabet !== undefined ? { aristocratAlphabet } : {}),
       ...(q.isTiebreaker ? { isTiebreaker: true } : {}),
       ...(cleanDesc ? { description: cleanDesc } : {}),
     });

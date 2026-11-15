@@ -39,7 +39,8 @@
   text-overflow: ellipsis;
 }
 
-.drill-header-right-group {
+.drill-header-right-group,
+.drill-header-actions-group {
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -119,7 +120,8 @@
 
 .popover-mode-segmented {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   gap: 0.3rem;
   background: rgba(255, 255, 255, 0.04);
   padding: 3px;
@@ -1961,3 +1963,617 @@
   background: rgba(148, 163, 184, 0.7);
   margin-top: 0.16rem;
 }
+
+/* ==========================================================================
+   Aristocrat Cipher: Side-by-Side Scrollable Reference, 4-Corner Pips & Popup
+   ========================================================================== */
+.aristo-ref-outer {
+  width: 100%;
+  padding: 0.1rem 0.14rem;
+  box-sizing: border-box;
+}
+
+.aristo-ref-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+  cursor: grab;
+  user-select: none;
+}
+
+.aristo-ref-scroll.is-dragging {
+  cursor: grabbing;
+}
+
+.aristo-ref-strip {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0.65rem;
+  min-width: 100%;
+  justify-content: flex-start;
+  padding-bottom: 2px;
+}
+
+@media (min-width: 820px) {
+  .aristo-ref-strip {
+    justify-content: center;
+  }
+}
+
+.aristo-ref-panel {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.24rem;
+  background: #0f172a;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 8px;
+  padding: 0.28rem 0.34rem 0.32rem 0.34rem;
+}
+
+.aristo-ref-panel-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0 0.12rem;
+}
+
+.aristo-ref-panel-title {
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #cbd5e1;
+}
+
+.aristo-rep-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  justify-content: space-between;
+}
+
+.aristo-rep-half-row {
+  display: grid;
+  grid-template-columns: repeat(13, 25px);
+  gap: 2px;
+}
+
+@media (min-width: 820px) {
+  .aristo-rep-half-row {
+    grid-template-columns: repeat(13, 27px);
+    gap: 2px;
+  }
+}
+
+.aristo-rep-col {
+  appearance: none;
+  -webkit-appearance: none;
+  background: #131d31;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 5px;
+  padding: 2px 1px 2px 1px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  transition: background-color 0.12s ease, border-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.aristo-rep-col:focus {
+  outline: none;
+}
+
+.aristo-rep-col:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 1px;
+}
+
+.aristo-rep-col:disabled {
+  cursor: default;
+}
+
+@media (hover: hover) {
+  .aristo-ref-scroll:not(.is-dragging)
+    .aristo-rep-col:not(:disabled):not(.is-popup-open):hover {
+    background: #1b2b45;
+    border-color: rgba(56, 189, 248, 0.48);
+  }
+}
+
+.aristo-rep-col.is-popup-open {
+  background: rgba(14, 165, 233, 0.22);
+  border-color: #38bdf8;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.38);
+}
+
+.aristo-rep-col.is-peer-active {
+  background: rgba(56, 189, 248, 0.14);
+  border-color: rgba(56, 189, 248, 0.58);
+}
+
+.aristo-rep-cipher {
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1.05;
+  color: var(--accent-blue);
+}
+
+.aristo-rep-freq {
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.05;
+  color: #cbd5e1;
+}
+
+.aristo-rep-col.is-zero-freq .aristo-rep-cipher {
+  opacity: 0.48;
+}
+
+.aristo-rep-col.is-zero-freq .aristo-rep-freq {
+  opacity: 0.34;
+}
+
+.aristo-rep-box {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+@media (min-width: 820px) {
+  .aristo-rep-box {
+    width: 24px;
+    height: 24px;
+  }
+}
+
+.aristo-rep-col.is-popup-open .aristo-rep-box {
+  border-color: #38bdf8;
+  background: rgba(15, 23, 42, 0.98);
+}
+
+.aristo-rep-col.is-conflict .aristo-rep-box {
+  border-color: #f59e0b !important;
+  background: rgba(245, 158, 11, 0.16);
+}
+
+.aristo-rep-center {
+  position: relative;
+  z-index: 2;
+  font-family: var(--font-mono);
+  font-size: 0.92rem;
+  font-weight: 800;
+  line-height: 1;
+  color: #f8fafc;
+}
+
+.aristo-rep-col.is-conflict .aristo-rep-center {
+  color: #fcd34d;
+}
+
+/* Official English Letter Frequency Panel (5 Columns: Letter on Left, % on Right) */
+.aristo-eng-columns {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(60px, 1fr));
+  flex: 1;
+  background: #131d31;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 6px;
+  padding: 3px 2px;
+}
+
+@media (min-width: 820px) {
+  .aristo-eng-columns {
+    grid-template-columns: repeat(5, minmax(66px, 1fr));
+    padding: 4px 3px;
+  }
+}
+
+.aristo-eng-col-list {
+  display: grid;
+  grid-template-rows: repeat(6, 1fr);
+  padding: 0 7px;
+  border-right: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.aristo-eng-col-list:last-child {
+  border-right: none;
+}
+
+.aristo-eng-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-family: var(--font-mono);
+  line-height: 1.1;
+  transition: opacity 0.15s ease;
+}
+
+.aristo-eng-letter {
+  font-size: 0.76rem;
+  font-weight: 800;
+  color: #e2e8f0;
+}
+
+.aristo-eng-pct {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.aristo-eng-item.is-used {
+  opacity: 0.3;
+}
+
+.aristo-eng-item.is-used .aristo-eng-letter {
+  text-decoration: line-through;
+}
+
+/* Layered 4-Corner Candidate Notes (inside Replacement Boxes & Quote Tiles) */
+.aristo-tile-input-wrap {
+  position: relative;
+  width: 27px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.aristo-tile-input-wrap .tile-native-input {
+  position: relative;
+  z-index: 2;
+}
+
+.aristo-corners-layer {
+  position: absolute;
+  inset: 1px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.aristo-corner-pip {
+  position: absolute;
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  font-weight: 700;
+  line-height: 1;
+  color: rgba(148, 163, 184, 0.92);
+  user-select: none;
+}
+
+.aristo-rep-box .aristo-corner-pip {
+  font-size: 0.46rem;
+}
+
+.aristo-corner-tl {
+  top: 0;
+  left: 1px;
+}
+
+.aristo-corner-tr {
+  top: 0;
+  right: 1px;
+}
+
+.aristo-corner-bl {
+  bottom: 0;
+  left: 1px;
+}
+
+.aristo-corner-br {
+  bottom: 0;
+  right: 1px;
+}
+
+.aristo-corners-layer.under-center .aristo-corner-pip {
+  color: rgba(148, 163, 184, 0.4);
+}
+
+.aristo-corner-pip.is-claimed {
+  color: rgba(100, 116, 139, 0.46);
+  text-decoration: line-through;
+}
+
+/* Aristocrat Quote Tile Peer & Conflict States */
+.aristocrat-tile.peer-cipher-tile {
+  z-index: 2;
+  border-color: rgba(56, 189, 248, 0.62);
+  background: rgba(56, 189, 248, 0.09);
+}
+
+.aristocrat-tile.peer-cipher-tile .tile-cipher {
+  background: rgba(56, 189, 248, 0.18);
+  color: #bae6fd;
+}
+
+.aristocrat-tile.conflict-tile {
+  z-index: 3;
+  border-color: #f59e0b !important;
+  background: rgba(245, 158, 11, 0.11);
+}
+
+.aristocrat-tile.conflict-tile .tile-native-input {
+  color: #fcd34d;
+  -webkit-text-fill-color: #fcd34d;
+}
+
+/* Aristocrat Starter Hint Banner */
+.aristo-hint-banner {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.38rem;
+  margin-bottom: 0.55rem;
+  padding: 0.28rem 0.68rem;
+  border-radius: 7px;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.38);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.aristo-hint-label {
+  font-weight: 800;
+  color: #fbbf24;
+  white-space: nowrap;
+}
+
+.aristo-hint-text {
+  color: #fef3c7;
+  font-weight: 600;
+}
+
+/* Portal-Rendered Floating 5-Pip Die Popup */
+.aristo-pip-popup {
+  position: fixed;
+  z-index: 1200;
+  width: 196px;
+  box-sizing: border-box;
+  background: rgba(15, 23, 42, 0.98);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(56, 189, 248, 0.58);
+  border-radius: 12px;
+  padding: 0.52rem 0.58rem;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(15, 23, 42, 0.9);
+  display: flex;
+  flex-direction: column;
+  gap: 0.42rem;
+  user-select: none;
+}
+
+.aristo-pip-arrow {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #0f172a;
+  border-left: 1px solid rgba(56, 189, 248, 0.58);
+  border-top: 1px solid rgba(56, 189, 248, 0.58);
+  top: -6px;
+  transform: translateX(-50%) rotate(45deg);
+  pointer-events: none;
+}
+
+.aristo-pip-popup.is-above .aristo-pip-arrow {
+  top: auto;
+  bottom: -6px;
+  transform: translateX(-50%) rotate(225deg);
+}
+
+.aristo-pip-hidden-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.aristo-pip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.aristo-pip-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #cbd5e1;
+}
+
+.aristo-pip-title strong {
+  font-family: var(--font-mono);
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: var(--accent-blue);
+}
+
+.aristo-pip-freq {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #94a3b8;
+  background: rgba(30, 41, 59, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 999px;
+  padding: 0.08rem 0.42rem;
+}
+
+.aristo-pip-warning {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #fcd34d;
+  background: rgba(245, 158, 11, 0.16);
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  border-radius: 6px;
+  padding: 0.2rem 0.42rem;
+  line-height: 1.25;
+}
+
+.aristo-pip-die-grid {
+  display: grid;
+  grid-template-columns: 36px 1fr 36px;
+  grid-template-rows: 32px 44px 32px;
+  align-items: center;
+  justify-items: center;
+  gap: 2px;
+  padding: 0.24rem;
+  background: rgba(2, 6, 23, 0.58);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 9px;
+}
+
+.aristo-pip-slot {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-mono);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background-color 0.12s ease,
+    box-shadow 0.12s ease, color 0.12s ease;
+}
+
+.aristo-pip-corner {
+  width: 32px;
+  height: 29px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #94a3b8;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px dashed rgba(148, 163, 184, 0.36);
+  border-radius: 6px;
+}
+
+.aristo-pip-corner.is-claimed {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+
+.aristo-pip-tl {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.aristo-pip-tr {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+.aristo-pip-center {
+  grid-column: 2;
+  grid-row: 2;
+  width: 48px;
+  height: 44px;
+  font-size: 1.32rem;
+  font-weight: 800;
+  color: #f8fafc;
+  background: rgba(30, 41, 59, 0.95);
+  border: 1.5px solid rgba(148, 163, 184, 0.48);
+  border-radius: 8px;
+}
+
+.aristo-pip-bl {
+  grid-column: 1;
+  grid-row: 3;
+}
+
+.aristo-pip-br {
+  grid-column: 3;
+  grid-row: 3;
+}
+
+.aristo-pip-slot.is-active {
+  border-style: solid;
+  border-color: #38bdf8;
+  background: rgba(14, 165, 233, 0.2);
+  color: #f8fafc;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.28),
+    0 0 10px rgba(56, 189, 248, 0.42);
+}
+
+.aristo-pip-center.is-conflict {
+  border-color: #f59e0b;
+  color: #fcd34d;
+}
+
+.aristo-pip-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.38rem;
+}
+
+.aristo-pip-clear-btn {
+  flex: 1;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.24rem 0.45rem;
+  min-height: 26px;
+}
+
+.aristo-pip-clear-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.aristo-pip-close-btn {
+  width: 28px;
+  height: 26px;
+  padding: 0;
+  justify-content: center;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+@media (max-height: 500px) {
+  .aristo-ref-panel {
+    padding: 0.18rem 0.28rem 0.22rem 0.28rem;
+    gap: 0.14rem;
+  }
+
+  .aristo-rep-box {
+    width: 20px;
+    height: 20px;
+  }
+
+  .aristo-rep-center {
+    font-size: 0.84rem;
+  }
+
+  .aristo-eng-letter {
+    font-size: 0.72rem;
+  }
+
+  .aristo-eng-pct {
+    font-size: 0.68rem;
+  }
+}
+

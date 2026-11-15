@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import type {
+  AristocratDifficulty,
   CaesarRangeMode,
   CipherType,
   GeneralPracticeCiphers,
@@ -111,6 +112,7 @@ type ActiveScreen =
       offsetsMode?: OffsetsMode;
       letterMathMode?: LetterMathMode;
       caesarRange?: CaesarRangeMode;
+      aristocratDifficulty?: AristocratDifficulty;
       quoteId?: number;
     }
   | { kind: 'testsList' }
@@ -130,7 +132,7 @@ type ActiveScreen =
   | {
       kind: 'testRunner';
       testPacket: TestPacket;
-      initialAttempt: TestAttempt | null;
+      initialAttempt?: TestAttempt | null;
       spectateAttemptId?: string;
     }
   | {
@@ -156,6 +158,7 @@ function initScreen(): ActiveScreen {
       offsetsMode: route.offsetsMode,
       letterMathMode: route.letterMathMode,
       caesarRange: route.caesarRange,
+      aristocratDifficulty: route.aristocratDifficulty,
       quoteId: route.quoteId,
     };
   }
@@ -255,7 +258,8 @@ export const App: React.FC = () => {
       replaceHistory = false,
       offsetsMode?: OffsetsMode,
       letterMathMode?: LetterMathMode,
-      caesarRange?: CaesarRangeMode
+      caesarRange?: CaesarRangeMode,
+      aristocratDifficulty?: AristocratDifficulty
     ) => {
       setScreen({
         kind: 'drill',
@@ -264,6 +268,7 @@ export const App: React.FC = () => {
         offsetsMode,
         letterMathMode,
         caesarRange,
+        aristocratDifficulty,
         quoteId,
       });
       const newUrl = buildRouteUrl({
@@ -272,6 +277,7 @@ export const App: React.FC = () => {
         offsetsMode,
         letterMathMode,
         caesarRange,
+        aristocratDifficulty,
         quoteId,
       });
       const statePayload = {
@@ -280,6 +286,7 @@ export const App: React.FC = () => {
         offsetsMode,
         letterMathMode,
         caesarRange,
+        aristocratDifficulty,
         quoteId,
       };
       if (replaceHistory) {
@@ -796,6 +803,7 @@ export const App: React.FC = () => {
           offsetsMode: route.offsetsMode,
           letterMathMode: route.letterMathMode,
           caesarRange: route.caesarRange,
+          aristocratDifficulty: route.aristocratDifficulty,
           quoteId: route.quoteId,
         });
       } else if (route.quotesBrowser) {
@@ -882,6 +890,7 @@ export const App: React.FC = () => {
           offsetsMode: route.offsetsMode,
           letterMathMode: route.letterMathMode,
           caesarRange: route.caesarRange,
+          aristocratDifficulty: route.aristocratDifficulty,
           quoteId: route.quoteId,
         },
         '',
@@ -1233,6 +1242,7 @@ export const App: React.FC = () => {
         offsetsMode: prev.offsetsMode,
         letterMathMode: prev.letterMathMode,
         caesarRange: prev.caesarRange,
+        aristocratDifficulty: prev.aristocratDifficulty,
         quoteId: newQuoteId,
       });
       window.history.replaceState(
@@ -1242,6 +1252,7 @@ export const App: React.FC = () => {
           offsetsMode: prev.offsetsMode,
           letterMathMode: prev.letterMathMode,
           caesarRange: prev.caesarRange,
+          aristocratDifficulty: prev.aristocratDifficulty,
           quoteId: newQuoteId,
         },
         '',
@@ -1250,6 +1261,36 @@ export const App: React.FC = () => {
       return { ...prev, quoteId: newQuoteId };
     });
   }, []);
+
+  const handleAristocratDifficultyChange = useCallback(
+    (newDifficulty: AristocratDifficulty) => {
+      setScreen((prev) => {
+        if (prev.kind !== 'drill' || prev.drill !== 'aristocrat') return prev;
+        const newUrl = buildRouteUrl({
+          drill: prev.drill,
+          section: prev.section,
+          aristocratDifficulty: newDifficulty,
+          quoteId: undefined,
+        });
+        window.history.replaceState(
+          {
+            drill: prev.drill,
+            section: prev.section,
+            aristocratDifficulty: newDifficulty,
+            quoteId: undefined,
+          },
+          '',
+          newUrl
+        );
+        return {
+          ...prev,
+          aristocratDifficulty: newDifficulty,
+          quoteId: undefined,
+        };
+      });
+    },
+    []
+  );
 
   const handleOffsetsModeChange = useCallback((newMode: OffsetsMode) => {
     setScreen((prev) => {
@@ -1372,7 +1413,8 @@ export const App: React.FC = () => {
               false,
               options?.offsetsMode,
               options?.letterMathMode,
-              options?.caesarRange
+              options?.caesarRange,
+              options?.aristocratDifficulty
             );
           }}
         />
@@ -1435,9 +1477,15 @@ export const App: React.FC = () => {
         isTestableCipher(screen.drill) && (
           <Suspense fallback={suspenseFallback}>
             <LookupCipherDrill
-              key={`${screen.drill}:${screen.caesarRange ?? 'pm3'}:${screen.quoteId ?? 'random'}:${workoutContext ? `${workoutContext.round}-${workoutContext.stepIndex}` : 'standalone'}`}
+              key={`${screen.drill}:${screen.caesarRange ?? 'pm3'}:${screen.aristocratDifficulty ?? 'easy'}:${screen.quoteId ?? 'random'}:${workoutContext ? `${workoutContext.round}-${workoutContext.stepIndex}` : 'standalone'}`}
               cipher={screen.drill}
               caesarRange={screen.caesarRange}
+              aristocratDifficulty={screen.aristocratDifficulty}
+              onAristocratDifficultyChange={
+                screen.drill === 'aristocrat' && !workoutContext
+                  ? handleAristocratDifficultyChange
+                  : undefined
+              }
               initialQuoteId={screen.quoteId}
               onQuoteChange={handleQuoteChange}
               onBack={navigateToMenu}

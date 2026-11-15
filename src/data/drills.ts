@@ -101,11 +101,11 @@ export const DRILLS = [
   },
   {
     id: 'aristocrat',
-    name: 'Aristocrat Cryptanalysis',
+    name: 'Aristocrat',
     shortTitle: 'Aristocrat',
     menuLabel: 'Aristocrat',
     kind: 'analysis',
-    implemented: false,
+    implemented: true,
     defaultEnabled: false,
     hasFlashcardDrill: false,
     hasQuoteWorkspace: true,
