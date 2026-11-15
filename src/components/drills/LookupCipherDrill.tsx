@@ -24,6 +24,12 @@ import {
   shouldCountQuoteCompleted,
 } from '../../utils/ciphers';
 import { isAristocratDifficulty } from '../../utils/routing';
+import {
+  formatCipherPace,
+  formatClock,
+  formatSolveDuration,
+} from '../../utils/format';
+import { usePuzzleElapsedTimer } from '../../hooks/usePuzzleElapsedTimer';
 import { pickLookupQuote } from '../../data/quotes';
 import { getDrill, type TestableCipherType } from '../../data/drills';
 import { saveCompletedQuoteId, recordCipherPractice } from '../../services/storage';
@@ -219,11 +225,8 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
   const keyInputs = puzzle?.keyInputs ?? EMPTY_USER_INPUTS;
   const [result, setResult] = useState<EvaluationResult | null>(null);
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
-  const startTimeRef = useRef<number>(0);
-
-  useEffect(() => {
-    startTimeRef.current = Date.now();
-  }, []);
+  const { elapsedSeconds, solvedElapsedMs, freezeTimer, resetTimer } =
+    usePuzzleElapsedTimer(Boolean(puzzle && quote));
 
   const onQuoteChangeRef = useRef(onQuoteChange);
   useEffect(() => {
@@ -240,11 +243,27 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     () => (quote ? quote.quote.toUpperCase().split('') : []),
     [quote]
   );
-  const totalLetters = useMemo(() => chars.filter(isLetter).length, [chars]);
+  const alphaChars = useMemo(() => chars.filter(isLetter), [chars]);
+  const totalLetters = alphaChars.length;
+  const uniqueLetters = useMemo(
+    () => new Set(alphaChars).size,
+    [alphaChars]
+  );
   const filledLetters = userInputs.filter(
     (c, idx) => isLetter(chars[idx] ?? '') && c !== ''
   ).length;
   const isAllFilled = totalLetters > 0 && filledLetters === totalLetters;
+  const isAristocrat = cipher === 'aristocrat';
+  const paceUnitCount = isAristocrat ? uniqueLetters : totalLetters;
+
+  const solveTimeText =
+    solvedElapsedMs !== null
+      ? formatSolveDuration(Math.floor(solvedElapsedMs / 1000))
+      : undefined;
+  const paceText =
+    solvedElapsedMs !== null
+      ? formatCipherPace(solvedElapsedMs, paceUnitCount, isAristocrat)
+      : undefined;
 
   const handleAristocratEdit = useCallback((action: AristocratEditAction) => {
     setPuzzle((prev) => {
@@ -327,7 +346,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
       setActiveCipherLetter(null);
       setResult(null);
       setIsSubmitted(false);
-      startTimeRef.current = Date.now();
+      resetTimer();
       onQuoteChange?.(nextQ.id);
     }
   }, [
@@ -336,6 +355,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     effectiveAristocratDifficulty,
     onQuoteChange,
     quoteId,
+    resetTimer,
   ]);
 
   const handleSelectAristocratDifficulty = useCallback(
@@ -348,12 +368,18 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
 
   const handleNext = useCallback(() => {
     if (workoutContext) {
-      const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
+      const elapsed =
+        solvedElapsedMs !== null
+          ? Math.floor(solvedElapsedMs / 1000)
+          : elapsedSeconds;
       const accuracy = result
         ? Math.round((result.correctChars / (result.totalChars || 1)) * 100)
         : 100;
       workoutContext.onAdvance({
         timeSeconds: elapsed,
+        paceText,
+        letterCount: totalLetters,
+        uniqueLetterCount: uniqueLetters,
         accuracy,
         author: quote?.author,
         ...(cipher === 'aristocrat'
@@ -365,7 +391,12 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     }
   }, [
     workoutContext,
+    solvedElapsedMs,
+    elapsedSeconds,
     result,
+    paceText,
+    totalLetters,
+    uniqueLetters,
     quote?.author,
     cipher,
     effectiveAristocratDifficulty,
@@ -374,6 +405,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
 
   const handleSubmit = useCallback(() => {
     if (!quote || isSubmitted || !isAllFilled) return;
+    freezeTimer();
     const res = evaluateSolution(quote.quote, userInputs.join(''));
     if (cipher === 'aristocrat') {
       // Clear all corner candidate notes on submission so only Center guesses display
@@ -399,7 +431,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
       saveCompletedQuoteId(quote.id);
       recordCipherPractice(cipher);
     }
-  }, [cipher, quote, userInputs, isSubmitted, isAllFilled]);
+  }, [cipher, freezeTimer, quote, userInputs, isSubmitted, isAllFilled]);
 
   const handleChangeUserInputs = useCallback((nextInputs: string[]) => {
     setPuzzle((prev) => (prev ? { ...prev, userInputs: nextInputs } : null));
@@ -507,9 +539,23 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
 
       <DrillActionRow
         info={
-          <>
-            Progress: <strong>{filledLetters} / {totalLetters}</strong> letters
-          </>
+          <span className="cipher-footer-stats">
+            <span className="cipher-letter-count">
+              <strong>
+                {filledLetters} / {totalLetters}
+              </strong>{' '}
+              letters
+            </span>
+            <span className="cipher-footer-sep" aria-hidden="true">
+              ·
+            </span>
+            <span
+              className={`cipher-elapsed-timer${isSubmitted ? ' is-paused' : ''}`}
+              aria-label={`Elapsed solve time ${formatClock(elapsedSeconds)}`}
+            >
+              ⏱️ {formatClock(elapsedSeconds)}
+            </span>
+          </span>
         }
       >
         {!isSubmitted ? (
@@ -536,7 +582,13 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
         )}
       </DrillActionRow>
 
-      {result && <ResultBanner result={result} />}
+      {result && (
+        <ResultBanner
+          result={result}
+          solveTimeText={solveTimeText}
+          paceText={paceText}
+        />
+      )}
     </div>
   );
 };

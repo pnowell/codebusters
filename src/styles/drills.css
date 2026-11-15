@@ -544,12 +544,13 @@
   font-size: 0.9rem;
 }
 
-/* Action Row: Progress and Submit */
+/* Action Row: Letter Counter, Live Timer, and Submit */
 .drill-action-row {
   flex-shrink: 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.65rem;
   padding-top: 0.35rem;
   border-top: 1px solid var(--border-color);
 }
@@ -557,13 +558,48 @@
 .progress-info {
   font-size: 0.9rem;
   color: var(--text-muted);
+  min-width: 0;
 }
 
 .progress-info strong {
   color: var(--text-main);
 }
 
+.cipher-footer-stats {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+}
+
+.cipher-letter-count {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.cipher-footer-sep {
+  opacity: 0.5;
+  user-select: none;
+}
+
+.cipher-elapsed-timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.86rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #cbd5e1;
+  white-space: nowrap;
+}
+
+.cipher-elapsed-timer.is-paused {
+  color: var(--accent-blue);
+}
+
 .btn-submit {
+  flex-shrink: 0;
   padding: 0.55rem 1.25rem;
   font-size: 0.9rem;
   font-weight: 700;
@@ -573,6 +609,13 @@
   background: var(--accent-emerald);
   color: #064e3b;
   transition: transform 0.1s ease, filter 0.15s ease;
+}
+
+@media (max-width: 420px) {
+  .btn-submit {
+    padding: 0.52rem 0.95rem;
+    font-size: 0.84rem;
+  }
 }
 
 .btn-submit:disabled {
@@ -594,9 +637,37 @@
 /* Evaluation Results Banner */
 .result-banner {
   flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.42rem 0.9rem;
   padding: 0.6rem 1rem;
   border-radius: 8px;
   font-size: 0.9rem;
+}
+
+.result-banner-msg {
+  line-height: 1.35;
+}
+
+.result-banner-metrics {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.42);
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+
+.result-metric-sep {
+  opacity: 0.55;
 }
 
 .score-full {

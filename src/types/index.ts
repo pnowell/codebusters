@@ -292,6 +292,9 @@ export interface WorkoutStepResult {
   title: string;
   isWarmup?: boolean;
   timeSeconds?: number;
+  paceText?: string;
+  letterCount?: number;
+  uniqueLetterCount?: number;
   accuracy?: number;
   author?: string;
   warmup60s?: number;

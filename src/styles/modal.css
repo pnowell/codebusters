@@ -541,7 +541,7 @@
 
 /* Workout Summary Modal */
 .workout-summary-card {
-  max-width: 480px;
+  max-width: 540px;
   text-align: center;
   gap: 1.25rem;
 }
@@ -584,8 +584,10 @@
 
 .summary-result-row {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
+  gap: 0.45rem 0.75rem;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
   padding: 0.6rem 0.75rem;
@@ -596,6 +598,7 @@
   display: flex;
   align-items: center;
   gap: 0.6rem;
+  min-width: 0;
 }
 
 .summary-row-badge {
@@ -623,11 +626,23 @@
 .summary-row-stats {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.45rem;
+  margin-left: auto;
+  justify-content: flex-end;
   font-family: var(--font-mono);
   font-size: 0.85rem;
   color: var(--text-main);
   white-space: nowrap;
+}
+
+.summary-pace-chip {
+  background: rgba(56, 189, 248, 0.14);
+  border: 1px solid rgba(56, 189, 248, 0.36);
+  color: #7dd3fc;
+  padding: 0.14rem 0.42rem;
+  border-radius: 4px;
+  font-size: 0.74rem;
+  font-weight: 700;
 }
 
 .summary-acc-badge {

@@ -1,6 +1,6 @@
 import React from 'react';
 import type { WorkoutSummaryData } from '../../types';
-import { formatDuration } from '../../utils/format';
+import { formatDuration, formatSolveDuration } from '../../utils/format';
 import { Modal } from '../common/Modal';
 
 interface WorkoutSummaryModalProps {
@@ -40,6 +40,13 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
                 res.cipherId === 'offsets' ||
                 res.cipherId === 'letterMath'
               ) {
+                const isAbcPlusAbc =
+                  res.letterMathMode === 'letterEasy' ||
+                  res.letterMathMode === 'letterHard';
+                const isHardMath =
+                  res.letterMathMode === 'hard' ||
+                  res.letterMathMode === 'letterHard';
+
                 return (
                   <div key={idx} className="summary-result-row">
                     <div className="summary-row-left">
@@ -56,7 +63,8 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
                           <>
                             Letter Math{' '}
                             <small style={{ opacity: 0.75, fontWeight: 500 }}>
-                              (ABC ± # · {res.letterMathMode === 'hard' ? 'Hard' : 'Easy'})
+                              ({isAbcPlusAbc ? 'ABC ± ABC' : 'ABC ± #'} ·{' '}
+                              {isHardMath ? 'Hard' : 'Easy'})
                             </small>
                           </>
                         ) : (
@@ -87,10 +95,15 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
                       )}
                     </div>
                   </div>
-                  <div className="summary-row-stats">
+                  <div className="summary-row-stats summary-row-stats-cipher">
                     <span>
-                      {res.timeSeconds ? formatDuration(res.timeSeconds) : 'Solved'}
+                      {res.timeSeconds !== undefined
+                        ? formatSolveDuration(res.timeSeconds)
+                        : 'Solved'}
                     </span>
+                    {res.paceText && (
+                      <span className="summary-pace-chip">{res.paceText}</span>
+                    )}
                     {typeof res.accuracy === 'number' && (
                       <span className="summary-acc-badge">
                         {Math.round(res.accuracy)}%
