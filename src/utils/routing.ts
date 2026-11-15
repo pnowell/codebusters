@@ -17,6 +17,7 @@ export interface Route {
   caesarRange?: CaesarRangeMode;
   aristocratDifficulty?: AristocratDifficulty;
   quoteId?: number;
+  shareToken?: string;
   testId?: string;
   spectateAttemptId?: string;
   testsList?: boolean;
@@ -55,6 +56,7 @@ function isTestEditorTab(val: string | null): val is TestEditorTab {
 
 const SAFE_TEST_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
 const SAFE_ATTEMPT_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,240}$/;
+const SAFE_SHARE_TOKEN_PARAM_RE = /^[0-9A-Za-z]{1,128}$/;
 
 export function getDefaultEditorTab(editTarget: string): TestEditorTab {
   return editTarget === 'new' ? 'questions' : 'teams';
@@ -62,6 +64,7 @@ export function getDefaultEditorTab(editTarget: string): TestEditorTab {
 
 export function parseUrlRoute(search = window.location.search): Route {
   const p = new URLSearchParams(search);
+  const shareRaw = p.get('share');
   const cipherParam = p.get('cipher');
   const drillParam = p.get('drill');
   const modeParam = p.get('mode');
@@ -75,15 +78,24 @@ export function parseUrlRoute(search = window.location.search): Route {
   const quotesParam = p.get('quotes');
   const quoteId = q !== null ? parseInt(q, 10) : NaN;
 
+  const shareToken =
+    shareRaw !== null
+      ? SAFE_SHARE_TOKEN_PARAM_RE.test(shareRaw)
+        ? shareRaw
+        : 'invalid'
+      : undefined;
+
   let drill: CipherType | null = null;
   let section: DrillSection = 'memorize';
 
-  if (cipherParam && isCipherType(cipherParam)) {
-    drill = cipherParam;
-    section = 'cipher';
-  } else if (drillParam && isCipherType(drillParam)) {
-    drill = drillParam;
-    section = 'memorize';
+  if (!shareToken) {
+    if (cipherParam && isCipherType(cipherParam)) {
+      drill = cipherParam;
+      section = 'cipher';
+    } else if (drillParam && isCipherType(drillParam)) {
+      drill = drillParam;
+      section = 'memorize';
+    }
   }
 
   const testId =
@@ -116,7 +128,11 @@ export function parseUrlRoute(search = window.location.search): Route {
       isAristocratDifficulty(modeParam)
         ? modeParam
         : undefined,
-    quoteId: Number.isNaN(quoteId) ? undefined : quoteId,
+    quoteId:
+      !shareToken && !Number.isNaN(quoteId) && quoteId >= 0
+        ? quoteId
+        : undefined,
+    shareToken,
     testId,
     spectateAttemptId,
     testsList: tests === 'true' || tests === '1' || Boolean(resultsTestId),
@@ -131,11 +147,31 @@ export function parseUrlRoute(search = window.location.search): Route {
   };
 }
 
-/** Returns a URL for the current path with drill/cipher/mode/q/test/spectate/tests/results/editTest/quotes set (or removed). */
+/** Returns a URL for the current path with share/drill/cipher/mode/q/test/spectate/tests/results/editTest/quotes set (or removed). */
 export function buildRouteUrl(route: Route): string {
   const p = new URLSearchParams(window.location.search);
   p.delete('unlocked');
   p.delete('_v');
+
+  if (route.shareToken) {
+    p.set('share', route.shareToken);
+    p.delete('drill');
+    p.delete('cipher');
+    p.delete('mode');
+    p.delete('q');
+    p.delete('test');
+    p.delete('spectate');
+    p.delete('tests');
+    p.delete('results');
+    p.delete('editTest');
+    p.delete('tab');
+    p.delete('quotes');
+    const qs = p.toString();
+    return qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+  }
+
+  p.delete('share');
+
   if (route.drill) {
     if (route.section === 'cipher') {
       p.set('cipher', route.drill);

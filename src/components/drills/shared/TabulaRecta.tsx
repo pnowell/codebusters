@@ -6,6 +6,7 @@ import type { CaesarRangeMode } from '../../../types';
 export interface TabulaRectaProps {
   variant?: 'caesar' | 'vigenere';
   caesarRange?: CaesarRangeMode;
+  onInteract?: () => void;
 }
 
 const COLS = Array.from({ length: 26 }, (_, i) => i);
@@ -17,6 +18,7 @@ const VIGENERE_SHIFTS = Array.from({ length: 26 }, (_, i) => i);
 export const TabulaRecta: React.FC<TabulaRectaProps> = ({
   variant = 'caesar',
   caesarRange = 'pm3',
+  onInteract,
 }) => {
   const [selectedRow, setSelectedRow] = useState<number | null>(null);
   const { containerRef, isDragging, dragHandlers } =
@@ -40,6 +42,7 @@ export const TabulaRecta: React.FC<TabulaRectaProps> = ({
   }, [caesarRange, containerRef, variant]);
 
   const handleRowClick = (shift: number, isReferenceRow: boolean) => {
+    onInteract?.();
     if (isReferenceRow) {
       setSelectedRow(null);
       return;
@@ -59,7 +62,7 @@ export const TabulaRecta: React.FC<TabulaRectaProps> = ({
   };
 
   return (
-    <div className="tabula-recta-outer">
+    <div className="tabula-recta-outer" onPointerDown={() => onInteract?.()}>
       <div
         ref={containerRef}
         className={`tabula-recta-viewport${isDragging ? ' is-dragging' : ''}`}

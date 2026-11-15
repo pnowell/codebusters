@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package codebusters.v1;
+
+enum ShareCipherMode {
+  SHARE_CIPHER_MODE_UNSPECIFIED = 0;
+  SHARE_CIPHER_MODE_ATBASH = 1;
+  SHARE_CIPHER_MODE_PIGPEN = 2;
+  SHARE_CIPHER_MODE_GALACTIC = 3;
+  SHARE_CIPHER_MODE_TAP = 4;
+  SHARE_CIPHER_MODE_KNIGHTS = 5;
+  SHARE_CIPHER_MODE_CAESAR_PM3 = 6;
+  SHARE_CIPHER_MODE_CAESAR_ANY = 7;
+  SHARE_CIPHER_MODE_VIGENERE = 8;
+  SHARE_CIPHER_MODE_ARISTOCRAT_EASY = 9;
+  SHARE_CIPHER_MODE_ARISTOCRAT_MEDIUM = 10;
+  SHARE_CIPHER_MODE_ARISTOCRAT_HARD = 11;
+}
+
+message ShareLinkPayload {
+  ShareCipherMode cipher_mode = 1;
+  uint32 quote_id = 2;
+  uint32 caesar_offset = 3;
+  string vigenere_keyword = 4;
+  fixed32 aristocrat_seed = 5;
+  uint32 hint_variant = 6;
+}

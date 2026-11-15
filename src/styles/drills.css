@@ -200,6 +200,23 @@
   border-color: rgba(251, 191, 36, 0.6);
 }
 
+.popover-action-btn.share-link-action {
+  background: rgba(56, 189, 248, 0.14);
+  border: 1px solid rgba(56, 189, 248, 0.38);
+  color: #7dd3fc;
+}
+
+.popover-action-btn.share-link-action:hover {
+  background: rgba(56, 189, 248, 0.24);
+  border-color: rgba(56, 189, 248, 0.65);
+}
+
+.popover-action-btn.share-link-action.is-copied {
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.5);
+  color: #34d399;
+}
+
 .popover-action-chevron {
   font-size: 1.05rem;
   line-height: 1;

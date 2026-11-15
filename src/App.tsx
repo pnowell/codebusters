@@ -31,6 +31,7 @@ import {
 } from './data/drills';
 import { getQuoteById } from './data/quotes';
 import {
+  clearActiveCipherSession,
   loadSettings,
   replaceAllDrillScores,
   saveCompletedQuoteIds,
@@ -66,6 +67,7 @@ import {
   type DrillSection,
   type TestEditorTab,
 } from './utils/routing';
+import { decodeShareToken } from './utils/shareLink';
 import { evaluateTestPacket } from './utils/testSync';
 import { useVisualViewportHeight } from './hooks/useVisualViewportHeight';
 import { useOuterMarginScroll } from './hooks/useOuterMarginScroll';
@@ -115,6 +117,10 @@ type ActiveScreen =
       aristocratDifficulty?: AristocratDifficulty;
       quoteId?: number;
     }
+  | {
+      kind: 'sharedCipher';
+      shareToken: string;
+    }
   | { kind: 'testsList' }
   | { kind: 'quotesBrowser' }
   | {
@@ -150,6 +156,12 @@ interface BriefingState {
 
 function initScreen(): ActiveScreen {
   const route = parseUrlRoute();
+  if (route.shareToken) {
+    return {
+      kind: 'sharedCipher',
+      shareToken: route.shareToken,
+    };
+  }
   if (route.drill) {
     return {
       kind: 'drill',
@@ -299,9 +311,11 @@ export const App: React.FC = () => {
   );
 
   const navigateToMenuCore = useCallback(() => {
+    clearActiveCipherSession();
     if (
       window.history.state &&
       (window.history.state.drill ||
+        window.history.state.shareToken ||
         window.history.state.testId ||
         window.history.state.testsList)
     ) {
@@ -496,9 +510,50 @@ export const App: React.FC = () => {
         : drillScreenInfo.hasQuoteWorkspace)
   );
 
-  // Redirect non-teachers away from teacher-only routes (?editTest=..., ?quotes=true, or ?spectate=...)
+  // Clear persisted active cipher puzzle whenever not viewing a cipher workspace
+  useEffect(() => {
+    const isCipherScreen =
+      screen.kind === 'sharedCipher' ||
+      (screen.kind === 'drill' && screen.section === 'cipher');
+    if (!isCipherScreen) {
+      clearActiveCipherSession();
+    }
+  }, [screen]);
+
+  // Redirect non-teachers away from teacher-only routes (?editTest=..., ?quotes=true, ?spectate=..., or raw ?q=...)
   useEffect(() => {
     if (isAuthLoading || isTeacher) return;
+
+    if (screen.kind === 'drill' && screen.quoteId !== undefined) {
+      queueMicrotask(() => {
+        const cleanUrl = buildRouteUrl({
+          drill: screen.drill,
+          section: screen.section,
+          offsetsMode: screen.offsetsMode,
+          letterMathMode: screen.letterMathMode,
+          caesarRange: screen.caesarRange,
+          aristocratDifficulty: screen.aristocratDifficulty,
+          quoteId: undefined,
+        });
+        window.history.replaceState(
+          {
+            drill: screen.drill,
+            section: screen.section,
+            offsetsMode: screen.offsetsMode,
+            letterMathMode: screen.letterMathMode,
+            caesarRange: screen.caesarRange,
+            aristocratDifficulty: screen.aristocratDifficulty,
+          },
+          '',
+          cleanUrl
+        );
+        setScreen((prev) =>
+          prev.kind === 'drill' ? { ...prev, quoteId: undefined } : prev
+        );
+      });
+      return;
+    }
+
     const isTeacherScreen =
       screen.kind === 'testEditor' ||
       screen.kind === 'quotesBrowser' ||
@@ -792,7 +847,12 @@ export const App: React.FC = () => {
         cancelWorkout();
       }
 
-      if (route.drill) {
+      if (route.shareToken) {
+        setScreen({
+          kind: 'sharedCipher',
+          shareToken: route.shareToken,
+        });
+      } else if (route.drill) {
         if (!workoutContext) {
           selectMenuTab(route.section === 'cipher' ? 'ciphers' : 'drills');
         }
@@ -804,7 +864,7 @@ export const App: React.FC = () => {
           letterMathMode: route.letterMathMode,
           caesarRange: route.caesarRange,
           aristocratDifficulty: route.aristocratDifficulty,
-          quoteId: route.quoteId,
+          quoteId: isTeacher ? route.quoteId : undefined,
         });
       } else if (route.quotesBrowser) {
         setScreen({ kind: 'quotesBrowser' });
@@ -872,6 +932,7 @@ export const App: React.FC = () => {
     availableTests,
     cancelWorkout,
     currentUid,
+    isTeacher,
     selectMenuTab,
     studentAttempts,
     workoutContext,
@@ -881,7 +942,17 @@ export const App: React.FC = () => {
   useEffect(() => {
     const route = parseUrlRoute();
     const currentUrl = `${window.location.pathname}${window.location.search}`;
-    if (route.drill && (!window.history.state || !('drill' in window.history.state))) {
+    if (
+      route.shareToken &&
+      (!window.history.state || !('shareToken' in window.history.state))
+    ) {
+      window.history.replaceState({ drill: null }, '', buildRouteUrl({ drill: null }));
+      window.history.pushState(
+        { shareToken: route.shareToken },
+        '',
+        currentUrl
+      );
+    } else if (route.drill && (!window.history.state || !('drill' in window.history.state))) {
       window.history.replaceState({ drill: null }, '', buildRouteUrl({ drill: null }));
       window.history.pushState(
         {
@@ -1233,9 +1304,9 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleQuoteChange = useCallback((newQuoteId: number) => {
+  const handleClearExplicitQuote = useCallback(() => {
     setScreen((prev) => {
-      if (prev.kind !== 'drill') return prev;
+      if (prev.kind !== 'drill' || prev.quoteId === undefined) return prev;
       const newUrl = buildRouteUrl({
         drill: prev.drill,
         section: prev.section,
@@ -1243,7 +1314,7 @@ export const App: React.FC = () => {
         letterMathMode: prev.letterMathMode,
         caesarRange: prev.caesarRange,
         aristocratDifficulty: prev.aristocratDifficulty,
-        quoteId: newQuoteId,
+        quoteId: undefined,
       });
       window.history.replaceState(
         {
@@ -1253,12 +1324,11 @@ export const App: React.FC = () => {
           letterMathMode: prev.letterMathMode,
           caesarRange: prev.caesarRange,
           aristocratDifficulty: prev.aristocratDifficulty,
-          quoteId: newQuoteId,
         },
         '',
         newUrl
       );
-      return { ...prev, quoteId: newQuoteId };
+      return { ...prev, quoteId: undefined };
     });
   }, []);
 
@@ -1474,10 +1544,13 @@ export const App: React.FC = () => {
       {screen.kind === 'drill' &&
         canRenderDrillScreen &&
         screen.section === 'cipher' &&
-        isTestableCipher(screen.drill) && (
+        isTestableCipher(screen.drill) &&
+        (screen.quoteId !== undefined && isAuthLoading ? (
+          suspenseFallback
+        ) : (
           <Suspense fallback={suspenseFallback}>
             <LookupCipherDrill
-              key={`${screen.drill}:${screen.caesarRange ?? 'pm3'}:${screen.aristocratDifficulty ?? 'easy'}:${screen.quoteId ?? 'random'}:${workoutContext ? `${workoutContext.round}-${workoutContext.stepIndex}` : 'standalone'}`}
+              key={`${screen.drill}:${screen.caesarRange ?? 'pm3'}:${screen.aristocratDifficulty ?? 'easy'}:${workoutContext ? `${workoutContext.round}-${workoutContext.stepIndex}` : 'standalone'}`}
               cipher={screen.drill}
               caesarRange={screen.caesarRange}
               aristocratDifficulty={screen.aristocratDifficulty}
@@ -1486,13 +1559,35 @@ export const App: React.FC = () => {
                   ? handleAristocratDifficultyChange
                   : undefined
               }
-              initialQuoteId={screen.quoteId}
-              onQuoteChange={handleQuoteChange}
+              isTeacher={isTeacher}
+              initialQuoteId={isTeacher ? screen.quoteId : undefined}
+              onClearExplicitQuote={handleClearExplicitQuote}
               onBack={navigateToMenu}
               workoutContext={workoutContext}
             />
           </Suspense>
-        )}
+        ))}
+
+      {screen.kind === 'sharedCipher' && (
+        <Suspense fallback={suspenseFallback}>
+          {(() => {
+            const decoded = decodeShareToken(screen.shareToken);
+            return (
+              <LookupCipherDrill
+                key={`share:${screen.shareToken}`}
+                cipher={decoded?.cipher ?? 'atbash'}
+                caesarRange={decoded?.caesarRange}
+                aristocratDifficulty={decoded?.aristocratDifficulty}
+                isTeacher={isTeacher}
+                shareToken={screen.shareToken}
+                sharedConfig={decoded}
+                invalidShareToken={!decoded}
+                onBack={navigateToMenu}
+              />
+            );
+          })()}
+        </Suspense>
+      )}
 
       {screen.kind === 'drill' &&
         canRenderDrillScreen &&

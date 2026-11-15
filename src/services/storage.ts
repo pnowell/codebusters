@@ -1,4 +1,12 @@
+import { isCipherType, isTestableCipher } from '../data/drills';
 import type {
+  ActiveCipherSessionSnapshot,
+  AristocratCornerTuple,
+  AristocratDifficulty,
+  CaesarRangeMode,
+  CipherPracticeSource,
+  EvaluationResult,
+  ScoreTier,
   UserSettings,
   DrillId,
   DrillScore,
@@ -28,6 +36,7 @@ const KEYS = {
   drillHistory: 'davinci_drill_history',
   practiceHistory: 'davinci_cipher_practice_history',
   quoteBrowserPrefs: 'davinci_quote_browser_prefs',
+  activeCipherSession: 'davinci_active_cipher_session',
   ownerUid: 'davinci_owner_uid',
 } as const;
 
@@ -751,4 +760,208 @@ export function saveQuoteBrowserModePrefs(
     [mode]: sanitizeQuoteBrowserFilterPrefs(prefs, mode),
   });
 }
+
+const VALID_SOURCES: ReadonlySet<string> = new Set<CipherPracticeSource>([
+  'standalone',
+  'general_practice',
+  'shared_link',
+]);
+
+const VALID_SCORE_TIERS: ReadonlySet<string> = new Set<ScoreTier>([
+  'full',
+  'half',
+  'none',
+]);
+
+function sanitizeEvaluationResult(raw: unknown): EvaluationResult | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  if (
+    typeof obj.totalChars !== 'number' ||
+    typeof obj.correctChars !== 'number' ||
+    typeof obj.errorCount !== 'number' ||
+    typeof obj.scoreTier !== 'string' ||
+    !VALID_SCORE_TIERS.has(obj.scoreTier) ||
+    typeof obj.isComplete !== 'boolean'
+  ) {
+    return null;
+  }
+  return {
+    totalChars: Math.max(0, Math.trunc(obj.totalChars)),
+    correctChars: Math.max(0, Math.trunc(obj.correctChars)),
+    errorCount: Math.max(0, Math.trunc(obj.errorCount)),
+    scoreTier: obj.scoreTier as ScoreTier,
+    isComplete: obj.isComplete,
+  };
+}
+
+export function sanitizeActiveCipherSession(
+  raw: unknown
+): ActiveCipherSessionSnapshot | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  if (obj.version !== 1) return null;
+  if (typeof obj.sessionKey !== 'string' || obj.sessionKey.length === 0 || obj.sessionKey.length > 200) {
+    return null;
+  }
+  if (typeof obj.source !== 'string' || !VALID_SOURCES.has(obj.source)) {
+    return null;
+  }
+  if (
+    typeof obj.cipher !== 'string' ||
+    !isCipherType(obj.cipher) ||
+    !isTestableCipher(obj.cipher)
+  ) {
+    return null;
+  }
+  if (typeof obj.quoteId !== 'number' || !Number.isInteger(obj.quoteId) || obj.quoteId < 0) {
+    return null;
+  }
+  if (!Array.isArray(obj.userInputs) || obj.userInputs.length > 1000) {
+    return null;
+  }
+  if (!Array.isArray(obj.keyInputs) || obj.keyInputs.length > 1000) {
+    return null;
+  }
+
+  const userInputs = obj.userInputs.map((v) =>
+    typeof v === 'string' ? v.slice(0, 2) : ''
+  );
+  const keyInputs = obj.keyInputs.map((v) =>
+    typeof v === 'string' ? v.slice(0, 2) : ''
+  );
+
+  const caesarRange: CaesarRangeMode | undefined =
+    obj.caesarRange === 'pm3' || obj.caesarRange === 'any'
+      ? obj.caesarRange
+      : undefined;
+  const aristocratDifficulty: AristocratDifficulty | undefined =
+    obj.aristocratDifficulty === 'easy' ||
+    obj.aristocratDifficulty === 'medium' ||
+    obj.aristocratDifficulty === 'hard'
+      ? obj.aristocratDifficulty
+      : undefined;
+
+  let aristocratReplacements: Partial<Record<string, string>> | undefined;
+  if (obj.aristocratReplacements && typeof obj.aristocratReplacements === 'object') {
+    aristocratReplacements = {};
+    for (const [k, v] of Object.entries(
+      obj.aristocratReplacements as Record<string, unknown>
+    )) {
+      if (
+        /^[A-Z]$/.test(k) &&
+        typeof v === 'string' &&
+        /^[A-Z]$/.test(v)
+      ) {
+        aristocratReplacements[k] = v;
+      }
+    }
+  }
+
+  let aristocratCorners: Partial<Record<string, AristocratCornerTuple>> | undefined;
+  if (obj.aristocratCorners && typeof obj.aristocratCorners === 'object') {
+    aristocratCorners = {};
+    for (const [k, v] of Object.entries(
+      obj.aristocratCorners as Record<string, unknown>
+    )) {
+      if (/^[A-Z]$/.test(k) && Array.isArray(v) && v.length === 4) {
+        aristocratCorners[k] = [
+          typeof v[0] === 'string' && /^[A-Z]?$/.test(v[0]) ? v[0] : '',
+          typeof v[1] === 'string' && /^[A-Z]?$/.test(v[1]) ? v[1] : '',
+          typeof v[2] === 'string' && /^[A-Z]?$/.test(v[2]) ? v[2] : '',
+          typeof v[3] === 'string' && /^[A-Z]?$/.test(v[3]) ? v[3] : '',
+        ];
+      }
+    }
+  }
+
+  const elapsedMs =
+    typeof obj.elapsedMs === 'number' && Number.isFinite(obj.elapsedMs)
+      ? Math.max(0, Math.trunc(obj.elapsedMs))
+      : 0;
+  const meaningfullySeen = Boolean(obj.meaningfullySeen);
+  const isSubmitted = Boolean(obj.isSubmitted);
+  const result = isSubmitted ? sanitizeEvaluationResult(obj.result) : null;
+
+  return {
+    version: 1,
+    sessionKey: obj.sessionKey,
+    source: obj.source as CipherPracticeSource,
+    cipher: obj.cipher,
+    ...(caesarRange ? { caesarRange } : {}),
+    ...(aristocratDifficulty ? { aristocratDifficulty } : {}),
+    quoteId: obj.quoteId,
+    ...(typeof obj.caesarOffset === 'number' &&
+    obj.caesarOffset >= 1 &&
+    obj.caesarOffset <= 25
+      ? { caesarOffset: Math.trunc(obj.caesarOffset) }
+      : {}),
+    ...(typeof obj.vigenereKeyword === 'string' && obj.vigenereKeyword.length > 0
+      ? { vigenereKeyword: obj.vigenereKeyword.slice(0, 16) }
+      : {}),
+    ...(typeof obj.aristocratSeed === 'number' && Number.isFinite(obj.aristocratSeed)
+      ? { aristocratSeed: obj.aristocratSeed >>> 0 }
+      : {}),
+    ...(typeof obj.aristocratAlphabet === 'string' &&
+    obj.aristocratAlphabet.length === 26
+      ? { aristocratAlphabet: obj.aristocratAlphabet }
+      : {}),
+    ...(obj.aristocratHint === null || typeof obj.aristocratHint === 'string'
+      ? {
+          aristocratHint:
+            typeof obj.aristocratHint === 'string'
+              ? obj.aristocratHint.slice(0, 240)
+              : null,
+        }
+      : {}),
+    userInputs,
+    keyInputs,
+    ...(aristocratReplacements ? { aristocratReplacements } : {}),
+    ...(aristocratCorners ? { aristocratCorners } : {}),
+    elapsedMs,
+    meaningfullySeen,
+    isSubmitted,
+    result,
+    updatedAt:
+      typeof obj.updatedAt === 'number' && Number.isFinite(obj.updatedAt)
+        ? Math.trunc(obj.updatedAt)
+        : Date.now(),
+  };
+}
+
+export function loadActiveCipherSession(
+  expectedSessionKey?: string
+): ActiveCipherSessionSnapshot | null {
+  try {
+    const raw = localStorage.getItem(KEYS.activeCipherSession);
+    if (!raw) return null;
+    const parsed = sanitizeActiveCipherSession(JSON.parse(raw));
+    if (!parsed) return null;
+    if (expectedSessionKey !== undefined && parsed.sessionKey !== expectedSessionKey) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function saveActiveCipherSession(
+  snapshot: ActiveCipherSessionSnapshot
+): void {
+  try {
+    localStorage.setItem(KEYS.activeCipherSession, JSON.stringify(snapshot));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function clearActiveCipherSession(): void {
+  try {
+    localStorage.removeItem(KEYS.activeCipherSession);
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 

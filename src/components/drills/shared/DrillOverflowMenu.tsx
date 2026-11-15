@@ -14,6 +14,10 @@ export interface DrillOverflowMenuProps {
     onOpen: () => void;
   };
   onOpenLeaderboard?: () => void;
+  shareAction?: {
+    copied: boolean;
+    onCopyLink: () => void;
+  };
   onCloseFocusRestore?: () => void;
 }
 
@@ -23,14 +27,24 @@ export const DrillOverflowMenu: React.FC<DrillOverflowMenuProps> = ({
   onSelectMode,
   masteryAction,
   onOpenLeaderboard,
+  shareAction,
   onCloseFocusRestore,
 }) => {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const copyCloseTimeoutRef = useRef<number | null>(null);
 
   const hasModeSection = Boolean(modeOptions && modeOptions.length > 0 && onSelectMode);
-  const hasActionsSection = Boolean(masteryAction || onOpenLeaderboard);
+  const hasActionsSection = Boolean(masteryAction || onOpenLeaderboard || shareAction);
   const hasAnyItems = hasModeSection || hasActionsSection;
+
+  useEffect(() => {
+    return () => {
+      if (copyCloseTimeoutRef.current !== null) {
+        window.clearTimeout(copyCloseTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!open || !hasAnyItems) return;
@@ -77,7 +91,9 @@ export const DrillOverflowMenu: React.FC<DrillOverflowMenuProps> = ({
   const buttonTitle =
     hasModeSection && !hasActionsSection
       ? 'Switch Drill Mode'
-      : 'Mastery & Leaderboards';
+      : masteryAction || onOpenLeaderboard
+        ? 'Mastery & Leaderboards'
+        : 'Puzzle Options';
 
   return (
     <div className="drill-overflow-wrapper" ref={wrapperRef}>
@@ -168,6 +184,28 @@ export const DrillOverflowMenu: React.FC<DrillOverflowMenuProps> = ({
                 >
                   <span>🏆 Leaderboards</span>
                   <span className="popover-action-chevron">›</span>
+                </button>
+              )}
+
+              {shareAction && (
+                <button
+                  type="button"
+                  className={`popover-action-btn share-link-action${shareAction.copied ? ' is-copied' : ''}`}
+                  onClick={() => {
+                    shareAction.onCopyLink();
+                    if (copyCloseTimeoutRef.current !== null) {
+                      window.clearTimeout(copyCloseTimeoutRef.current);
+                    }
+                    copyCloseTimeoutRef.current = window.setTimeout(() => {
+                      setOpen(false);
+                    }, 700);
+                  }}
+                >
+                  <span>
+                    {shareAction.copied
+                      ? '✓ Share Link Copied!'
+                      : '🔗 Copy Share Link'}
+                  </span>
                 </button>
               )}
             </div>

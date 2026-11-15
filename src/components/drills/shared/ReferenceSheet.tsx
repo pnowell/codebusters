@@ -36,12 +36,18 @@ export const ReferenceSheet: React.FC<Props> = ({ cipher, cipherParams }) => {
       <TabulaRecta
         variant="caesar"
         caesarRange={cipherParams?.caesarRange ?? 'pm3'}
+        onInteract={cipherParams?.onReferenceInteract}
       />
     );
   }
 
   if (cipher === 'vigenere') {
-    return <TabulaRecta variant="vigenere" />;
+    return (
+      <TabulaRecta
+        variant="vigenere"
+        onInteract={cipherParams?.onReferenceInteract}
+      />
+    );
   }
 
   if (cipher === 'aristocrat') {

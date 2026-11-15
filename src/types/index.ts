@@ -50,6 +50,7 @@ export interface CipherWorkspaceParams {
     cipherLetter: string | null,
     source?: 'table' | 'grid'
   ) => void;
+  onReferenceInteract?: () => void;
 }
 
 export type QuoteCategory =
@@ -320,4 +321,38 @@ export interface WorkoutStepContext {
   isLastStep: boolean;
   onAdvance: (stepResult?: Partial<WorkoutStepResult>) => void;
 }
+
+export type CipherPracticeSource =
+  | 'standalone'
+  | 'general_practice'
+  | 'shared_link';
+
+export interface ActiveCipherSessionSnapshot {
+  version: 1;
+  /** Matches current route: e.g. "solo:aristocrat:easy", "teacher:atbash:2716", or "share:7mK9..." */
+  sessionKey: string;
+  source: CipherPracticeSource;
+  cipher: TestableCipherType;
+  caesarRange?: CaesarRangeMode;
+  aristocratDifficulty?: AristocratDifficulty;
+  quoteId: number;
+  /** Exact cipher parameters so reload never re-rolls shift, keyword, or alphabet */
+  caesarOffset?: number;
+  vigenereKeyword?: string;
+  aristocratSeed?: number;
+  aristocratAlphabet?: string;
+  aristocratHint?: string | null;
+  /** Student workspace progress */
+  userInputs: string[];
+  keyInputs: string[];
+  aristocratReplacements?: Partial<Record<string, string>>;
+  aristocratCorners?: Partial<Record<string, AristocratCornerTuple>>;
+  /** Timer & submission state */
+  elapsedMs: number;
+  meaningfullySeen: boolean;
+  isSubmitted: boolean;
+  result?: EvaluationResult | null;
+  updatedAt: number;
+}
+
 
