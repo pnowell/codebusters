@@ -2,6 +2,10 @@ import { onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import { onRequest } from 'firebase-functions/v2/https';
 import type { RawAttemptDoc, RawTestPacketDoc } from './handlers.js';
 
+console.info(
+  `[codebusters-functions] Booting target=${process.env.FUNCTION_TARGET ?? 'manifest'} port=${process.env.PORT ?? 'default'}`
+);
+
 const ALLOWLIST_CACHE_TTL_MS = 5 * 60 * 1000;
 const MAX_ALLOWLIST_CACHE_SIZE = 500;
 const allowlistCache = new Map<
