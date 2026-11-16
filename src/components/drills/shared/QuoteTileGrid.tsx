@@ -209,8 +209,9 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- refocus only when puzzle identity or disabled state changes
   }, [puzzleIdentity, disabled]);
 
-  // Keep focused character tile visible horizontally and vertically
-  const keepInViewKey = activeIdx * 2 + (effectiveActiveRow === 'key' ? 0 : 1);
+  // Keep focused character tile visible horizontally and vertically when focus or typed input changes
+  const [editScrollNonce, setEditScrollNonce] = useState(0);
+  const keepInViewKey = `${activeIdx}:${effectiveActiveRow}:${editScrollNonce}`;
   useKeepInView(
     scrollPanelRef,
     () =>
@@ -237,6 +238,7 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
     if (isLetter(lastChar)) {
       updated[index] = lastChar;
       onChangeKeyInputs(updated);
+      setEditScrollNonce((n) => n + 1);
       // Advance horizontally to the keyword cell of the next letter (never down to plaintext)
       const nextIdx = findLetterIndex(chars, index, 1);
       if (nextIdx === index) {
@@ -251,6 +253,7 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
     } else if (val === '') {
       updated[index] = '';
       onChangeKeyInputs(updated);
+      setEditScrollNonce((n) => n + 1);
     }
   };
 
@@ -294,6 +297,7 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
           index,
           plainLetter: lastChar,
         });
+        setEditScrollNonce((n) => n + 1);
         const nextIdx = findLetterIndex(chars, index, 1);
         focusCell('plain', nextIdx);
       } else if (val === '') {
@@ -302,6 +306,7 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
           index,
           plainLetter: '',
         });
+        setEditScrollNonce((n) => n + 1);
       }
       return;
     }
@@ -311,11 +316,13 @@ export const QuoteTileGrid: React.FC<QuoteTileGridProps> = ({
     if (isLetter(lastChar)) {
       updated[index] = lastChar;
       onChangeUserInputs(updated);
+      setEditScrollNonce((n) => n + 1);
       const nextIdx = findLetterIndex(chars, index, 1);
       focusCell('plain', nextIdx);
     } else if (val === '') {
       updated[index] = '';
       onChangeUserInputs(updated);
+      setEditScrollNonce((n) => n + 1);
     }
   };
 

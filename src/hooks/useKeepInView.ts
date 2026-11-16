@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 
 /**
  * Keep focused element centered horizontally and visible vertically
@@ -9,9 +9,14 @@ export function useKeepInView(
   getTarget: () => HTMLElement | null,
   dep: unknown
 ) {
+  const getTargetRef = useRef(getTarget);
+  useEffect(() => {
+    getTargetRef.current = getTarget;
+  });
+
   useEffect(() => {
     const panel = panelRef.current;
-    const el = getTarget();
+    const el = getTargetRef.current();
     if (!panel || !el) return;
 
     const panelRect = panel.getBoundingClientRect();
@@ -32,5 +37,5 @@ export function useKeepInView(
     } else if (elRect.bottom > panelRect.bottom - margin) {
       panel.scrollTop += elRect.bottom - (panelRect.bottom - margin);
     }
-  }, [panelRef, getTarget, dep]);
+  }, [panelRef, dep]);
 }
