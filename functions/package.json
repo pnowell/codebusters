@@ -2,13 +2,12 @@
   "name": "codebusters-functions",
   "private": true,
   "version": "1.0.0",
-  "type": "module",
   "engines": {
     "node": "22"
   },
   "main": "lib/index.js",
   "scripts": {
-    "build": "node scripts/syncQuotesMap.mjs && tsc",
+    "compile": "node scripts/syncQuotesMap.mjs && tsc",
     "typecheck": "node scripts/syncQuotesMap.mjs && tsc --noEmit"
   },
   "dependencies": {

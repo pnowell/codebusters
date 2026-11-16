@@ -61,6 +61,7 @@ export const logPracticeEvents = onRequest(
   {
     region: 'us-central1',
     cors: true,
+    invoker: 'public',
     maxInstances: 10,
     memory: '256MiB',
     timeoutSeconds: 30,

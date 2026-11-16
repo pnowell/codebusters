@@ -405,6 +405,66 @@ async function ensureRequiredApisEnabled(projectId, accessToken) {
   );
 }
 
+async function cleanupOrphanedTriggerStub(projectId, accessToken) {
+  const fnUrl = `https://cloudfunctions.googleapis.com/v2/projects/${encodeURIComponent(
+    projectId
+  )}/locations/us-central1/functions/onTestAttemptCompleted`;
+  const getRes = await fetch(fnUrl, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!getRes.ok) {
+    return;
+  }
+
+  const fnData = await getRes.json();
+  if (fnData?.eventTrigger && fnData?.state === 'ACTIVE') {
+    return;
+  }
+
+  if (isDryRun) {
+    console.log(
+      '[setupAnalyticsSink] [DRY RUN] Would delete incomplete onTestAttemptCompleted stub.'
+    );
+    return;
+  }
+
+  console.log(
+    `[setupAnalyticsSink] Deleting incomplete onTestAttemptCompleted stub (state=${fnData?.state ?? 'unknown'}) before clean redeploy...`
+  );
+  const delRes = await fetch(fnUrl, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!delRes.ok && delRes.status !== 404) {
+    throw new Error(
+      `Failed deleting incomplete onTestAttemptCompleted stub (HTTP ${delRes.status}).`
+    );
+  }
+
+  if (delRes.ok) {
+    let op = await delRes.json();
+    for (
+      let poll = 0;
+      poll < 45 &&
+      !op?.done &&
+      typeof op?.name === 'string' &&
+      /^projects\/[A-Za-z0-9._/-]+$/.test(op.name);
+      poll += 1
+    ) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const pollRes = await fetch(
+        `https://cloudfunctions.googleapis.com/v2/${op.name}`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      if (!pollRes.ok) break;
+      op = await pollRes.json();
+    }
+  }
+  console.log(
+    '[setupAnalyticsSink] Deleted incomplete onTestAttemptCompleted stub.'
+  );
+}
+
 async function main() {
   const rawSecret = (process.env.FIREBASE_SERVICE_ACCOUNT ?? '').trim();
   if (!rawSecret) {
@@ -425,6 +485,7 @@ async function main() {
     dataset,
     writerIdentity
   );
+  await cleanupOrphanedTriggerStub(creds.projectId, accessToken);
 }
 
 main().catch((err) => {
