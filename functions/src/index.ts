@@ -1,20 +1,6 @@
-import { getApps, initializeApp } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
-import { getFirestore } from 'firebase-admin/firestore';
 import { onDocumentUpdated } from 'firebase-functions/v2/firestore';
 import { onRequest } from 'firebase-functions/v2/https';
-import {
-  buildServerLogsFromClientBatch,
-  buildTestAttemptCompletionLogs,
-  EventValidationError,
-  type RawAttemptDoc,
-  type RawTestPacketDoc,
-} from './handlers.js';
-import { QUOTES_MAP } from './quotesMapData.js';
-
-if (getApps().length === 0) {
-  initializeApp();
-}
+import type { RawAttemptDoc, RawTestPacketDoc } from './handlers.js';
 
 const ALLOWLIST_CACHE_TTL_MS = 5 * 60 * 1000;
 const MAX_ALLOWLIST_CACHE_SIZE = 500;
@@ -22,6 +8,24 @@ const allowlistCache = new Map<
   string,
   { allowed: boolean; expiresAt: number }
 >();
+
+let adminReady = false;
+
+async function getAdminServices() {
+  const [appMod, authMod, firestoreMod] = await Promise.all([
+    import('firebase-admin/app'),
+    import('firebase-admin/auth'),
+    import('firebase-admin/firestore'),
+  ]);
+  if (!adminReady && appMod.getApps().length === 0) {
+    appMod.initializeApp();
+  }
+  adminReady = true;
+  return {
+    auth: authMod.getAuth(),
+    db: firestoreMod.getFirestore(),
+  };
+}
 
 async function isEmailAllowedOnRoster(email: string): Promise<boolean> {
   const normalized = email.trim().toLowerCase();
@@ -33,10 +37,8 @@ async function isEmailAllowedOnRoster(email: string): Promise<boolean> {
     return cached.allowed;
   }
 
-  const snap = await getFirestore()
-    .collection('allowed_users')
-    .doc(normalized)
-    .get();
+  const { db } = await getAdminServices();
+  const snap = await db.collection('allowed_users').doc(normalized).get();
   const data = snap.data();
   const allowed = Boolean(snap.exists && data?.active !== false);
 
@@ -51,7 +53,9 @@ async function isEmailAllowedOnRoster(email: string): Promise<boolean> {
   return allowed;
 }
 
-function emitStructuredLogsToStdout(entries: readonly Record<string, unknown>[]): void {
+function emitStructuredLogsToStdout(
+  entries: readonly Record<string, unknown>[]
+): void {
   for (const entry of entries) {
     process.stdout.write(`${JSON.stringify(entry)}\n`);
   }
@@ -63,7 +67,7 @@ export const logPracticeEvents = onRequest(
     cors: true,
     invoker: 'public',
     maxInstances: 10,
-    memory: '256MiB',
+    memory: '512MiB',
     timeoutSeconds: 30,
   },
   async (req, res) => {
@@ -83,31 +87,45 @@ export const logPracticeEvents = onRequest(
       return;
     }
 
-    let uid = '';
-    let email = '';
     try {
-      const decoded = await getAuth().verifyIdToken(idToken);
-      uid = decoded.uid;
-      email = decoded.email ?? '';
-    } catch {
-      res.status(401).json({ error: 'Invalid ID token' });
-      return;
-    }
+      const [{ auth }, handlersMod] = await Promise.all([
+        getAdminServices(),
+        import('./handlers.js'),
+      ]);
 
-    if (!email || !(await isEmailAllowedOnRoster(email))) {
-      res.status(403).json({ error: 'User not on active classroom roster' });
-      return;
-    }
-
-    try {
-      const entries = buildServerLogsFromClientBatch(req.body, uid);
-      emitStructuredLogsToStdout(entries);
-      res.status(200).json({ ok: true, count: entries.length });
-    } catch (err) {
-      if (err instanceof EventValidationError) {
-        res.status(err.statusCode).json({ error: err.message });
+      let uid = '';
+      let email = '';
+      try {
+        const decoded = await auth.verifyIdToken(idToken);
+        uid = decoded.uid;
+        email = decoded.email ?? '';
+      } catch {
+        res.status(401).json({ error: 'Invalid ID token' });
         return;
       }
+
+      if (!email || !(await isEmailAllowedOnRoster(email))) {
+        res.status(403).json({ error: 'User not on active classroom roster' });
+        return;
+      }
+
+      try {
+        const entries = handlersMod.buildServerLogsFromClientBatch(
+          req.body,
+          uid
+        );
+        emitStructuredLogsToStdout(entries);
+        res.status(200).json({ ok: true, count: entries.length });
+      } catch (err) {
+        if (err instanceof handlersMod.EventValidationError) {
+          res.status(err.statusCode).json({ error: err.message });
+          return;
+        }
+        console.error('[logPracticeEvents] Unexpected validation error:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+      }
+    } catch (err) {
+      console.error('[logPracticeEvents] Fatal handler error:', err);
       res.status(500).json({ error: 'Internal Server Error' });
     }
   }
@@ -117,7 +135,7 @@ export const onTestAttemptCompleted = onDocumentUpdated(
   {
     document: 'test_attempts/{attemptId}',
     region: 'us-central1',
-    memory: '256MiB',
+    memory: '512MiB',
     timeoutSeconds: 60,
   },
   async (event) => {
@@ -138,15 +156,21 @@ export const onTestAttemptCompleted = onDocumentUpdated(
       typeof afterData.testId === 'string' ? afterData.testId.trim() : '';
     if (!testId) return;
 
-    const testSnap = await getFirestore().collection('tests').doc(testId).get();
+    const [{ db }, handlersMod, quotesMod] = await Promise.all([
+      getAdminServices(),
+      import('./handlers.js'),
+      import('./quotesMapData.js'),
+    ]);
+
+    const testSnap = await db.collection('tests').doc(testId).get();
     if (!testSnap.exists) return;
 
     const testPacket = testSnap.data() as RawTestPacketDoc;
-    const entries = buildTestAttemptCompletionLogs(
+    const entries = handlersMod.buildTestAttemptCompletionLogs(
       event.params.attemptId,
       afterData,
       testPacket,
-      QUOTES_MAP
+      quotesMod.QUOTES_MAP
     );
     emitStructuredLogsToStdout(entries);
   }

@@ -406,63 +406,66 @@ async function ensureRequiredApisEnabled(projectId, accessToken) {
 }
 
 async function cleanupOrphanedTriggerStub(projectId, accessToken) {
-  const fnUrl = `https://cloudfunctions.googleapis.com/v2/projects/${encodeURIComponent(
-    projectId
-  )}/locations/us-central1/functions/onTestAttemptCompleted`;
-  const getRes = await fetch(fnUrl, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!getRes.ok) {
-    return;
-  }
-
-  const fnData = await getRes.json();
-  if (fnData?.eventTrigger && fnData?.state === 'ACTIVE') {
-    return;
-  }
-
-  if (isDryRun) {
-    console.log(
-      '[setupAnalyticsSink] [DRY RUN] Would delete incomplete onTestAttemptCompleted stub.'
-    );
-    return;
-  }
-
-  console.log(
-    `[setupAnalyticsSink] Deleting incomplete onTestAttemptCompleted stub (state=${fnData?.state ?? 'unknown'}) before clean redeploy...`
-  );
-  const delRes = await fetch(fnUrl, {
-    method: 'DELETE',
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!delRes.ok && delRes.status !== 404) {
-    throw new Error(
-      `Failed deleting incomplete onTestAttemptCompleted stub (HTTP ${delRes.status}).`
-    );
-  }
-
-  if (delRes.ok) {
-    let op = await delRes.json();
-    for (
-      let poll = 0;
-      poll < 45 &&
-      !op?.done &&
-      typeof op?.name === 'string' &&
-      /^projects\/[A-Za-z0-9._/-]+$/.test(op.name);
-      poll += 1
-    ) {
-      await new Promise((r) => setTimeout(r, 2000));
-      const pollRes = await fetch(
-        `https://cloudfunctions.googleapis.com/v2/${op.name}`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
-      );
-      if (!pollRes.ok) break;
-      op = await pollRes.json();
+  for (const fnName of ['logPracticeEvents', 'onTestAttemptCompleted']) {
+    const fnUrl = `https://cloudfunctions.googleapis.com/v2/projects/${encodeURIComponent(
+      projectId
+    )}/locations/us-central1/functions/${fnName}`;
+    const getRes = await fetch(fnUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!getRes.ok) {
+      continue;
     }
+
+    const fnData = await getRes.json();
+    const isHealthy =
+      fnData?.state === 'ACTIVE' &&
+      (fnName !== 'onTestAttemptCompleted' || Boolean(fnData?.eventTrigger));
+    if (isHealthy) {
+      continue;
+    }
+
+    if (isDryRun) {
+      console.log(
+        `[setupAnalyticsSink] [DRY RUN] Would delete non-ACTIVE ${fnName} stub.`
+      );
+      continue;
+    }
+
+    console.log(
+      `[setupAnalyticsSink] Deleting non-ACTIVE ${fnName} stub (state=${fnData?.state ?? 'unknown'}) before clean redeploy...`
+    );
+    const delRes = await fetch(fnUrl, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!delRes.ok && delRes.status !== 404) {
+      throw new Error(
+        `Failed deleting non-ACTIVE ${fnName} stub (HTTP ${delRes.status}).`
+      );
+    }
+
+    if (delRes.ok) {
+      let op = await delRes.json();
+      for (
+        let poll = 0;
+        poll < 45 &&
+        !op?.done &&
+        typeof op?.name === 'string' &&
+        /^projects\/[A-Za-z0-9._/-]+$/.test(op.name);
+        poll += 1
+      ) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const pollRes = await fetch(
+          `https://cloudfunctions.googleapis.com/v2/${op.name}`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        if (!pollRes.ok) break;
+        op = await pollRes.json();
+      }
+    }
+    console.log(`[setupAnalyticsSink] Deleted non-ACTIVE ${fnName} stub.`);
   }
-  console.log(
-    '[setupAnalyticsSink] Deleted incomplete onTestAttemptCompleted stub.'
-  );
 }
 
 async function main() {
