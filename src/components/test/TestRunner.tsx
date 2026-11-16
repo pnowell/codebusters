@@ -15,12 +15,22 @@ import {
   serializeCornerTuple,
 } from '../../utils/aristocrat';
 import { formatClock } from '../../utils/format';
+import {
+  createIdleAwareTimerState,
+  getIdleAwareElapsedMs,
+  isDocumentCurrentlyVisible,
+  recordIdleTimerActivity,
+  subscribeWindowActivity,
+  updateIdleTimerVisibility,
+  type IdleAwareTimerState,
+} from '../../utils/activeTimer';
 import { getQuestionProgress } from '../../utils/testProgress';
 import {
   applyPendingCellOps,
   deserializeWorkspacesFromFirestore,
   diffQuestionInputs,
   getActiveTeammateUidsForTab,
+  getCellInputFieldKey,
   PRESENCE_STALE_MS,
   resolveQuestionAristocratAlphabet,
   resolveTeamNameForMembers,
@@ -154,8 +164,18 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
   const opSeqRef = useRef<number>(0);
   const pendingCellOpsRef = useRef<Map<string, PendingCellOp>>(new Map());
   const pendingMetaRef = useRef<
-    Record<number, { completed: boolean; lastEditedAt: number; lastEditedBy?: string }>
+    Record<
+      number,
+      {
+        completed: boolean;
+        lastEditedAt: number;
+        lastEditedBy?: string;
+        activeScreenUid?: string;
+        activeScreenMs?: number;
+      }
+    >
   >({});
+  const questionTimersRef = useRef<Map<number, IdleAwareTimerState>>(new Map());
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlightFlushRef = useRef<Promise<void> | null>(null);
   const hasTriggeredExpireRef = useRef<boolean>(false);
@@ -215,6 +235,92 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
     results,
   ]);
 
+  // Ensure local per-question timers never regress below persisted Firestore activeScreenMs
+  useEffect(() => {
+    if (isSpectator || !currentUid || currentUid === 'student') return;
+    for (let idx = 0; idx < totalQuestions; idx += 1) {
+      const persisted = workspaces[idx]?.activeScreenMs?.[currentUid] ?? 0;
+      const existing = questionTimersRef.current.get(idx);
+      if (existing && persisted > existing.accumulatedMs) {
+        questionTimersRef.current.set(idx, {
+          ...existing,
+          accumulatedMs: persisted,
+        });
+      }
+    }
+  }, [currentUid, isSpectator, totalQuestions, workspaces]);
+
+  // Track active non-idle visible time per question (pausing on tab hide, question switch, or >60s idle)
+  useEffect(() => {
+    if (isSpectator || isFinished) return;
+
+    const syncQuestionVisibility = () => {
+      const now = Date.now();
+      const docVisible = isDocumentCurrentlyVisible();
+      for (let idx = 0; idx < totalQuestions; idx += 1) {
+        const shouldBeActive = docVisible && activeQIndex === idx;
+        const existing = questionTimersRef.current.get(idx);
+        if (!existing) {
+          const seedMs =
+            attemptRef.current.workspaces[idx]?.activeScreenMs?.[currentUid] ??
+            0;
+          questionTimersRef.current.set(
+            idx,
+            createIdleAwareTimerState(now, shouldBeActive, seedMs, false)
+          );
+        } else {
+          questionTimersRef.current.set(
+            idx,
+            updateIdleTimerVisibility(existing, shouldBeActive, now)
+          );
+        }
+      }
+    };
+
+    syncQuestionVisibility();
+
+    const handleActivity = () => {
+      if (activeQIndex < 0 || activeQIndex >= totalQuestions) return;
+      const cur = questionTimersRef.current.get(activeQIndex);
+      if (cur) {
+        questionTimersRef.current.set(
+          activeQIndex,
+          recordIdleTimerActivity(cur, Date.now())
+        );
+      }
+    };
+
+    const unsubActivity = subscribeWindowActivity(handleActivity);
+    document.addEventListener('visibilitychange', syncQuestionVisibility);
+    return () => {
+      unsubActivity();
+      document.removeEventListener('visibilitychange', syncQuestionVisibility);
+    };
+  }, [activeQIndex, currentUid, isFinished, isSpectator, totalQuestions]);
+
+  const commitQuestionActiveMs = useCallback(
+    (qIdx: number, now: number): number => {
+      const cur = questionTimersRef.current.get(qIdx);
+      const persisted =
+        attemptRef.current.workspaces[qIdx]?.activeScreenMs?.[currentUid] ?? 0;
+      if (!cur) {
+        const created = createIdleAwareTimerState(
+          now,
+          isDocumentCurrentlyVisible() && activeQIndex === qIdx,
+          persisted,
+          false
+        );
+        questionTimersRef.current.set(qIdx, created);
+        return persisted;
+      }
+      const updated = recordIdleTimerActivity(cur, now);
+      const elapsed = Math.max(persisted, getIdleAwareElapsedMs(updated, now));
+      questionTimersRef.current.set(qIdx, updated);
+      return elapsed;
+    },
+    [activeQIndex, currentUid]
+  );
+
   const flushPendingEdits = useCallback(async (): Promise<void> => {
     if (isSpectator) return;
     if (flushTimerRef.current) {
@@ -231,12 +337,16 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
     const snapshotOps = Array.from(pendingCellOpsRef.current.values());
     const snapshotMeta = { ...pendingMetaRef.current };
 
+    const getOpMapKey = (op: PendingCellOp) =>
+      `${op.qIdx}:${op.fieldKey ?? getCellInputFieldKey(op.charIdx, op.row)}`;
+
     const run = (async () => {
       if (currentUid === 'student') {
         for (const op of snapshotOps) {
-          const cur = pendingCellOpsRef.current.get(`${op.qIdx}:${op.charIdx}`);
+          const mapKey = getOpMapKey(op);
+          const cur = pendingCellOpsRef.current.get(mapKey);
           if (cur && cur.seq <= op.seq) {
-            pendingCellOpsRef.current.delete(`${op.qIdx}:${op.charIdx}`);
+            pendingCellOpsRef.current.delete(mapKey);
           }
         }
         saveLocalTestAttempt(attemptRef.current);
@@ -246,9 +356,10 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
       const ok = await flushWorkspaceCellOps(attemptId, snapshotOps, snapshotMeta);
       if (ok) {
         for (const op of snapshotOps) {
-          const cur = pendingCellOpsRef.current.get(`${op.qIdx}:${op.charIdx}`);
+          const mapKey = getOpMapKey(op);
+          const cur = pendingCellOpsRef.current.get(mapKey);
           if (cur && cur.seq <= op.seq) {
-            pendingCellOpsRef.current.delete(`${op.qIdx}:${op.charIdx}`);
+            pendingCellOpsRef.current.delete(mapKey);
           }
         }
       }
@@ -446,38 +557,64 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
     if (diffs.length === 0) return;
 
     const now = Date.now();
+    const editedBy = currentUid !== 'student' ? currentUid : undefined;
+    const committedMs = commitQuestionActiveMs(activeQIndex, now);
     const { isComplete } = getQuestionProgress(
       testPacket.questions[activeQIndex],
       newInputs
     );
 
+    const nextAuthors: Record<string, string> = {
+      ...(prevWs?.inputAuthors ?? {}),
+    };
+
     for (const diff of diffs) {
       opSeqRef.current += 1;
-      pendingCellOpsRef.current.set(`${activeQIndex}:${diff.charIdx}`, {
+      const fieldKey = String(diff.charIdx);
+      if (diff.value && editedBy) {
+        nextAuthors[fieldKey] = editedBy;
+      } else if (!diff.value) {
+        delete nextAuthors[fieldKey];
+      }
+      pendingCellOpsRef.current.set(`${activeQIndex}:${fieldKey}`, {
         qIdx: activeQIndex,
         charIdx: diff.charIdx,
         row: 'plain',
         value: diff.value,
         seq: opSeqRef.current,
         editedAt: now,
-        editedBy: currentUid !== 'student' ? currentUid : undefined,
+        editedBy,
       });
     }
+
+    const nextActiveScreenMs: Record<string, number> = {
+      ...(prevWs?.activeScreenMs ?? {}),
+      ...(editedBy ? { [editedBy]: committedMs } : {}),
+    };
 
     pendingMetaRef.current[activeQIndex] = {
       completed: isComplete,
       lastEditedAt: now,
-      ...(currentUid !== 'student' ? { lastEditedBy: currentUid } : {}),
+      ...(editedBy
+        ? {
+            lastEditedBy: editedBy,
+            activeScreenUid: editedBy,
+            activeScreenMs: committedMs,
+          }
+        : {}),
     };
 
     const nextWorkspaces: Record<number, QuestionWorkspace> = {
       ...workspaces,
       [activeQIndex]: {
+        ...prevWs,
         userInputs: newInputs,
         ...(prevWs?.keyInputs ? { keyInputs: prevWs.keyInputs } : {}),
+        inputAuthors: nextAuthors,
+        activeScreenMs: nextActiveScreenMs,
         completed: isComplete,
         lastEditedAt: now,
-        ...(currentUid !== 'student' ? { lastEditedBy: currentUid } : {}),
+        ...(editedBy ? { lastEditedBy: editedBy } : {}),
       },
     };
 
@@ -506,39 +643,65 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
     if (diffs.length === 0) return;
 
     const now = Date.now();
+    const editedBy = currentUid !== 'student' ? currentUid : undefined;
+    const committedMs = commitQuestionActiveMs(activeQIndex, now);
     const existingPlainInputs = prevWs?.userInputs ?? [];
     const { isComplete } = getQuestionProgress(
       testPacket.questions[activeQIndex],
       existingPlainInputs
     );
 
+    const nextAuthors: Record<string, string> = {
+      ...(prevWs?.inputAuthors ?? {}),
+    };
+
     for (const diff of diffs) {
       opSeqRef.current += 1;
-      pendingCellOpsRef.current.set(`${activeQIndex}:k${diff.charIdx}`, {
+      const fieldKey = `k${diff.charIdx}`;
+      if (diff.value && editedBy) {
+        nextAuthors[fieldKey] = editedBy;
+      } else if (!diff.value) {
+        delete nextAuthors[fieldKey];
+      }
+      pendingCellOpsRef.current.set(`${activeQIndex}:${fieldKey}`, {
         qIdx: activeQIndex,
         charIdx: diff.charIdx,
         row: 'key',
         value: diff.value,
         seq: opSeqRef.current,
         editedAt: now,
-        editedBy: currentUid !== 'student' ? currentUid : undefined,
+        editedBy,
       });
     }
+
+    const nextActiveScreenMs: Record<string, number> = {
+      ...(prevWs?.activeScreenMs ?? {}),
+      ...(editedBy ? { [editedBy]: committedMs } : {}),
+    };
 
     pendingMetaRef.current[activeQIndex] = {
       completed: isComplete,
       lastEditedAt: now,
-      ...(currentUid !== 'student' ? { lastEditedBy: currentUid } : {}),
+      ...(editedBy
+        ? {
+            lastEditedBy: editedBy,
+            activeScreenUid: editedBy,
+            activeScreenMs: committedMs,
+          }
+        : {}),
     };
 
     const nextWorkspaces: Record<number, QuestionWorkspace> = {
       ...workspaces,
       [activeQIndex]: {
+        ...prevWs,
         userInputs: existingPlainInputs,
         keyInputs: newKeyInputs,
+        inputAuthors: nextAuthors,
+        activeScreenMs: nextActiveScreenMs,
         completed: isComplete,
         lastEditedAt: now,
-        ...(currentUid !== 'student' ? { lastEditedBy: currentUid } : {}),
+        ...(editedBy ? { lastEditedBy: currentUid } : {}),
       },
     };
 
@@ -587,12 +750,21 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
     const now = Date.now();
     const editedBy = currentUid !== 'student' ? currentUid : undefined;
     let hasChanges = false;
+    const nextAuthors: Record<string, string> = {
+      ...(prevWs?.inputAuthors ?? {}),
+    };
 
     const charDiffs = diffQuestionInputs(prevInputs, nextAristo.userInputs);
     for (const diff of charDiffs) {
       hasChanges = true;
       opSeqRef.current += 1;
-      pendingCellOpsRef.current.set(`${activeQIndex}:${diff.charIdx}`, {
+      const fieldKey = String(diff.charIdx);
+      if (diff.value && editedBy) {
+        nextAuthors[fieldKey] = editedBy;
+      } else if (!diff.value) {
+        delete nextAuthors[fieldKey];
+      }
+      pendingCellOpsRef.current.set(`${activeQIndex}:${fieldKey}`, {
         qIdx: activeQIndex,
         charIdx: diff.charIdx,
         row: 'plain',
@@ -610,6 +782,11 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
         hasChanges = true;
         opSeqRef.current += 1;
         const fieldKey = `rep_${cCh}`;
+        if (nextRepVal && editedBy) {
+          nextAuthors[fieldKey] = editedBy;
+        } else if (!nextRepVal) {
+          delete nextAuthors[fieldKey];
+        }
         pendingCellOpsRef.current.set(`${activeQIndex}:${fieldKey}`, {
           qIdx: activeQIndex,
           charIdx: -1,
@@ -627,6 +804,11 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
         hasChanges = true;
         opSeqRef.current += 1;
         const fieldKey = `cor_${cCh}`;
+        if (nextCorEnc && editedBy) {
+          nextAuthors[fieldKey] = editedBy;
+        } else if (!nextCorEnc) {
+          delete nextAuthors[fieldKey];
+        }
         pendingCellOpsRef.current.set(`${activeQIndex}:${fieldKey}`, {
           qIdx: activeQIndex,
           charIdx: -1,
@@ -641,19 +823,34 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
 
     if (!hasChanges) return;
 
+    const committedMs = commitQuestionActiveMs(activeQIndex, now);
+    const nextActiveScreenMs: Record<string, number> = {
+      ...(prevWs?.activeScreenMs ?? {}),
+      ...(editedBy ? { [editedBy]: committedMs } : {}),
+    };
+
     const { isComplete } = getQuestionProgress(question, nextAristo.userInputs);
     pendingMetaRef.current[activeQIndex] = {
       completed: isComplete,
       lastEditedAt: now,
-      ...(editedBy ? { lastEditedBy: editedBy } : {}),
+      ...(editedBy
+        ? {
+            lastEditedBy: editedBy,
+            activeScreenUid: editedBy,
+            activeScreenMs: committedMs,
+          }
+        : {}),
     };
 
     const nextWorkspaces: Record<number, QuestionWorkspace> = {
       ...workspaces,
       [activeQIndex]: {
+        ...prevWs,
         userInputs: nextAristo.userInputs,
         aristocratReplacements: nextAristo.replacements,
         aristocratCorners: nextAristo.corners,
+        inputAuthors: nextAuthors,
+        activeScreenMs: nextActiveScreenMs,
         completed: isComplete,
         lastEditedAt: now,
         ...(editedBy ? { lastEditedBy: editedBy } : {}),

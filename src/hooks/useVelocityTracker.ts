@@ -5,6 +5,16 @@ import {
   saveDrillScore,
   subscribeToDrillScoreChanges,
 } from '../services/storage';
+import { logDrillSessionEvent } from '../services/eventLogger';
+import {
+  createIdleAwareTimerState,
+  getIdleAwareElapsedMs,
+  isDocumentCurrentlyVisible,
+  recordIdleTimerActivity,
+  subscribeWindowActivity,
+  updateIdleTimerVisibility,
+  type IdleAwareTimerState,
+} from '../utils/activeTimer';
 import type { DrillId } from '../types';
 
 export interface HeatTierInfo {
@@ -21,7 +31,10 @@ export function getHeatTier(cpm: number): HeatTierInfo {
   return { tier: 'idle', label: 'IDLE', icon: '⏱️' };
 }
 
-export function useVelocityTracker(drillId: DrillId) {
+export function useVelocityTracker(
+  drillId: DrillId,
+  source: 'standalone' | 'general_practice' = 'standalone'
+) {
   const [scoreRevision, setScoreRevision] = useState<number>(0);
 
   useEffect(() => {
@@ -44,40 +57,93 @@ export function useVelocityTracker(drillId: DrillId) {
   const correctTimestampsRef = useRef<number[]>([]);
   const lastCorrectTimeRef = useRef<number | null>(null);
   const recordAlertTimerRef = useRef<number | null>(null);
-  const mountedAtRef = useRef<number>(0);
+  const activeTimerRef = useRef<IdleAwareTimerState>({
+    accumulatedMs: 0,
+    segmentStartMs: null,
+    lastActivityMs: 0,
+    isVisible: true,
+    frozen: false,
+  });
   const attemptsRef = useRef<number>(0);
+  const correctCountRef = useRef<number>(0);
   const sessionBest60sRef = useRef<number>(0);
   const flushedRef = useRef<boolean>(false);
 
   const flushSession = useCallback(
-    (forceActivity = false) => {
+    (forceActivity = false, keepalive = false) => {
       if (flushedRef.current) return;
       flushedRef.current = true;
-      const elapsedMs = mountedAtRef.current > 0 ? Date.now() - mountedAtRef.current : 0;
+      const now = Date.now();
+      const elapsedMs = getIdleAwareElapsedMs(activeTimerRef.current, now);
+      const totalAnswered = attemptsRef.current;
+      const totalCorrect = correctCountRef.current;
+      const best60s = sessionBest60sRef.current;
+
       recordDrillSession(drillId, {
-        sessionBest60s: sessionBest60sRef.current,
+        sessionBest60s: best60s,
         elapsedMs,
-        attempts: attemptsRef.current,
+        attempts: totalAnswered,
         forceActivity,
       });
+
+      if (totalAnswered >= 1) {
+        logDrillSessionEvent(
+          {
+            drillId,
+            sessionDurationSec: elapsedMs / 1000,
+            sessionBest60sScore: best60s,
+            totalAnswered,
+            totalCorrect,
+            source,
+          },
+          { keepalive }
+        );
+      }
     },
-    [drillId]
+    [drillId, source]
   );
 
   useEffect(() => {
-    mountedAtRef.current = Date.now();
+    const now = Date.now();
+    activeTimerRef.current = createIdleAwareTimerState(
+      now,
+      isDocumentCurrentlyVisible(),
+      0,
+      false
+    );
     attemptsRef.current = 0;
+    correctCountRef.current = 0;
     sessionBest60sRef.current = 0;
     flushedRef.current = false;
 
-    const handlePageHide = () => {
-      flushSession(false);
+    const handleVisibilityChange = () => {
+      activeTimerRef.current = updateIdleTimerVisibility(
+        activeTimerRef.current,
+        isDocumentCurrentlyVisible(),
+        Date.now()
+      );
     };
+
+    const handleActivity = () => {
+      activeTimerRef.current = recordIdleTimerActivity(
+        activeTimerRef.current,
+        Date.now()
+      );
+    };
+
+    const handlePageHide = () => {
+      flushSession(false, true);
+    };
+
+    const unsubActivity = subscribeWindowActivity(handleActivity);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('pagehide', handlePageHide);
 
     return () => {
+      unsubActivity();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('pagehide', handlePageHide);
-      flushSession(false);
+      flushSession(false, false);
       if (recordAlertTimerRef.current !== null) {
         window.clearTimeout(recordAlertTimerRef.current);
       }
@@ -112,7 +178,9 @@ export function useVelocityTracker(drillId: DrillId) {
 
   const recordHit = useCallback(() => {
     const now = Date.now();
+    activeTimerRef.current = recordIdleTimerActivity(activeTimerRef.current, now);
     attemptsRef.current += 1;
+    correctCountRef.current += 1;
     const newStreak = streak + 1;
     setStreak(newStreak);
 
@@ -154,6 +222,8 @@ export function useVelocityTracker(drillId: DrillId) {
   }, [drillId, scores.best60s, scores.bestStreak, streak]);
 
   const recordMiss = useCallback(() => {
+    const now = Date.now();
+    activeTimerRef.current = recordIdleTimerActivity(activeTimerRef.current, now);
     attemptsRef.current += 1;
     setStreak(0);
   }, []);

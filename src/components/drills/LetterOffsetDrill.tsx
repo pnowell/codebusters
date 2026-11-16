@@ -84,7 +84,7 @@ const OffsetsSession: React.FC<OffsetsSessionProps> = ({
     recordHit,
     recordMiss,
     flushSession,
-  } = useVelocityTracker(drillId);
+  } = useVelocityTracker(drillId, workoutContext ? 'general_practice' : 'standalone');
 
   const { ghosts, spawnGhost, removeGhost } = useFloatingGhosts();
   const {

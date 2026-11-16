@@ -1,6 +1,7 @@
 import {
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -602,7 +603,13 @@ export async function flushWorkspaceCellOps(
   ops: readonly PendingCellOp[],
   questionMeta: Record<
     number,
-    { completed: boolean; lastEditedAt: number; lastEditedBy?: string }
+    {
+      completed: boolean;
+      lastEditedAt: number;
+      lastEditedBy?: string;
+      activeScreenUid?: string;
+      activeScreenMs?: number;
+    }
   >
 ): Promise<boolean> {
   if (!db || ops.length === 0) return false;
@@ -616,7 +623,17 @@ export async function flushWorkspaceCellOps(
     const touchedQuestions = new Set<number>();
     for (const op of ops) {
       const fieldKey = op.fieldKey ?? getCellInputFieldKey(op.charIdx, op.row);
-      payload[`workspaces.${op.qIdx}.inputs.${fieldKey}`] = op.value;
+      if (op.value) {
+        payload[`workspaces.${op.qIdx}.inputs.${fieldKey}`] = op.value;
+        if (op.editedBy) {
+          payload[`workspaces.${op.qIdx}.inputAuthors.${fieldKey}`] =
+            op.editedBy;
+        }
+      } else {
+        payload[`workspaces.${op.qIdx}.inputs.${fieldKey}`] = deleteField();
+        payload[`workspaces.${op.qIdx}.inputAuthors.${fieldKey}`] =
+          deleteField();
+      }
       touchedQuestions.add(op.qIdx);
     }
 
@@ -627,6 +644,15 @@ export async function flushWorkspaceCellOps(
         payload[`workspaces.${qIdx}.lastEditedAt`] = meta.lastEditedAt;
         if (meta.lastEditedBy) {
           payload[`workspaces.${qIdx}.lastEditedBy`] = meta.lastEditedBy;
+        }
+        if (
+          meta.activeScreenUid &&
+          typeof meta.activeScreenMs === 'number' &&
+          Number.isFinite(meta.activeScreenMs)
+        ) {
+          payload[
+            `workspaces.${qIdx}.activeScreenMs.${meta.activeScreenUid}`
+          ] = Math.max(0, Math.trunc(meta.activeScreenMs));
         }
       }
     }

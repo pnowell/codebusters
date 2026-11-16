@@ -160,13 +160,57 @@ export function clearCornersInWorkspaces(
           Object.entries(ws.inputs).filter(([k]) => !k.startsWith('cor_'))
         )
       : undefined;
+    const nextAuthors = ws.inputAuthors
+      ? Object.fromEntries(
+          Object.entries(ws.inputAuthors).filter(([k]) => !k.startsWith('cor_'))
+        )
+      : undefined;
     cleaned[qIdx] = {
       ...ws,
       ...(ws.aristocratCorners !== undefined ? { aristocratCorners: {} } : {}),
       ...(nextInputs ? { inputs: nextInputs } : {}),
+      ...(nextAuthors ? { inputAuthors: nextAuthors } : {}),
     };
   }
   return cleaned;
+}
+
+function sanitizeInputAuthorsMap(
+  raw: unknown,
+  validInputKeys: ReadonlySet<string>,
+  clearCorners?: boolean
+): Record<string, string> | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const out: Record<string, string> = {};
+  for (const [fieldKey, uidVal] of Object.entries(
+    raw as Record<string, unknown>
+  )) {
+    if (clearCorners && fieldKey.startsWith('cor_')) continue;
+    if (!validInputKeys.has(fieldKey)) continue;
+    if (typeof uidVal === 'string' && uidVal.trim().length > 0 && uidVal.length <= 128) {
+      out[fieldKey] = uidVal.trim();
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function sanitizeActiveScreenMsMap(
+  raw: unknown
+): Record<string, number> | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const out: Record<string, number> = {};
+  for (const [uid, msVal] of Object.entries(raw as Record<string, unknown>)) {
+    if (
+      uid.trim().length > 0 &&
+      uid.length <= 128 &&
+      typeof msVal === 'number' &&
+      Number.isFinite(msVal) &&
+      msVal >= 0
+    ) {
+      out[uid.trim()] = Math.trunc(msVal);
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /**
@@ -286,6 +330,13 @@ export function deserializeWorkspacesFromFirestore(
       aristocratCorners = options?.clearCorners ? {} : cornersMap;
     }
 
+    const inputAuthors = sanitizeInputAuthorsMap(
+      rawEntry?.inputAuthors,
+      new Set(Object.keys(inputsRecord)),
+      options?.clearCorners
+    );
+    const activeScreenMs = sanitizeActiveScreenMsMap(rawEntry?.activeScreenMs);
+
     const completed = totalAlpha > 0 && filledAlpha === totalAlpha;
     const lastEditedAt =
       typeof rawEntry?.lastEditedAt === 'number' ? rawEntry.lastEditedAt : 0;
@@ -298,6 +349,8 @@ export function deserializeWorkspacesFromFirestore(
       ...(aristocratReplacements ? { aristocratReplacements } : {}),
       ...(aristocratCorners ? { aristocratCorners } : {}),
       inputs: inputsRecord,
+      ...(inputAuthors ? { inputAuthors } : {}),
+      ...(activeScreenMs ? { activeScreenMs } : {}),
       completed,
       lastEditedAt,
       ...(lastEditedBy ? { lastEditedBy } : {}),
@@ -364,8 +417,17 @@ export function serializeWorkspacesForFirestore(
       }
     }
 
+    const inputAuthors = sanitizeInputAuthorsMap(
+      ws.inputAuthors,
+      new Set(Object.keys(inputs)),
+      options?.clearCorners
+    );
+    const activeScreenMs = sanitizeActiveScreenMsMap(ws.activeScreenMs);
+
     const entry: Record<string, unknown> = {
       inputs,
+      ...(inputAuthors ? { inputAuthors } : {}),
+      ...(activeScreenMs ? { activeScreenMs } : {}),
       completed: totalAlpha > 0 && filledAlpha === totalAlpha,
       lastEditedAt: ws.lastEditedAt || 0,
     };
@@ -437,6 +499,10 @@ export function applyPendingCellOps(
           ? { aristocratCorners: { ...(existing.aristocratCorners ?? {}) } }
           : {}),
         inputs: { ...(existing.inputs ?? {}) },
+        inputAuthors: { ...(existing.inputAuthors ?? {}) },
+        ...(existing.activeScreenMs
+          ? { activeScreenMs: { ...existing.activeScreenMs } }
+          : {}),
       };
       touchedQuestions.add(op.qIdx);
     }
@@ -452,9 +518,13 @@ export function applyPendingCellOps(
         if (cleanVal) {
           target.aristocratReplacements[cCh] = cleanVal;
           if (target.inputs) target.inputs[fieldKey] = cleanVal;
+          if (op.editedBy && target.inputAuthors) {
+            target.inputAuthors[fieldKey] = op.editedBy;
+          }
         } else {
           delete target.aristocratReplacements[cCh];
           if (target.inputs) delete target.inputs[fieldKey];
+          if (target.inputAuthors) delete target.inputAuthors[fieldKey];
         }
         target.lastEditedAt = Math.max(target.lastEditedAt, op.editedAt);
         if (op.editedBy) target.lastEditedBy = op.editedBy;
@@ -466,9 +536,13 @@ export function applyPendingCellOps(
         if (parsed) {
           target.aristocratCorners[cCh] = parsed;
           if (target.inputs) target.inputs[fieldKey] = serializeCornerTuple(parsed);
+          if (op.editedBy && target.inputAuthors) {
+            target.inputAuthors[fieldKey] = op.editedBy;
+          }
         } else {
           delete target.aristocratCorners[cCh];
           if (target.inputs) delete target.inputs[fieldKey];
+          if (target.inputAuthors) delete target.inputAuthors[fieldKey];
         }
         target.lastEditedAt = Math.max(target.lastEditedAt, op.editedAt);
         if (op.editedBy) target.lastEditedBy = op.editedBy;
@@ -479,8 +553,12 @@ export function applyPendingCellOps(
         if (target.inputs) {
           if (op.value) {
             target.inputs[fieldKey] = op.value;
+            if (op.editedBy && target.inputAuthors) {
+              target.inputAuthors[fieldKey] = op.editedBy;
+            }
           } else {
             delete target.inputs[fieldKey];
+            if (target.inputAuthors) delete target.inputAuthors[fieldKey];
           }
         }
         target.lastEditedAt = Math.max(target.lastEditedAt, op.editedAt);
@@ -493,8 +571,12 @@ export function applyPendingCellOps(
       if (target.inputs) {
         if (op.value) {
           target.inputs[fieldKey] = op.value;
+          if (op.editedBy && target.inputAuthors) {
+            target.inputAuthors[fieldKey] = op.editedBy;
+          }
         } else {
           delete target.inputs[fieldKey];
+          if (target.inputAuthors) delete target.inputAuthors[fieldKey];
         }
       }
       target.lastEditedAt = Math.max(target.lastEditedAt, op.editedAt);
@@ -660,3 +742,106 @@ export function getActiveTeammateUidsForTab(
     return entry.activeQIndex === tabIndex && now - entry.updatedAt <= PRESENCE_STALE_MS;
   });
 }
+
+export interface QuestionUserAttribution {
+  uid: string;
+  activeScreenTimeSec: number;
+  correctGradableInputs: number;
+  totalGradableUnits: number;
+}
+
+/**
+ * Computes per-student active screen time and correct gradable inputs on a single
+ * practice test question:
+ * - Linked Aristocrat: counts unique ciphertext-letter replacement mappings (`0..uniqueAlphaCharCount`)
+ *   last entered by `uid` that resolve to the correct plaintext letter.
+ * - All other ciphers: counts `A–Z` plaintext cells (`0..alphaCharCount`) last entered by `uid`
+ *   that match the target quote character (excluding Vigenère `k*` and Aristocrat `cor_*` scratchpad keys).
+ */
+export function computeQuestionUserAttributions(
+  question: TestQuestion,
+  qIdx: number,
+  workspace: QuestionWorkspace | undefined,
+  quote: Quote | undefined,
+  studentUids: readonly string[]
+): QuestionUserAttribution[] {
+  const cleanUids = normalizeUidList(studentUids);
+  if (cleanUids.length === 0) return [];
+
+  const targetUpper = (quote?.quote ?? '').toUpperCase();
+  const targetChars = targetUpper.split('');
+  const correctByUid = new Map<string, number>();
+  for (const uid of cleanUids) {
+    correctByUid.set(uid, 0);
+  }
+
+  const authors = workspace?.inputAuthors ?? {};
+  let totalGradableUnits = 0;
+
+  if (question.cipher === 'aristocrat') {
+    const alphabet = resolveQuestionAristocratAlphabet(question, qIdx);
+    const cipherChars = aristocratEncryptText(targetUpper, alphabet).split('');
+    const expectedPlainByCipher = new Map<string, string>();
+    const firstTileIndexByCipher = new Map<string, number>();
+
+    for (let i = 0; i < targetChars.length; i += 1) {
+      const plainCh = targetChars[i];
+      const cipherCh = cipherChars[i];
+      if (isLetter(plainCh) && cipherCh && isLetter(cipherCh)) {
+        if (!expectedPlainByCipher.has(cipherCh)) {
+          expectedPlainByCipher.set(cipherCh, plainCh);
+          firstTileIndexByCipher.set(cipherCh, i);
+        }
+      }
+    }
+
+    totalGradableUnits = expectedPlainByCipher.size;
+
+    for (const [cipherCh, expectedPlain] of expectedPlainByCipher.entries()) {
+      const firstIdx = firstTileIndexByCipher.get(cipherCh);
+      const guessedPlain =
+        sanitizeLetterInput(workspace?.aristocratReplacements?.[cipherCh]) ||
+        (firstIdx !== undefined
+          ? sanitizeLetterInput(workspace?.userInputs?.[firstIdx])
+          : '');
+      if (guessedPlain !== expectedPlain) continue;
+
+      const authorUid =
+        authors[`rep_${cipherCh}`] ??
+        (firstIdx !== undefined ? authors[String(firstIdx)] : undefined) ??
+        (cleanUids.length === 1 ? cleanUids[0] : undefined);
+      if (authorUid && correctByUid.has(authorUid)) {
+        correctByUid.set(authorUid, (correctByUid.get(authorUid) ?? 0) + 1);
+      }
+    }
+  } else {
+    for (let i = 0; i < targetChars.length; i += 1) {
+      const expectedPlain = targetChars[i];
+      if (!isLetter(expectedPlain)) continue;
+      totalGradableUnits += 1;
+
+      const guessedPlain = sanitizeLetterInput(workspace?.userInputs?.[i]);
+      if (guessedPlain !== expectedPlain) continue;
+
+      const authorUid =
+        authors[String(i)] ??
+        (cleanUids.length === 1 ? cleanUids[0] : undefined);
+      if (authorUid && correctByUid.has(authorUid)) {
+        correctByUid.set(authorUid, (correctByUid.get(authorUid) ?? 0) + 1);
+      }
+    }
+  }
+
+  return cleanUids.map((uid) => {
+    const rawMs = workspace?.activeScreenMs?.[uid] ?? 0;
+    const activeScreenTimeSec =
+      Math.round((Math.max(0, rawMs) / 1000) * 10) / 10;
+    return {
+      uid,
+      activeScreenTimeSec,
+      correctGradableInputs: correctByUid.get(uid) ?? 0,
+      totalGradableUnits,
+    };
+  });
+}
+

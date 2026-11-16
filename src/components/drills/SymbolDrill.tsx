@@ -97,7 +97,7 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
     recordHit,
     recordMiss,
     flushSession,
-  } = useVelocityTracker(cipher);
+  } = useVelocityTracker(cipher, workoutContext ? 'general_practice' : 'standalone');
 
   const { ghosts, spawnGhost, removeGhost } = useFloatingGhosts();
   const {

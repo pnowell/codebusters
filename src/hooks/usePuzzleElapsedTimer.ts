@@ -1,92 +1,39 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  createIdleAwareTimerState,
+  freezeIdleAwareTimer,
+  getIdleAwareElapsedMs,
+  IDLE_TIMEOUT_MS,
+  isDocumentCurrentlyVisible,
+  isTimerPausedOrIdle,
+  recordIdleTimerActivity,
+  subscribeWindowActivity,
+  updateIdleTimerVisibility,
+  type IdleAwareTimerState,
+} from '../utils/activeTimer';
 
-export interface ActiveTimerState {
-  accumulatedMs: number;
-  segmentStartMs: number | null;
-  frozen: boolean;
-}
+export type ActiveTimerState = IdleAwareTimerState;
 
 export interface PuzzleElapsedTimerOptions {
   initialElapsedMs?: number;
   initialFrozen?: boolean;
+  idleTimeoutMs?: number;
   onFlushElapsedMs?: (elapsedMs: number) => void;
 }
 
-export function createActiveTimerState(
-  nowMs: number,
-  isVisible: boolean,
-  initialElapsedMs = 0,
-  initialFrozen = false
-): ActiveTimerState {
-  const safeInitial = Math.max(0, Math.trunc(initialElapsedMs));
-  if (initialFrozen) {
-    return {
-      accumulatedMs: safeInitial,
-      segmentStartMs: null,
-      frozen: true,
-    };
-  }
-  return {
-    accumulatedMs: safeInitial,
-    segmentStartMs: isVisible ? nowMs : null,
-    frozen: false,
-  };
-}
-
-export function getActiveElapsedMs(
-  state: ActiveTimerState,
-  nowMs: number
-): number {
-  if (state.frozen || state.segmentStartMs === null) {
-    return state.accumulatedMs;
-  }
-  return state.accumulatedMs + Math.max(0, nowMs - state.segmentStartMs);
-}
-
-export function updateTimerVisibility(
-  state: ActiveTimerState,
-  isVisible: boolean,
-  nowMs: number
-): ActiveTimerState {
-  if (state.frozen) return state;
-  if (!isVisible) {
-    if (state.segmentStartMs === null) return state;
-    return {
-      accumulatedMs:
-        state.accumulatedMs + Math.max(0, nowMs - state.segmentStartMs),
-      segmentStartMs: null,
-      frozen: false,
-    };
-  }
-  if (state.segmentStartMs !== null) return state;
-  return {
-    ...state,
-    segmentStartMs: nowMs,
-  };
-}
-
-export function freezeActiveTimer(
-  state: ActiveTimerState,
-  nowMs: number
-): ActiveTimerState {
-  if (state.frozen) return state;
-  return {
-    accumulatedMs: getActiveElapsedMs(state, nowMs),
-    segmentStartMs: null,
-    frozen: true,
-  };
-}
-
-function isDocumentVisible(): boolean {
-  return (
-    typeof document === 'undefined' || document.visibilityState !== 'hidden'
-  );
-}
+export {
+  createIdleAwareTimerState as createActiveTimerState,
+  freezeIdleAwareTimer as freezeActiveTimer,
+  getIdleAwareElapsedMs as getActiveElapsedMs,
+  recordIdleTimerActivity,
+  updateIdleTimerVisibility as updateTimerVisibility,
+};
 
 /**
  * Tracks active solve time on a cipher puzzle:
  * - Starts immediately when the puzzle loads (or resumes from `initialElapsedMs` on reload)
- * - Pauses while `document.visibilityState === 'hidden'` and resumes when visible
+ * - Pauses immediately while `document.visibilityState === 'hidden'`
+ * - Pauses after 60s of foreground inactivity (`IDLE_TIMEOUT_MS`) and resumes on user interaction
  * - Periodically flushes elapsed milliseconds via `onFlushElapsedMs` (and on `visibilitychange` / `pagehide`)
  * - Freezes permanently when `freezeTimer()` is called on submission
  * - Resets to `0:00` when `resetTimer()` is called for a new quote
@@ -97,15 +44,19 @@ export function usePuzzleElapsedTimer(
 ) {
   const initialMs = Math.max(0, Math.trunc(options?.initialElapsedMs ?? 0));
   const initialFrozen = Boolean(options?.initialFrozen);
+  const idleTimeoutMs = options?.idleTimeoutMs ?? IDLE_TIMEOUT_MS;
 
-  const timerRef = useRef<ActiveTimerState>({
+  const timerRef = useRef<IdleAwareTimerState>({
     accumulatedMs: initialMs,
     segmentStartMs: null,
+    lastActivityMs: 0,
+    isVisible: true,
     frozen: initialFrozen,
   });
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(() =>
     Math.floor(initialMs / 1000)
   );
+  const [isIdlePaused, setIsIdlePaused] = useState<boolean>(initialFrozen);
   const [solvedElapsedMs, setSolvedElapsedMs] = useState<number | null>(() =>
     initialFrozen ? initialMs : null
   );
@@ -120,42 +71,68 @@ export function usePuzzleElapsedTimer(
       timerRef.current = {
         accumulatedMs: 0,
         segmentStartMs: null,
+        lastActivityMs: 0,
+        isVisible: false,
         frozen: true,
       };
       return;
     }
 
-    if (
-      !timerRef.current.frozen &&
-      timerRef.current.segmentStartMs === null &&
-      isDocumentVisible()
-    ) {
+    const nowInit = Date.now();
+    const visibleInit = isDocumentCurrentlyVisible();
+    if (!timerRef.current.frozen && timerRef.current.segmentStartMs === null) {
       timerRef.current = {
         ...timerRef.current,
-        segmentStartMs: Date.now(),
+        segmentStartMs: visibleInit ? nowInit : null,
+        lastActivityMs: nowInit,
+        isVisible: visibleInit,
       };
     }
 
     const syncClock = (shouldFlush = false) => {
-      const ms = getActiveElapsedMs(timerRef.current, Date.now());
+      const now = Date.now();
+      const ms = getIdleAwareElapsedMs(timerRef.current, now, idleTimeoutMs);
+      const paused = isTimerPausedOrIdle(timerRef.current, now, idleTimeoutMs);
       setElapsedSeconds(Math.floor(ms / 1000));
+      setIsIdlePaused(paused);
       if (shouldFlush) {
         onFlushRef.current?.(ms);
       }
     };
 
     const handleVisibilityChange = () => {
-      timerRef.current = updateTimerVisibility(
+      timerRef.current = updateIdleTimerVisibility(
         timerRef.current,
-        isDocumentVisible(),
-        Date.now()
+        isDocumentCurrentlyVisible(),
+        Date.now(),
+        idleTimeoutMs
       );
       syncClock(true);
     };
 
+    const handleActivity = () => {
+      const prevPaused = isTimerPausedOrIdle(
+        timerRef.current,
+        Date.now(),
+        idleTimeoutMs
+      );
+      timerRef.current = recordIdleTimerActivity(
+        timerRef.current,
+        Date.now(),
+        idleTimeoutMs
+      );
+      if (prevPaused && !timerRef.current.frozen) {
+        syncClock(false);
+      }
+    };
+
     const handlePageHide = () => {
       if (!timerRef.current.frozen) {
-        const ms = getActiveElapsedMs(timerRef.current, Date.now());
+        const ms = getIdleAwareElapsedMs(
+          timerRef.current,
+          Date.now(),
+          idleTimeoutMs
+        );
         onFlushRef.current?.(ms);
       }
     };
@@ -168,43 +145,54 @@ export function usePuzzleElapsedTimer(
       }
     }, 250);
 
+    const unsubActivity = subscribeWindowActivity(handleActivity);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('pagehide', handlePageHide);
     return () => {
       window.clearInterval(intervalId);
+      unsubActivity();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('pagehide', handlePageHide);
     };
-  }, [enabled]);
+  }, [enabled, idleTimeoutMs]);
 
   const getElapsedMs = useCallback((): number => {
-    return getActiveElapsedMs(timerRef.current, Date.now());
-  }, []);
+    return getIdleAwareElapsedMs(timerRef.current, Date.now(), idleTimeoutMs);
+  }, [idleTimeoutMs]);
 
   const freezeTimer = useCallback((): number => {
-    const next = freezeActiveTimer(timerRef.current, Date.now());
+    const next = freezeIdleAwareTimer(
+      timerRef.current,
+      Date.now(),
+      idleTimeoutMs
+    );
     timerRef.current = next;
     setSolvedElapsedMs(next.accumulatedMs);
     setElapsedSeconds(Math.floor(next.accumulatedMs / 1000));
+    setIsIdlePaused(true);
     return next.accumulatedMs;
-  }, []);
+  }, [idleTimeoutMs]);
 
   const resetTimer = useCallback(
     (seedMs = 0, frozen = false) => {
-      timerRef.current = createActiveTimerState(
-        Date.now(),
-        enabled && isDocumentVisible(),
+      const now = Date.now();
+      const visible = enabled && isDocumentCurrentlyVisible();
+      timerRef.current = createIdleAwareTimerState(
+        now,
+        visible,
         seedMs,
         frozen
       );
       setSolvedElapsedMs(frozen ? Math.max(0, Math.trunc(seedMs)) : null);
       setElapsedSeconds(Math.floor(Math.max(0, Math.trunc(seedMs)) / 1000));
+      setIsIdlePaused(frozen || !visible);
     },
     [enabled]
   );
 
   return {
     elapsedSeconds,
+    isIdlePaused,
     solvedElapsedMs,
     getElapsedMs,
     freezeTimer,

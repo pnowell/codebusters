@@ -1,6 +1,12 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "ignorePatterns": ["src/proto/**"],
+  "ignorePatterns": [
+    "src/proto/**",
+    "functions/src/proto/**",
+    "functions/src/quotesMapData.ts",
+    "functions/lib/**",
+    "functions/node_modules/**"
+  ],
   "plugins": ["react", "typescript", "oxc"],
   "rules": {
     "react/rules-of-hooks": "error",

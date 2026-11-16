@@ -129,7 +129,7 @@ export interface DrillSessionSample {
 }
 
 export interface DrillHistoryEntry {
-  recentSessions: DrillSessionSample[];
+  ema60s?: number;
   lastPracticed: number;
 }
 
@@ -232,6 +232,8 @@ export interface QuestionWorkspace {
   aristocratReplacements?: Partial<Record<string, string>>;
   aristocratCorners?: Partial<Record<string, AristocratCornerTuple>>;
   inputs?: Record<string, string>;
+  inputAuthors?: Record<string, string>;
+  activeScreenMs?: Record<string, number>;
   completed: boolean;
   lastEditedAt: number;
   lastEditedBy?: string;

@@ -95,7 +95,7 @@ const LetterMathSession: React.FC<LetterMathSessionProps> = ({
     recordHit,
     recordMiss,
     flushSession,
-  } = useVelocityTracker(drillId);
+  } = useVelocityTracker(drillId, workoutContext ? 'general_practice' : 'standalone');
 
   const { ghosts, spawnGhost, removeGhost } = useFloatingGhosts();
   const {

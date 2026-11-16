@@ -23,12 +23,35 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            functions/package-lock.json
+
+      - name: Check backend changes
+        id: backend_changes
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          BEFORE_SHA="${{ github.event.before }}"
+          if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git diff --name-only "$BEFORE_SHA" "${{ github.sha }}" | grep -Eq '^(functions/|proto/|firebase\.json|scripts/setupAnalyticsSink\.mjs)'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Install dependencies
         run: npm ci
@@ -43,6 +66,28 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Provision BigQuery sink & deploy Cloud Functions
+        if: steps.backend_changes.outputs.changed == 'true'
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "::warning::FIREBASE_SERVICE_ACCOUNT is not set; skipping Cloud Functions deploy."
+            exit 0
+          fi
+          npm run setup:analytics
+          npm --prefix functions ci
+          npm --prefix functions run build
+          CRED_FILE="$RUNNER_TEMP/firebase-sa.json"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$CRED_FILE"
+          chmod 600 "$CRED_FILE"
+          PROJECT_ID=$(node -e 'const fs = require("node:fs"); const p = JSON.parse(fs.readFileSync(process.argv[1], "utf8")).project_id; if (!/^[a-z0-9][a-z0-9-]{4,30}[a-z0-9]$/.test(p)) process.exit(1); process.stdout.write(p);' "$CRED_FILE")
+          GOOGLE_APPLICATION_CREDENTIALS="$CRED_FILE" npx --yes firebase-tools@13 deploy --only functions --project "$PROJECT_ID" --non-interactive --force
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Cleanup temporary credentials
+        if: always()
+        run: rm -f "$RUNNER_TEMP/firebase-sa.json"
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
@@ -68,5 +113,10 @@ jobs:
 
       - name: Prune orphaned quote flags
         run: npm run prune:flags
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Prune legacy drillHistory recentSessions
+        run: npm run prune:drill-sessions
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}

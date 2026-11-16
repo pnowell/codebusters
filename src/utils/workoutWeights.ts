@@ -128,10 +128,9 @@ function getEffectiveMean60s(
   scores: DrillScoresRecord,
   history: DrillHistoryRecord
 ): number {
-  const samples = history[drillId]?.recentSessions;
-  if (samples && samples.length > 0) {
-    const sum = samples.reduce((acc, item) => acc + item.score60s, 0);
-    return sum / samples.length;
+  const ema = history[drillId]?.ema60s;
+  if (typeof ema === 'number' && Number.isFinite(ema) && ema > 0) {
+    return ema;
   }
   const allTimeBest = scores[drillId]?.best60s ?? 0;
   return allTimeBest > 0 ? allTimeBest * 0.85 : 0;

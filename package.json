@@ -2,17 +2,20 @@
   "name": "codebusters",
   "private": true,
   "version": "1.0.0",
-  "criticalVersion": 0,
+  "criticalVersion": 1,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "node scripts/generateProto.mjs && tsc -b && vite build",
+    "build:functions": "node scripts/generateProto.mjs && npm --prefix functions run build",
     "lint": "oxlint",
     "proto": "node scripts/generateProto.mjs",
     "preview": "vite preview",
+    "setup:analytics": "node scripts/setupAnalyticsSink.mjs",
     "deploy:version": "node scripts/deployCriticalVersion.mjs",
     "deploy:rules": "node scripts/deployFirestoreRules.mjs",
-    "prune:flags": "node scripts/pruneOrphanedQuoteFlags.mjs"
+    "prune:flags": "node scripts/pruneOrphanedQuoteFlags.mjs",
+    "prune:drill-sessions": "node scripts/pruneDrillRecentSessions.mjs"
   },
   "dependencies": {
     "@bufbuild/protobuf": "^2.17.0",

@@ -6,3 +6,8 @@ plugins:
     opt:
       - target=js+dts
       - import_extension=none
+  - local: protoc-gen-es
+    out: functions/src/proto
+    opt:
+      - target=ts
+      - import_extension=js

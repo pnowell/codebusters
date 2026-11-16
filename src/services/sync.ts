@@ -12,7 +12,6 @@ import {
   loadAllDrillHistory,
   saveAllDrillHistory,
   sanitizeDrillHistoryRecord,
-  MAX_RECENT_DRILL_SESSIONS,
   loadCipherPracticeHistory,
   saveCipherPracticeHistory,
   loadQuoteBrowserPrefsMap,
@@ -35,7 +34,6 @@ import type {
   DrillId,
   DrillScore,
   DrillProgress,
-  DrillSessionSample,
   QuoteBrowserPrefsMap,
 } from '../types';
 import {
@@ -93,35 +91,25 @@ function mergeAllDrillHistory(
   const merged: DrillHistoryRecord = {};
 
   for (const key of allKeys) {
-    const localEntry = localAll[key] || { recentSessions: [], lastPracticed: 0 };
-    const cloudEntry = cloudAll[key] || { recentSessions: [], lastPracticed: 0 };
-
-    const byTimestamp = new Map<number, DrillSessionSample>();
-    for (const s of cloudEntry.recentSessions) {
-      byTimestamp.set(s.timestamp, s);
-    }
-    for (const s of localEntry.recentSessions) {
-      const existing = byTimestamp.get(s.timestamp);
-      if (!existing || s.score60s > existing.score60s) {
-        byTimestamp.set(s.timestamp, s);
-      }
-    }
-
-    const combinedSessions = Array.from(byTimestamp.values())
-      .sort((a, b) => a.timestamp - b.timestamp)
-      .slice(-MAX_RECENT_DRILL_SESSIONS);
-
-    const latestSessionTs =
-      combinedSessions.length > 0 ? combinedSessions[combinedSessions.length - 1].timestamp : 0;
+    const localEntry = localAll[key] || { lastPracticed: 0 };
+    const cloudEntry = cloudAll[key] || { lastPracticed: 0 };
     const lastPracticed = Math.max(
       localEntry.lastPracticed,
-      cloudEntry.lastPracticed,
-      latestSessionTs
+      cloudEntry.lastPracticed
     );
+    const newerEntry =
+      localEntry.lastPracticed >= cloudEntry.lastPracticed
+        ? localEntry
+        : cloudEntry;
+    const olderEntry =
+      localEntry.lastPracticed >= cloudEntry.lastPracticed
+        ? cloudEntry
+        : localEntry;
+    const ema60s = newerEntry.ema60s ?? olderEntry.ema60s;
 
-    if (lastPracticed > 0 || combinedSessions.length > 0) {
+    if (lastPracticed > 0 || (ema60s !== undefined && ema60s > 0)) {
       merged[key] = {
-        recentSessions: combinedSessions,
+        ...(ema60s !== undefined && ema60s > 0 ? { ema60s } : {}),
         lastPracticed,
       };
     }

@@ -330,44 +330,63 @@ export function replaceAllDrillScores(scores: DrillScoresRecord | undefined): vo
 // Generalized Drill Activity & Recent 60s History
 // ---------------------------------------------------------------------------
 
+const DRILL_EMA_ALPHA = 0.35;
+
 export function sanitizeDrillHistoryEntry(raw: unknown): DrillHistoryEntry {
   if (!raw || typeof raw !== 'object') {
-    return { recentSessions: [], lastPracticed: 0 };
+    return { lastPracticed: 0 };
   }
-  const obj = raw as Partial<DrillHistoryEntry>;
-  const sessions: DrillSessionSample[] = [];
+  const obj = raw as Record<string, unknown>;
 
+  let ema60s: number | undefined;
+  if (
+    typeof obj.ema60s === 'number' &&
+    Number.isFinite(obj.ema60s) &&
+    obj.ema60s > 0
+  ) {
+    ema60s = Math.round(obj.ema60s * 10) / 10;
+  }
+
+  // Seamless one-way fallback from legacy `recentSessions` if `ema60s` is not yet stamped
+  let latestLegacySampleTs = 0;
   if (Array.isArray(obj.recentSessions)) {
+    const validScores: number[] = [];
     for (const s of obj.recentSessions) {
-      if (
-        s &&
-        typeof s === 'object' &&
-        typeof s.score60s === 'number' &&
-        Number.isFinite(s.score60s) &&
-        s.score60s >= 0 &&
-        typeof s.timestamp === 'number' &&
-        Number.isFinite(s.timestamp) &&
-        s.timestamp > 0
-      ) {
-        sessions.push({
-          score60s: Math.round(s.score60s),
-          timestamp: Math.round(s.timestamp),
-        });
+      if (s && typeof s === 'object') {
+        const sample = s as Partial<DrillSessionSample>;
+        if (
+          typeof sample.score60s === 'number' &&
+          Number.isFinite(sample.score60s) &&
+          sample.score60s >= 0 &&
+          typeof sample.timestamp === 'number' &&
+          Number.isFinite(sample.timestamp) &&
+          sample.timestamp > 0
+        ) {
+          validScores.push(Math.round(sample.score60s));
+          latestLegacySampleTs = Math.max(
+            latestLegacySampleTs,
+            Math.round(sample.timestamp)
+          );
+        }
+      }
+    }
+    if (ema60s === undefined && validScores.length > 0) {
+      const mean =
+        validScores.reduce((sum, val) => sum + val, 0) / validScores.length;
+      if (mean > 0) {
+        ema60s = Math.round(mean * 10) / 10;
       }
     }
   }
 
-  sessions.sort((a, b) => a.timestamp - b.timestamp);
-  const trimmed = sessions.slice(-MAX_RECENT_DRILL_SESSIONS);
-  const latestSampleTs = trimmed.length > 0 ? trimmed[trimmed.length - 1].timestamp : 0;
   const rawLast =
     typeof obj.lastPracticed === 'number' && Number.isFinite(obj.lastPracticed)
       ? Math.max(0, Math.round(obj.lastPracticed))
       : 0;
 
   return {
-    recentSessions: trimmed,
-    lastPracticed: Math.max(rawLast, latestSampleTs),
+    ...(ema60s !== undefined ? { ema60s } : {}),
+    lastPracticed: Math.max(rawLast, latestLegacySampleTs),
   };
 }
 
@@ -391,7 +410,7 @@ export function sanitizeDrillHistoryRecord(raw: unknown): DrillHistoryRecord {
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
     if (!VALID_DRILL_IDS.has(k)) continue;
     const entry = sanitizeDrillHistoryEntry(v);
-    if (entry.lastPracticed > 0 || entry.recentSessions.length > 0) {
+    if (entry.lastPracticed > 0 || (entry.ema60s !== undefined && entry.ema60s > 0)) {
       clean[k as DrillId] = entry;
     }
   }
@@ -435,28 +454,27 @@ export function recordDrillSession(
   try {
     const now = Date.now();
     const all = loadAllDrillHistory();
-    const current = all[drillId] || { recentSessions: [], lastPracticed: 0 };
-    const currentMean =
-      current.recentSessions.length > 0
-        ? current.recentSessions.reduce((sum, s) => sum + s.score60s, 0) /
-          current.recentSessions.length
-        : 0;
+    const current = all[drillId] || { lastPracticed: 0 };
+    const currentEma = current.ema60s ?? 0;
 
-    const qualifiesFor60sWindow =
+    const qualifiesForEmaUpdate =
       attempts >= 5 &&
       (elapsedMs >= 50_000 ||
-        (current.recentSessions.length === 0 && elapsedMs >= 30_000) ||
-        sessionBest60s >= currentMean);
+        (currentEma === 0 && elapsedMs >= 30_000) ||
+        sessionBest60s >= currentEma);
 
-    const updatedSessions = qualifiesFor60sWindow
-      ? [
-          ...current.recentSessions,
-          { score60s: Math.max(0, Math.round(sessionBest60s)), timestamp: now },
-        ].slice(-MAX_RECENT_DRILL_SESSIONS)
-      : current.recentSessions;
+    const cleanScore = Math.max(0, Math.round(sessionBest60s));
+    let nextEma = current.ema60s;
+    if (qualifiesForEmaUpdate && (cleanScore > 0 || currentEma > 0)) {
+      const rawNext =
+        currentEma > 0
+          ? DRILL_EMA_ALPHA * cleanScore + (1 - DRILL_EMA_ALPHA) * currentEma
+          : cleanScore;
+      nextEma = Math.round(rawNext * 10) / 10;
+    }
 
     all[drillId] = {
-      recentSessions: updatedSessions,
+      ...(nextEma !== undefined && nextEma > 0 ? { ema60s: nextEma } : {}),
       lastPracticed: Math.max(current.lastPracticed, now),
     };
 

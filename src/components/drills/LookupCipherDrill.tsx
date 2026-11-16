@@ -47,6 +47,10 @@ import {
   saveActiveCipherSession,
   saveCompletedQuoteId,
 } from '../../services/storage';
+import {
+  logCipherSolvedEvent,
+  logCipherStartedEvent,
+} from '../../services/eventLogger';
 import type {
   ActiveCipherSessionSnapshot,
   AristocratDifficulty,
@@ -537,8 +541,16 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     });
   }, []);
 
+  const cipherModeTag =
+    cipher === 'caesar'
+      ? caesarRange
+      : cipher === 'aristocrat'
+        ? effectiveAristocratDifficulty
+        : '';
+
   const {
     elapsedSeconds,
+    isIdlePaused,
     solvedElapsedMs,
     getElapsedMs,
     freezeTimer,
@@ -573,12 +585,18 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     if (!effectiveMeaningfullySeen || quoteId === undefined) return;
     if (emittedMeaningfullySeenForQuoteRef.current === quoteId) return;
     emittedMeaningfullySeenForQuoteRef.current = quoteId;
+    logCipherStartedEvent({
+      cipher,
+      mode: cipherModeTag,
+      quoteId,
+      source: practiceSource,
+    });
     onMeaningfullySeenRef.current?.({
       cipher,
       quoteId,
       source: practiceSource,
     });
-  }, [cipher, effectiveMeaningfullySeen, practiceSource, quoteId]);
+  }, [cipher, cipherModeTag, effectiveMeaningfullySeen, practiceSource, quoteId]);
 
   const userInputs =
     cipher === 'aristocrat'
@@ -910,7 +928,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
   const handleSubmit = useCallback(() => {
     if (!quote || isSubmitted || !isAllFilled) return;
     markMeaningfullySeen();
-    freezeTimer();
+    const frozenMs = freezeTimer();
     const res = evaluateSolution(quote.quote, userInputs.join(''));
     if (cipher === 'aristocrat') {
       // Clear all corner candidate notes on submission so only Center guesses display
@@ -932,6 +950,19 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     }
     setResult(res);
     setIsSubmitted(true);
+    logCipherSolvedEvent({
+      cipher,
+      mode: cipherModeTag,
+      quoteId: quote.id,
+      elapsedSec: frozenMs / 1000,
+      alphaCharCount: totalLetters,
+      uniqueAlphaCharCount: uniqueLetters,
+      inputMode: cipher === 'aristocrat' ? 'linked' : '',
+      errorCount: res.errorCount,
+      correctChars: res.correctChars,
+      scoreTier: res.scoreTier,
+      source: practiceSource,
+    });
     if (shouldCountQuoteCompleted(res)) {
       saveCompletedQuoteId(quote.id);
       if (!isSharedExercise) {
@@ -940,12 +971,16 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
     }
   }, [
     cipher,
+    cipherModeTag,
     freezeTimer,
     isAllFilled,
     isSharedExercise,
     isSubmitted,
     markMeaningfullySeen,
+    practiceSource,
     quote,
+    totalLetters,
+    uniqueLetters,
     userInputs,
   ]);
 
@@ -1126,7 +1161,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
               ·
             </span>
             <span
-              className={`cipher-elapsed-timer${isSubmitted ? ' is-paused' : ''}`}
+              className={`cipher-elapsed-timer${isSubmitted || isIdlePaused ? ' is-paused' : ''}`}
               aria-label={`Elapsed solve time ${formatClock(elapsedSeconds)}`}
             >
               ⏱️ {formatClock(elapsedSeconds)}

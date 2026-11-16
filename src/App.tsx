@@ -47,6 +47,7 @@ import {
   resolveAttemptForTest,
 } from './services/testService';
 import { subscribeToSyncUpdates } from './services/sync';
+import { setPracticeEventLoggingEnabled } from './services/eventLogger';
 import { subscribeTeamProfiles } from './services/profileService';
 import { subscribeQuoteFlags } from './services/quoteFlagService';
 import {
@@ -471,6 +472,11 @@ export const App: React.FC = () => {
       saveCompletedQuoteIds(Array.from(seenQuoteIds));
     }
   }, [isAllowed, isTeacher, isTestsLoading, isAttemptsLoaded, availableTests, studentAttempts]);
+
+  // Enable durable practice event logging outbox only for authenticated roster users
+  useEffect(() => {
+    setPracticeEventLoggingEnabled(Boolean(user && isAllowed));
+  }, [user, isAllowed]);
 
   // Subscribe to teacher-curated quote flags so student drills also skip flagged quotes
   useEffect(() => {
