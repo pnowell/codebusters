@@ -2,7 +2,7 @@
   "name": "codebusters",
   "private": true,
   "version": "1.0.0",
-  "criticalVersion": 1,
+  "criticalVersion": 2,
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -531,6 +531,367 @@ async function cleanupLegacyCloudFunctionStubs(projectId, accessToken) {
   }
 }
 
+const JSON_PAYLOAD_FIELDS = [
+  { name: 'logtype', type: 'STRING', mode: 'NULLABLE' },
+  { name: 'eventtype', type: 'FLOAT', mode: 'NULLABLE' },
+  { name: 'eventid', type: 'STRING', mode: 'NULLABLE' },
+  { name: 'uid', type: 'STRING', mode: 'NULLABLE' },
+  { name: 'clienttimestampms', type: 'FLOAT', mode: 'NULLABLE' },
+  {
+    name: 'drillsession',
+    type: 'RECORD',
+    mode: 'NULLABLE',
+    fields: [
+      { name: 'drillid', type: 'FLOAT', mode: 'NULLABLE' },
+      { name: 'sessiondurationsec', type: 'FLOAT', mode: 'NULLABLE' },
+      { name: 'sessionbest60sscore', type: 'FLOAT', mode: 'NULLABLE' },
+      { name: 'totalanswered', type: 'FLOAT', mode: 'NULLABLE' },
+      { name: 'totalcorrect', type: 'FLOAT', mode: 'NULLABLE' },
+      { name: 'source', type: 'FLOAT', mode: 'NULLABLE' },
+    ],
+  },
+  {
+    name: 'cipherstarted',
+    type: 'RECORD',
+    mode: 'NULLABLE',
+    fields: [
+      { name: 'cipher', type: 'FLOAT', mode: 'NULLABLE' },
+      { name: 'mode', type: 'FLOAT', mode: 'NULLABLE' },
+      { name: 'quoteid', type: 'FLOAT', mode: 'NULLABLE' },
+      { name: 'source', type: 'FLOAT', mode: 'NULLABLE' },
+    ],
+  },
+  {
+    name: 'ciphersolved',
+    type: 'RECORD',
+    mode: 'NULLABLE',
+    fields: [
+      { name: 'cipher', type: 'FLOAT', mode: 'NULLABLE' },
+      { name: 'mode', type: 'FLOAT', mode: 'NULLABLE' },
+      { name: 'quoteid', type: 'FLOAT', mode: 'NULLABLE' },
+      { name: 'elapsedsec', type: 'FLOAT', mode: 'NULLABLE' },
+      { name: 'alphacharcount', type: 'FLOAT', mode: 'NULLABLE' },
+      { name: 'uniquealphacharcount', type: 'FLOAT', mode: 'NULLABLE' },
+      { name: 'inputmode', type: 'FLOAT', mode: 'NULLABLE' },
+      { name: 'errorcount', type: 'FLOAT', mode: 'NULLABLE' },
+      { name: 'correctchars', type: 'FLOAT', mode: 'NULLABLE' },
+      { name: 'scoretier', type: 'FLOAT', mode: 'NULLABLE' },
+      { name: 'source', type: 'FLOAT', mode: 'NULLABLE' },
+    ],
+  },
+  {
+    name: 'practicetestquestionuser',
+    type: 'RECORD',
+    mode: 'NULLABLE',
+    fields: [
+      { name: 'attemptid', type: 'STRING', mode: 'NULLABLE' },
+      { name: 'testid', type: 'STRING', mode: 'NULLABLE' },
+      { name: 'questionnumber', type: 'FLOAT', mode: 'NULLABLE' },
+      { name: 'cipher', type: 'FLOAT', mode: 'NULLABLE' },
+      { name: 'mode', type: 'FLOAT', mode: 'NULLABLE' },
+      { name: 'quoteid', type: 'FLOAT', mode: 'NULLABLE' },
+      { name: 'iscollaborative', type: 'BOOLEAN', mode: 'NULLABLE' },
+      { name: 'teamsize', type: 'FLOAT', mode: 'NULLABLE' },
+      { name: 'totaltestelapsedsec', type: 'FLOAT', mode: 'NULLABLE' },
+      { name: 'activescreentimesec', type: 'FLOAT', mode: 'NULLABLE' },
+      { name: 'correctgradableinputs', type: 'FLOAT', mode: 'NULLABLE' },
+      { name: 'totalgradableunits', type: 'FLOAT', mode: 'NULLABLE' },
+    ],
+  },
+];
+
+function buildPracticeEventsViewSql(projectId) {
+  return `SELECT
+  timestamp,
+  TIMESTAMP_MILLIS(CAST(jsonPayload.clienttimestampms AS INT64)) AS client_timestamp,
+  jsonPayload.eventid AS event_id,
+  jsonPayload.uid AS uid,
+  CASE CAST(jsonPayload.eventtype AS INT64)
+    WHEN 1 THEN 'drill_session'
+    WHEN 2 THEN 'cipher_started'
+    WHEN 3 THEN 'cipher_solved'
+    WHEN 4 THEN 'practice_test_question_user'
+    ELSE 'unspecified'
+  END AS event_type,
+  CASE CAST(
+    COALESCE(
+      jsonPayload.drillsession.source,
+      jsonPayload.cipherstarted.source,
+      jsonPayload.ciphersolved.source
+    ) AS INT64
+  )
+    WHEN 1 THEN 'standalone'
+    WHEN 2 THEN 'general_practice'
+    WHEN 3 THEN 'shared_link'
+    ELSE NULL
+  END AS source,
+  CASE CAST(jsonPayload.drillsession.drillid AS INT64)
+    WHEN 1 THEN 'offsetsLetterToNum'
+    WHEN 2 THEN 'offsetsNumToLetter'
+    WHEN 3 THEN 'letterMathEasy'
+    WHEN 4 THEN 'letterMathHard'
+    WHEN 5 THEN 'letterMathLetterEasy'
+    WHEN 6 THEN 'letterMathLetterHard'
+    WHEN 7 THEN 'atbash'
+    WHEN 8 THEN 'pigpen'
+    WHEN 9 THEN 'galactic'
+    WHEN 10 THEN 'knights'
+    WHEN 11 THEN 'tap'
+    ELSE NULL
+  END AS drill_id,
+  jsonPayload.drillsession.sessiondurationsec AS session_duration_sec,
+  CAST(jsonPayload.drillsession.sessionbest60sscore AS INT64) AS session_best_60s_score,
+  CAST(jsonPayload.drillsession.totalanswered AS INT64) AS total_answered,
+  CAST(jsonPayload.drillsession.totalcorrect AS INT64) AS total_correct,
+  CASE CAST(
+    COALESCE(
+      jsonPayload.cipherstarted.cipher,
+      jsonPayload.ciphersolved.cipher,
+      jsonPayload.practicetestquestionuser.cipher
+    ) AS INT64
+  )
+    WHEN 1 THEN 'atbash'
+    WHEN 2 THEN 'pigpen'
+    WHEN 3 THEN 'galactic'
+    WHEN 4 THEN 'tap'
+    WHEN 5 THEN 'knights'
+    WHEN 6 THEN 'caesar'
+    WHEN 7 THEN 'vigenere'
+    WHEN 8 THEN 'aristocrat'
+    ELSE NULL
+  END AS cipher,
+  CASE CAST(
+    COALESCE(
+      jsonPayload.cipherstarted.mode,
+      jsonPayload.ciphersolved.mode,
+      jsonPayload.practicetestquestionuser.mode
+    ) AS INT64
+  )
+    WHEN 0 THEN ''
+    WHEN 1 THEN 'pm3'
+    WHEN 2 THEN 'any'
+    WHEN 3 THEN 'easy'
+    WHEN 4 THEN 'medium'
+    WHEN 5 THEN 'hard'
+    ELSE NULL
+  END AS mode,
+  CAST(
+    COALESCE(
+      jsonPayload.cipherstarted.quoteid,
+      jsonPayload.ciphersolved.quoteid,
+      jsonPayload.practicetestquestionuser.quoteid
+    ) AS INT64
+  ) AS quote_id,
+  jsonPayload.ciphersolved.elapsedsec AS elapsed_sec,
+  CAST(jsonPayload.ciphersolved.alphacharcount AS INT64) AS alpha_char_count,
+  CAST(jsonPayload.ciphersolved.uniquealphacharcount AS INT64) AS unique_alpha_char_count,
+  CASE CAST(jsonPayload.ciphersolved.inputmode AS INT64)
+    WHEN 0 THEN 'standard'
+    WHEN 1 THEN 'linked'
+    WHEN 2 THEN 'paper'
+    ELSE NULL
+  END AS input_mode,
+  CAST(jsonPayload.ciphersolved.errorcount AS INT64) AS error_count,
+  CAST(jsonPayload.ciphersolved.correctchars AS INT64) AS correct_chars,
+  CASE CAST(jsonPayload.ciphersolved.scoretier AS INT64)
+    WHEN 1 THEN 'full'
+    WHEN 2 THEN 'half'
+    WHEN 3 THEN 'zero'
+    ELSE NULL
+  END AS score_tier,
+  jsonPayload.practicetestquestionuser.attemptid AS attempt_id,
+  jsonPayload.practicetestquestionuser.testid AS test_id,
+  CAST(jsonPayload.practicetestquestionuser.questionnumber AS INT64) AS question_number,
+  jsonPayload.practicetestquestionuser.iscollaborative AS is_collaborative,
+  CAST(jsonPayload.practicetestquestionuser.teamsize AS INT64) AS team_size,
+  jsonPayload.practicetestquestionuser.totaltestelapsedsec AS total_test_elapsed_sec,
+  jsonPayload.practicetestquestionuser.activescreentimesec AS active_screen_time_sec,
+  CAST(jsonPayload.practicetestquestionuser.correctgradableinputs AS INT64) AS correct_gradable_inputs,
+  CAST(jsonPayload.practicetestquestionuser.totalgradableunits AS INT64) AS total_gradable_units
+FROM \`${projectId}.${DATASET_ID}.run_googleapis_com_stdout\`
+WHERE jsonPayload.logtype = 'codebusters_practice_event'`;
+}
+
+async function ensureStdoutTableAndView(projectId, accessToken) {
+  const tablesBaseUrl = `https://bigquery.googleapis.com/bigquery/v2/projects/${encodeURIComponent(
+    projectId
+  )}/datasets/${DATASET_ID}/tables`;
+  const stdoutTableId = 'run_googleapis_com_stdout';
+  const stdoutUrl = `${tablesBaseUrl}/${stdoutTableId}`;
+
+  const getStdoutRes = await fetch(stdoutUrl, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (getStdoutRes.status === 404) {
+    if (!isDryRun) {
+      const createRes = await fetch(tablesBaseUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tableReference: {
+            projectId,
+            datasetId: DATASET_ID,
+            tableId: stdoutTableId,
+          },
+          timePartitioning: {
+            type: 'DAY',
+            field: 'timestamp',
+          },
+          schema: {
+            fields: [
+              { name: 'logName', type: 'STRING', mode: 'NULLABLE' },
+              { name: 'textPayload', type: 'STRING', mode: 'NULLABLE' },
+              {
+                name: 'jsonPayload',
+                type: 'RECORD',
+                mode: 'NULLABLE',
+                fields: JSON_PAYLOAD_FIELDS,
+              },
+              { name: 'timestamp', type: 'TIMESTAMP', mode: 'NULLABLE' },
+              { name: 'receiveTimestamp', type: 'TIMESTAMP', mode: 'NULLABLE' },
+              { name: 'severity', type: 'STRING', mode: 'NULLABLE' },
+              { name: 'insertId', type: 'STRING', mode: 'NULLABLE' },
+            ],
+          },
+        }),
+      });
+      if (!createRes.ok) {
+        throw new Error(
+          `Failed pre-creating ${stdoutTableId} table (HTTP ${createRes.status}).`
+        );
+      }
+      console.log(
+        `[setupAnalyticsSink] Created partitioned BigQuery table ${stdoutTableId}.`
+      );
+    }
+  } else if (getStdoutRes.ok && !isDryRun) {
+    const existingTable = await getStdoutRes.json();
+    const topFields = Array.isArray(existingTable?.schema?.fields)
+      ? [...existingTable.schema.fields]
+      : [];
+    const jpIdx = topFields.findIndex((f) => f.name === 'jsonPayload');
+    let patched = false;
+    if (jpIdx >= 0) {
+      const existingJpFields = Array.isArray(topFields[jpIdx].fields)
+        ? [...topFields[jpIdx].fields]
+        : [];
+      const existingNames = new Set(existingJpFields.map((f) => f.name));
+      for (const reqField of JSON_PAYLOAD_FIELDS) {
+        if (!existingNames.has(reqField.name)) {
+          existingJpFields.push(reqField);
+          patched = true;
+        }
+      }
+      if (patched) {
+        topFields[jpIdx] = { ...topFields[jpIdx], fields: existingJpFields };
+        const patchRes = await fetch(stdoutUrl, {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ schema: { fields: topFields } }),
+        });
+        if (!patchRes.ok) {
+          throw new Error(
+            `Failed patching missing jsonPayload fields on ${stdoutTableId} (HTTP ${patchRes.status}).`
+          );
+        }
+        console.log(
+          `[setupAnalyticsSink] Added missing jsonPayload sub-fields on ${stdoutTableId}.`
+        );
+      }
+    }
+  } else if (!getStdoutRes.ok) {
+    throw new Error(
+      `Failed inspecting ${stdoutTableId} table (HTTP ${getStdoutRes.status}).`
+    );
+  }
+
+  // Provision or update the human-readable `practice_events` View
+  const viewId = 'practice_events';
+  const viewUrl = `${tablesBaseUrl}/${viewId}`;
+  const viewQuery = buildPracticeEventsViewSql(projectId);
+
+  if (isDryRun) {
+    console.log(
+      `[setupAnalyticsSink] [DRY RUN] Would ensure BigQuery view ${DATASET_ID}.${viewId}.`
+    );
+    return;
+  }
+
+  const getViewRes = await fetch(viewUrl, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (getViewRes.status === 404) {
+    const createViewRes = await fetch(tablesBaseUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        tableReference: {
+          projectId,
+          datasetId: DATASET_ID,
+          tableId: viewId,
+        },
+        description:
+          'Flattened, human-readable view decoding compact Protobuf integer enums from run_googleapis_com_stdout',
+        view: {
+          query: viewQuery,
+          useLegacySql: false,
+        },
+      }),
+    });
+    if (!createViewRes.ok) {
+      throw new Error(
+        `Failed creating BigQuery view ${viewId} (HTTP ${createViewRes.status}).`
+      );
+    }
+    console.log(
+      `[setupAnalyticsSink] Created BigQuery view ${DATASET_ID}.${viewId}.`
+    );
+  } else if (getViewRes.ok) {
+    const existingView = await getViewRes.json();
+    if (existingView?.view?.query !== viewQuery) {
+      const patchViewRes = await fetch(viewUrl, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          view: {
+            query: viewQuery,
+            useLegacySql: false,
+          },
+        }),
+      });
+      if (!patchViewRes.ok) {
+        throw new Error(
+          `Failed updating BigQuery view ${viewId} (HTTP ${patchViewRes.status}).`
+        );
+      }
+      console.log(
+        `[setupAnalyticsSink] Updated BigQuery view ${DATASET_ID}.${viewId}.`
+      );
+    } else {
+      console.log(
+        `[setupAnalyticsSink] BigQuery view ${DATASET_ID}.${viewId} is already up to date.`
+      );
+    }
+  } else {
+    throw new Error(
+      `Failed checking BigQuery view ${viewId} (HTTP ${getViewRes.status}).`
+    );
+  }
+}
+
 async function main() {
   const rawSecret = (process.env.FIREBASE_SERVICE_ACCOUNT ?? '').trim();
   if (!rawSecret) {
@@ -551,6 +912,7 @@ async function main() {
     dataset,
     writerIdentity
   );
+  await ensureStdoutTableAndView(creds.projectId, accessToken);
   await ensureArtifactRegistryRepo(creds.projectId, accessToken);
   await cleanupLegacyCloudFunctionStubs(creds.projectId, accessToken);
 }

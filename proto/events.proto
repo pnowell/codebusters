@@ -2,6 +2,14 @@ syntax = "proto3";
 
 package codebusters.v1;
 
+enum PracticeEventType {
+  PRACTICE_EVENT_TYPE_UNSPECIFIED = 0;
+  PRACTICE_EVENT_TYPE_DRILL_SESSION = 1;
+  PRACTICE_EVENT_TYPE_CIPHER_STARTED = 2;
+  PRACTICE_EVENT_TYPE_CIPHER_SOLVED = 3;
+  PRACTICE_EVENT_TYPE_PRACTICE_TEST_QUESTION_USER = 4;
+}
+
 enum PracticeSource {
   PRACTICE_SOURCE_UNSPECIFIED = 0;
   PRACTICE_SOURCE_STANDALONE = 1;
@@ -16,8 +24,50 @@ enum ScoreTierProto {
   SCORE_TIER_PROTO_ZERO = 3;
 }
 
+enum DrillIdProto {
+  DRILL_ID_PROTO_UNSPECIFIED = 0;
+  DRILL_ID_PROTO_OFFSETS_LETTER_TO_NUM = 1;
+  DRILL_ID_PROTO_OFFSETS_NUM_TO_LETTER = 2;
+  DRILL_ID_PROTO_LETTER_MATH_EASY = 3;
+  DRILL_ID_PROTO_LETTER_MATH_HARD = 4;
+  DRILL_ID_PROTO_LETTER_MATH_LETTER_EASY = 5;
+  DRILL_ID_PROTO_LETTER_MATH_LETTER_HARD = 6;
+  DRILL_ID_PROTO_ATBASH = 7;
+  DRILL_ID_PROTO_PIGPEN = 8;
+  DRILL_ID_PROTO_GALACTIC = 9;
+  DRILL_ID_PROTO_KNIGHTS = 10;
+  DRILL_ID_PROTO_TAP = 11;
+}
+
+enum CipherTypeProto {
+  CIPHER_TYPE_PROTO_UNSPECIFIED = 0;
+  CIPHER_TYPE_PROTO_ATBASH = 1;
+  CIPHER_TYPE_PROTO_PIGPEN = 2;
+  CIPHER_TYPE_PROTO_GALACTIC = 3;
+  CIPHER_TYPE_PROTO_TAP = 4;
+  CIPHER_TYPE_PROTO_KNIGHTS = 5;
+  CIPHER_TYPE_PROTO_CAESAR = 6;
+  CIPHER_TYPE_PROTO_VIGENERE = 7;
+  CIPHER_TYPE_PROTO_ARISTOCRAT = 8;
+}
+
+enum CipherModeProto {
+  CIPHER_MODE_PROTO_NONE = 0;
+  CIPHER_MODE_PROTO_PM3 = 1;
+  CIPHER_MODE_PROTO_ANY = 2;
+  CIPHER_MODE_PROTO_EASY = 3;
+  CIPHER_MODE_PROTO_MEDIUM = 4;
+  CIPHER_MODE_PROTO_HARD = 5;
+}
+
+enum CipherInputModeProto {
+  CIPHER_INPUT_MODE_PROTO_STANDARD = 0;
+  CIPHER_INPUT_MODE_PROTO_LINKED = 1;
+  CIPHER_INPUT_MODE_PROTO_PAPER = 2;
+}
+
 message DrillSessionEvent {
-  string drill_id = 1;
+  DrillIdProto drill_id = 1;
   double session_duration_sec = 2;
   uint32 session_best_60s_score = 3;
   uint32 total_answered = 4;
@@ -26,20 +76,20 @@ message DrillSessionEvent {
 }
 
 message CipherStartedEvent {
-  string cipher = 1;
-  string mode = 2;
+  CipherTypeProto cipher = 1;
+  CipherModeProto mode = 2;
   uint32 quote_id = 3;
   PracticeSource source = 4;
 }
 
 message CipherSolvedEvent {
-  string cipher = 1;
-  string mode = 2;
+  CipherTypeProto cipher = 1;
+  CipherModeProto mode = 2;
   uint32 quote_id = 3;
   double elapsed_sec = 4;
   uint32 alpha_char_count = 5;
   uint32 unique_alpha_char_count = 6;
-  string input_mode = 7;
+  CipherInputModeProto input_mode = 7;
   uint32 error_count = 8;
   uint32 correct_chars = 9;
   ScoreTierProto score_tier = 10;
@@ -50,8 +100,8 @@ message PracticeTestQuestionUserEvent {
   string attempt_id = 1;
   string test_id = 2;
   uint32 question_number = 3;
-  string cipher = 4;
-  string mode = 5;
+  CipherTypeProto cipher = 4;
+  CipherModeProto mode = 5;
   uint32 quote_id = 6;
   bool is_collaborative = 7;
   uint32 team_size = 8;
@@ -78,7 +128,7 @@ message PracticeEventBatch {
 
 message ServerLoggedPracticeEvent {
   string log_type = 1;
-  string event_type = 2;
+  PracticeEventType event_type = 2;
   string event_id = 3;
   string uid = 4;
   double client_timestamp_ms = 5;

@@ -1,42 +1,116 @@
 import { create, fromJson, toJson, type JsonValue } from '@bufbuild/protobuf';
 import {
+  CipherInputModeProto,
+  CipherModeProto,
+  CipherTypeProto,
+  DrillIdProto,
   PracticeEventBatchSchema,
+  PracticeEventType,
+  PracticeSource,
   PracticeTestQuestionUserEventSchema,
+  ScoreTierProto,
   ServerLoggedPracticeEventSchema,
 } from './proto/events_pb.js';
 
 export const LOG_TYPE_TAG = 'codebusters_practice_event';
 export const MAX_EVENTS_PER_BATCH = 50;
 
-const VALID_DRILL_IDS = new Set([
-  'offsetsLetterToNum',
-  'offsetsNumToLetter',
-  'letterMathEasy',
-  'letterMathHard',
-  'letterMathLetterEasy',
-  'letterMathLetterHard',
-  'atbash',
-  'pigpen',
-  'galactic',
-  'knights',
-  'tap',
-]);
-
-const VALID_TESTABLE_CIPHERS = new Set([
-  'atbash',
-  'pigpen',
-  'galactic',
-  'tap',
-  'knights',
-  'caesar',
-  'vigenere',
-  'aristocrat',
-]);
+const JSON_SERIALIZE_OPTS = {
+  alwaysEmitImplicit: true,
+  enumAsInteger: true,
+} as const;
 
 const EVENT_ID_RE = /^[0-9a-zA-Z_-]{8,64}$/;
-const SAFE_MODE_RE = /^[a-zA-Z0-9_-]{0,24}$/;
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const ALPHABET_LETTERS = ALPHABET.split('');
+
+function isValidDrillIdEnum(v: number): boolean {
+  return (
+    Number.isInteger(v) &&
+    v >= DrillIdProto.OFFSETS_LETTER_TO_NUM &&
+    v <= DrillIdProto.TAP
+  );
+}
+
+function isValidCipherTypeEnum(v: number): boolean {
+  return (
+    Number.isInteger(v) &&
+    v >= CipherTypeProto.ATBASH &&
+    v <= CipherTypeProto.ARISTOCRAT
+  );
+}
+
+function isValidCipherModeEnum(v: number): boolean {
+  return (
+    Number.isInteger(v) &&
+    v >= CipherModeProto.NONE &&
+    v <= CipherModeProto.HARD
+  );
+}
+
+function isValidInputModeEnum(v: number): boolean {
+  return (
+    Number.isInteger(v) &&
+    v >= CipherInputModeProto.STANDARD &&
+    v <= CipherInputModeProto.PAPER
+  );
+}
+
+function isValidPracticeSourceEnum(v: number): boolean {
+  return (
+    Number.isInteger(v) &&
+    v >= PracticeSource.STANDALONE &&
+    v <= PracticeSource.SHARED_LINK
+  );
+}
+
+function isValidScoreTierEnum(v: number): boolean {
+  return (
+    Number.isInteger(v) &&
+    v >= ScoreTierProto.FULL &&
+    v <= ScoreTierProto.ZERO
+  );
+}
+
+function cipherStringToProto(raw: string): CipherTypeProto | null {
+  switch (raw) {
+    case 'atbash':
+      return CipherTypeProto.ATBASH;
+    case 'pigpen':
+      return CipherTypeProto.PIGPEN;
+    case 'galactic':
+      return CipherTypeProto.GALACTIC;
+    case 'tap':
+      return CipherTypeProto.TAP;
+    case 'knights':
+      return CipherTypeProto.KNIGHTS;
+    case 'caesar':
+      return CipherTypeProto.CAESAR;
+    case 'vigenere':
+      return CipherTypeProto.VIGENERE;
+    case 'aristocrat':
+      return CipherTypeProto.ARISTOCRAT;
+    default:
+      return null;
+  }
+}
+
+function modeStringToProto(raw: string): CipherModeProto {
+  switch (raw) {
+    case 'pm3':
+      return CipherModeProto.PM3;
+    case 'any':
+      return CipherModeProto.ANY;
+    case 'easy':
+      return CipherModeProto.EASY;
+    case 'medium':
+      return CipherModeProto.MEDIUM;
+    case 'hard':
+      return CipherModeProto.HARD;
+    default:
+      return CipherModeProto.NONE;
+  }
+}
 
 function isUpperLetter(ch: string): boolean {
   return ch.length === 1 && ch >= 'A' && ch <= 'Z';
@@ -120,7 +194,7 @@ export class EventValidationError extends Error {
 
 /**
  * Validates a decoded `PracticeEventBatch` from a client request, stamps `uid`,
- * and returns structured Cloud Logging JSON objects ready for stdout emission.
+ * and returns structured Cloud Logging JSON objects with compact integer enums.
  */
 export function buildServerLogsFromClientBatch(
   rawBody: unknown,
@@ -171,8 +245,11 @@ export function buildServerLogsFromClientBatch(
     switch (ev.payload.case) {
       case 'drillSession': {
         const d = ev.payload.value;
-        if (!VALID_DRILL_IDS.has(d.drillId)) {
-          throw new EventValidationError(`Invalid drillId: ${d.drillId}`, 400);
+        if (!isValidDrillIdEnum(d.drillId)) {
+          throw new EventValidationError('Invalid drillId enum.', 400);
+        }
+        if (!isValidPracticeSourceEnum(d.source)) {
+          throw new EventValidationError('Invalid source enum.', 400);
         }
         if (
           !Number.isFinite(d.sessionDurationSec) ||
@@ -192,58 +269,68 @@ export function buildServerLogsFromClientBatch(
         }
         const serverMsg = create(ServerLoggedPracticeEventSchema, {
           logType: LOG_TYPE_TAG,
-          eventType: 'drill_session',
+          eventType: PracticeEventType.DRILL_SESSION,
           eventId: ev.eventId,
           uid: verifiedUid,
           clientTimestampMs: clientTs,
           payload: { case: 'drillSession', value: d },
         });
-        const jsonObj = toJson(ServerLoggedPracticeEventSchema, serverMsg, {
-          alwaysEmitImplicit: true,
-        }) as Record<string, unknown>;
+        const jsonObj = toJson(
+          ServerLoggedPracticeEventSchema,
+          serverMsg,
+          JSON_SERIALIZE_OPTS
+        ) as Record<string, unknown>;
         entries.push({ severity: 'INFO', ...jsonObj });
         break;
       }
 
       case 'cipherStarted': {
         const cs = ev.payload.value;
-        if (!VALID_TESTABLE_CIPHERS.has(cs.cipher)) {
-          throw new EventValidationError(`Invalid cipher: ${cs.cipher}`, 400);
+        if (!isValidCipherTypeEnum(cs.cipher)) {
+          throw new EventValidationError('Invalid cipher enum.', 400);
         }
-        if (!SAFE_MODE_RE.test(cs.mode)) {
-          throw new EventValidationError('Invalid cipher mode.', 400);
+        if (!isValidCipherModeEnum(cs.mode)) {
+          throw new EventValidationError('Invalid cipher mode enum.', 400);
+        }
+        if (!isValidPracticeSourceEnum(cs.source)) {
+          throw new EventValidationError('Invalid source enum.', 400);
         }
         if (cs.quoteId > 1_000_000) {
           throw new EventValidationError('Invalid quoteId.', 400);
         }
         const serverMsg = create(ServerLoggedPracticeEventSchema, {
           logType: LOG_TYPE_TAG,
-          eventType: 'cipher_started',
+          eventType: PracticeEventType.CIPHER_STARTED,
           eventId: ev.eventId,
           uid: verifiedUid,
           clientTimestampMs: clientTs,
           payload: { case: 'cipherStarted', value: cs },
         });
-        const jsonObj = toJson(ServerLoggedPracticeEventSchema, serverMsg, {
-          alwaysEmitImplicit: true,
-        }) as Record<string, unknown>;
+        const jsonObj = toJson(
+          ServerLoggedPracticeEventSchema,
+          serverMsg,
+          JSON_SERIALIZE_OPTS
+        ) as Record<string, unknown>;
         entries.push({ severity: 'INFO', ...jsonObj });
         break;
       }
 
       case 'cipherSolved': {
         const solved = ev.payload.value;
-        if (!VALID_TESTABLE_CIPHERS.has(solved.cipher)) {
-          throw new EventValidationError(
-            `Invalid cipher: ${solved.cipher}`,
-            400
-          );
+        if (!isValidCipherTypeEnum(solved.cipher)) {
+          throw new EventValidationError('Invalid cipher enum.', 400);
         }
-        if (!SAFE_MODE_RE.test(solved.mode)) {
-          throw new EventValidationError('Invalid cipher mode.', 400);
+        if (!isValidCipherModeEnum(solved.mode)) {
+          throw new EventValidationError('Invalid cipher mode enum.', 400);
         }
-        if (!SAFE_MODE_RE.test(solved.inputMode)) {
-          throw new EventValidationError('Invalid inputMode.', 400);
+        if (!isValidInputModeEnum(solved.inputMode)) {
+          throw new EventValidationError('Invalid inputMode enum.', 400);
+        }
+        if (!isValidScoreTierEnum(solved.scoreTier)) {
+          throw new EventValidationError('Invalid scoreTier enum.', 400);
+        }
+        if (!isValidPracticeSourceEnum(solved.source)) {
+          throw new EventValidationError('Invalid source enum.', 400);
         }
         if (
           !Number.isFinite(solved.elapsedSec) ||
@@ -257,15 +344,17 @@ export function buildServerLogsFromClientBatch(
         }
         const serverMsg = create(ServerLoggedPracticeEventSchema, {
           logType: LOG_TYPE_TAG,
-          eventType: 'cipher_solved',
+          eventType: PracticeEventType.CIPHER_SOLVED,
           eventId: ev.eventId,
           uid: verifiedUid,
           clientTimestampMs: clientTs,
           payload: { case: 'cipherSolved', value: solved },
         });
-        const jsonObj = toJson(ServerLoggedPracticeEventSchema, serverMsg, {
-          alwaysEmitImplicit: true,
-        }) as Record<string, unknown>;
+        const jsonObj = toJson(
+          ServerLoggedPracticeEventSchema,
+          serverMsg,
+          JSON_SERIALIZE_OPTS
+        ) as Record<string, unknown>;
         entries.push({ severity: 'INFO', ...jsonObj });
         break;
       }
@@ -321,7 +410,10 @@ export function buildTestAttemptCompletionLogs(
 ): Record<string, unknown>[] {
   const rawUids = Array.isArray(attempt.studentUids)
     ? attempt.studentUids
-        .filter((u): u is string => typeof u === 'string' && u.trim().length > 0 && u !== 'student')
+        .filter(
+          (u): u is string =>
+            typeof u === 'string' && u.trim().length > 0 && u !== 'student'
+        )
         .map((u) => u.trim())
     : [];
   const studentUids = Array.from(new Set(rawUids)).sort();
@@ -336,13 +428,15 @@ export function buildTestAttemptCompletionLogs(
     (typeof attempt.testId === 'string' && attempt.testId) ||
     testPacket.testId ||
     '';
-  const startedAt = typeof attempt.startedAt === 'number' ? attempt.startedAt : 0;
+  const startedAt =
+    typeof attempt.startedAt === 'number' ? attempt.startedAt : 0;
   const submittedAt =
     typeof attempt.submittedAt === 'number' && attempt.submittedAt > 0
       ? attempt.submittedAt
       : Date.now();
   const timeLimitSec =
-    typeof testPacket.timeLimitSeconds === 'number' && testPacket.timeLimitSeconds > 0
+    typeof testPacket.timeLimitSeconds === 'number' &&
+    testPacket.timeLimitSeconds > 0
       ? testPacket.timeLimitSeconds
       : 3000;
   const totalTestElapsedSec =
@@ -363,16 +457,20 @@ export function buildTestAttemptCompletionLogs(
   const logs: Record<string, unknown>[] = [];
 
   questions.forEach((q, qIdx) => {
-    const cipher = typeof q.cipher === 'string' ? q.cipher : '';
+    const cipherRaw = typeof q.cipher === 'string' ? q.cipher : '';
+    const cipherEnum = cipherStringToProto(cipherRaw);
     const quoteId = typeof q.quoteId === 'number' ? q.quoteId : -1;
-    if (!VALID_TESTABLE_CIPHERS.has(cipher) || quoteId < 0) return;
+    if (cipherEnum === null || quoteId < 0) return;
 
     const quoteInfo = quotesLookup[quoteId];
     if (!quoteInfo) return;
 
     const targetUpper = quoteInfo.q.toUpperCase();
     const targetChars = targetUpper.split('');
-    const wsRaw = (rawWorkspaces[String(qIdx)] ?? {}) as Record<string, unknown>;
+    const wsRaw = (rawWorkspaces[String(qIdx)] ?? {}) as Record<
+      string,
+      unknown
+    >;
     const inputsMap =
       wsRaw.inputs && typeof wsRaw.inputs === 'object'
         ? (wsRaw.inputs as Record<string, unknown>)
@@ -392,9 +490,9 @@ export function buildTestAttemptCompletionLogs(
     }
 
     let totalGradableUnits = 0;
-    let mode = '';
-    if (cipher === 'aristocrat') {
-      mode = quoteInfo.t ?? '';
+    let modeEnum = CipherModeProto.NONE;
+    if (cipherRaw === 'aristocrat') {
+      modeEnum = modeStringToProto(quoteInfo.t ?? '');
       const alpha = isValidAristocratAlphabet(q.aristocratAlphabet)
         ? q.aristocratAlphabet
         : deterministicAristocratAlphabet(quoteId + qIdx);
@@ -433,9 +531,12 @@ export function buildTestAttemptCompletionLogs(
         }
       }
     } else {
-      if (cipher === 'caesar' && typeof q.caesarOffset === 'number') {
+      if (cipherRaw === 'caesar' && typeof q.caesarOffset === 'number') {
         const normShift = ((q.caesarOffset % 26) + 26) % 26;
-        mode = normShift <= 3 || normShift >= 23 ? 'pm3' : 'any';
+        modeEnum =
+          normShift <= 3 || normShift >= 23
+            ? CipherModeProto.PM3
+            : CipherModeProto.ANY;
       }
       for (let i = 0; i < targetChars.length; i += 1) {
         const expectedPlain = targetChars[i];
@@ -470,8 +571,8 @@ export function buildTestAttemptCompletionLogs(
         attemptId,
         testId,
         questionNumber: qNum,
-        cipher,
-        mode,
+        cipher: cipherEnum,
+        mode: modeEnum,
         quoteId,
         isCollaborative,
         teamSize,
@@ -484,16 +585,18 @@ export function buildTestAttemptCompletionLogs(
       const eventId = `ptqu_${attemptId}_${qNum}_${uid}`.slice(0, 128);
       const serverMsg = create(ServerLoggedPracticeEventSchema, {
         logType: LOG_TYPE_TAG,
-        eventType: 'practice_test_question_user',
+        eventType: PracticeEventType.PRACTICE_TEST_QUESTION_USER,
         eventId,
         uid,
         clientTimestampMs: submittedAt,
         payload: { case: 'practiceTestQuestionUser', value: ptEvent },
       });
 
-      const jsonObj = toJson(ServerLoggedPracticeEventSchema, serverMsg, {
-        alwaysEmitImplicit: true,
-      }) as Record<string, unknown>;
+      const jsonObj = toJson(
+        ServerLoggedPracticeEventSchema,
+        serverMsg,
+        JSON_SERIALIZE_OPTS
+      ) as Record<string, unknown>;
       logs.push({ severity: 'INFO', ...jsonObj });
     }
   });

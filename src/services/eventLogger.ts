@@ -1,8 +1,12 @@
 import { create, fromJson, toJson, type JsonValue } from '@bufbuild/protobuf';
 import { onIdTokenChanged } from 'firebase/auth';
 import {
+  CipherInputModeProto,
+  CipherModeProto,
   CipherSolvedEventSchema,
   CipherStartedEventSchema,
+  CipherTypeProto,
+  DrillIdProto,
   DrillSessionEventSchema,
   PracticeEventBatchSchema,
   PracticeEventSchema,
@@ -22,6 +26,10 @@ const PENDING_EVENTS_KEY = 'davinci_pending_events';
 const MAX_QUEUED_EVENTS = 100;
 const MAX_BATCH_SIZE = 50;
 const FLUSH_DEBOUNCE_MS = 1500;
+const JSON_WRITE_OPTS = {
+  alwaysEmitImplicit: true,
+  enumAsInteger: true,
+} as const;
 
 let isLoggingEnabled = false;
 let cachedIdToken: string | null = null;
@@ -30,11 +38,17 @@ let flushTimeoutId: ReturnType<typeof setTimeout> | null = null;
 let inFlightFlush: Promise<boolean> | null = null;
 
 function generateEventId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+  if (
+    typeof crypto !== 'undefined' &&
+    typeof crypto.randomUUID === 'function'
+  ) {
     return crypto.randomUUID();
   }
   const bytes = new Uint8Array(16);
-  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+  if (
+    typeof crypto !== 'undefined' &&
+    typeof crypto.getRandomValues === 'function'
+  ) {
     crypto.getRandomValues(bytes);
   } else {
     for (let i = 0; i < 16; i += 1) {
@@ -43,7 +57,9 @@ function generateEventId(): string {
   }
   bytes[6] = (bytes[6] & 0x0f) | 0x40;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join(
+    ''
+  );
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
@@ -94,6 +110,86 @@ export function toScoreTierProto(tier: ScoreTier): ScoreTierProto {
   }
 }
 
+export function toDrillIdProto(drillId: DrillId): DrillIdProto {
+  switch (drillId) {
+    case 'offsetsLetterToNum':
+      return DrillIdProto.OFFSETS_LETTER_TO_NUM;
+    case 'offsetsNumToLetter':
+      return DrillIdProto.OFFSETS_NUM_TO_LETTER;
+    case 'letterMathEasy':
+      return DrillIdProto.LETTER_MATH_EASY;
+    case 'letterMathHard':
+      return DrillIdProto.LETTER_MATH_HARD;
+    case 'letterMathLetterEasy':
+      return DrillIdProto.LETTER_MATH_LETTER_EASY;
+    case 'letterMathLetterHard':
+      return DrillIdProto.LETTER_MATH_LETTER_HARD;
+    case 'atbash':
+      return DrillIdProto.ATBASH;
+    case 'pigpen':
+      return DrillIdProto.PIGPEN;
+    case 'galactic':
+      return DrillIdProto.GALACTIC;
+    case 'knights':
+      return DrillIdProto.KNIGHTS;
+    case 'tap':
+      return DrillIdProto.TAP;
+  }
+}
+
+export function toCipherTypeProto(
+  cipher: TestableCipherType
+): CipherTypeProto {
+  switch (cipher) {
+    case 'atbash':
+      return CipherTypeProto.ATBASH;
+    case 'pigpen':
+      return CipherTypeProto.PIGPEN;
+    case 'galactic':
+      return CipherTypeProto.GALACTIC;
+    case 'tap':
+      return CipherTypeProto.TAP;
+    case 'knights':
+      return CipherTypeProto.KNIGHTS;
+    case 'caesar':
+      return CipherTypeProto.CAESAR;
+    case 'vigenere':
+      return CipherTypeProto.VIGENERE;
+    case 'aristocrat':
+      return CipherTypeProto.ARISTOCRAT;
+  }
+}
+
+export function toCipherModeProto(mode?: string): CipherModeProto {
+  switch (mode) {
+    case 'pm3':
+      return CipherModeProto.PM3;
+    case 'any':
+      return CipherModeProto.ANY;
+    case 'easy':
+      return CipherModeProto.EASY;
+    case 'medium':
+      return CipherModeProto.MEDIUM;
+    case 'hard':
+      return CipherModeProto.HARD;
+    default:
+      return CipherModeProto.NONE;
+  }
+}
+
+export function toCipherInputModeProto(
+  inputMode?: string
+): CipherInputModeProto {
+  switch (inputMode) {
+    case 'linked':
+      return CipherInputModeProto.LINKED;
+    case 'paper':
+      return CipherInputModeProto.PAPER;
+    default:
+      return CipherInputModeProto.STANDARD;
+  }
+}
+
 export function loadQueuedPracticeEvents(): PracticeEvent[] {
   try {
     const raw = localStorage.getItem(PENDING_EVENTS_KEY);
@@ -110,7 +206,7 @@ export function loadQueuedPracticeEvents(): PracticeEvent[] {
           valid.push(ev);
         }
       } catch {
-        // Drop malformed entry
+        // Drop malformed or outdated schema entry
       }
     }
     return valid;
@@ -127,7 +223,7 @@ function saveQueuedPracticeEvents(events: readonly PracticeEvent[]): void {
     }
     const trimmed = events.slice(-MAX_QUEUED_EVENTS);
     const serialized = trimmed.map((ev) =>
-      toJson(PracticeEventSchema, ev, { alwaysEmitImplicit: true })
+      toJson(PracticeEventSchema, ev, JSON_WRITE_OPTS)
     );
     localStorage.setItem(PENDING_EVENTS_KEY, JSON.stringify(serialized));
   } catch {
@@ -226,7 +322,7 @@ export async function flushPendingPracticeEvents(options?: {
     const batchSlice = queued.slice(0, MAX_BATCH_SIZE);
     const batchMsg = create(PracticeEventBatchSchema, { events: batchSlice });
     const bodyStr = JSON.stringify(
-      toJson(PracticeEventBatchSchema, batchMsg, { alwaysEmitImplicit: true })
+      toJson(PracticeEventBatchSchema, batchMsg, JSON_WRITE_OPTS)
     );
     const sentIds = new Set(batchSlice.map((e) => e.eventId));
     try {
@@ -267,7 +363,7 @@ export async function flushPendingPracticeEvents(options?: {
       const batchSlice = currentQueue.slice(0, MAX_BATCH_SIZE);
       const batchMsg = create(PracticeEventBatchSchema, { events: batchSlice });
       const bodyStr = JSON.stringify(
-        toJson(PracticeEventBatchSchema, batchMsg, { alwaysEmitImplicit: true })
+        toJson(PracticeEventBatchSchema, batchMsg, JSON_WRITE_OPTS)
       );
       const sentIds = new Set(batchSlice.map((e) => e.eventId));
 
@@ -332,7 +428,7 @@ export function logDrillSessionEvent(
     payload: {
       case: 'drillSession',
       value: create(DrillSessionEventSchema, {
-        drillId: params.drillId,
+        drillId: toDrillIdProto(params.drillId),
         sessionDurationSec:
           Math.round(Math.max(0, params.sessionDurationSec) * 10) / 10,
         sessionBest60sScore: Math.max(
@@ -360,8 +456,8 @@ export function logCipherStartedEvent(params: {
     payload: {
       case: 'cipherStarted',
       value: create(CipherStartedEventSchema, {
-        cipher: params.cipher,
-        mode: params.mode ?? '',
+        cipher: toCipherTypeProto(params.cipher),
+        mode: toCipherModeProto(params.mode),
         quoteId: Math.max(0, Math.trunc(params.quoteId)),
         source: toPracticeSourceProto(params.source),
       }),
@@ -389,8 +485,8 @@ export function logCipherSolvedEvent(params: {
     payload: {
       case: 'cipherSolved',
       value: create(CipherSolvedEventSchema, {
-        cipher: params.cipher,
-        mode: params.mode ?? '',
+        cipher: toCipherTypeProto(params.cipher),
+        mode: toCipherModeProto(params.mode),
         quoteId: Math.max(0, Math.trunc(params.quoteId)),
         elapsedSec: Math.round(Math.max(0, params.elapsedSec) * 10) / 10,
         alphaCharCount: Math.max(0, Math.trunc(params.alphaCharCount)),
@@ -398,7 +494,7 @@ export function logCipherSolvedEvent(params: {
           0,
           Math.trunc(params.uniqueAlphaCharCount)
         ),
-        inputMode: params.inputMode ?? '',
+        inputMode: toCipherInputModeProto(params.inputMode),
         errorCount: Math.max(0, Math.trunc(params.errorCount)),
         correctChars: Math.max(0, Math.trunc(params.correctChars)),
         scoreTier: toScoreTierProto(params.scoreTier),

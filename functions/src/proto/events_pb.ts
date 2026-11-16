@@ -10,16 +10,16 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file events.proto.
  */
 export const file_events: GenFile = /*@__PURE__*/
-  fileDesc("CgxldmVudHMucHJvdG8SDmNvZGVidXN0ZXJzLnYxIsIBChFEcmlsbFNlc3Npb25FdmVudBIQCghkcmlsbF9pZBgBIAEoCRIcChRzZXNzaW9uX2R1cmF0aW9uX3NlYxgCIAEoARIeChZzZXNzaW9uX2Jlc3RfNjBzX3Njb3JlGAMgASgNEhYKDnRvdGFsX2Fuc3dlcmVkGAQgASgNEhUKDXRvdGFsX2NvcnJlY3QYBSABKA0SLgoGc291cmNlGAYgASgOMh4uY29kZWJ1c3RlcnMudjEuUHJhY3RpY2VTb3VyY2UidAoSQ2lwaGVyU3RhcnRlZEV2ZW50Eg4KBmNpcGhlchgBIAEoCRIMCgRtb2RlGAIgASgJEhAKCHF1b3RlX2lkGAMgASgNEi4KBnNvdXJjZRgEIAEoDjIeLmNvZGVidXN0ZXJzLnYxLlByYWN0aWNlU291cmNlIrcCChFDaXBoZXJTb2x2ZWRFdmVudBIOCgZjaXBoZXIYASABKAkSDAoEbW9kZRgCIAEoCRIQCghxdW90ZV9pZBgDIAEoDRITCgtlbGFwc2VkX3NlYxgEIAEoARIYChBhbHBoYV9jaGFyX2NvdW50GAUgASgNEh8KF3VuaXF1ZV9hbHBoYV9jaGFyX2NvdW50GAYgASgNEhIKCmlucHV0X21vZGUYByABKAkSEwoLZXJyb3JfY291bnQYCCABKA0SFQoNY29ycmVjdF9jaGFycxgJIAEoDRIyCgpzY29yZV90aWVyGAogASgOMh4uY29kZWJ1c3RlcnMudjEuU2NvcmVUaWVyUHJvdG8SLgoGc291cmNlGAsgASgOMh4uY29kZWJ1c3RlcnMudjEuUHJhY3RpY2VTb3VyY2UiuQIKHVByYWN0aWNlVGVzdFF1ZXN0aW9uVXNlckV2ZW50EhIKCmF0dGVtcHRfaWQYASABKAkSDwoHdGVzdF9pZBgCIAEoCRIXCg9xdWVzdGlvbl9udW1iZXIYAyABKA0SDgoGY2lwaGVyGAQgASgJEgwKBG1vZGUYBSABKAkSEAoIcXVvdGVfaWQYBiABKA0SGAoQaXNfY29sbGFib3JhdGl2ZRgHIAEoCBIRCgl0ZWFtX3NpemUYCCABKA0SHgoWdG90YWxfdGVzdF9lbGFwc2VkX3NlYxgJIAEoARIeChZhY3RpdmVfc2NyZWVuX3RpbWVfc2VjGAogASgBEh8KF2NvcnJlY3RfZ3JhZGFibGVfaW5wdXRzGAsgASgNEhwKFHRvdGFsX2dyYWRhYmxlX3VuaXRzGAwgASgNItUCCg1QcmFjdGljZUV2ZW50EhAKCGV2ZW50X2lkGAEgASgJEhsKE2NsaWVudF90aW1lc3RhbXBfbXMYAiABKAESOgoNZHJpbGxfc2Vzc2lvbhgKIAEoCzIhLmNvZGVidXN0ZXJzLnYxLkRyaWxsU2Vzc2lvbkV2ZW50SAASPAoOY2lwaGVyX3N0YXJ0ZWQYCyABKAsyIi5jb2RlYnVzdGVycy52MS5DaXBoZXJTdGFydGVkRXZlbnRIABI6Cg1jaXBoZXJfc29sdmVkGAwgASgLMiEuY29kZWJ1c3RlcnMudjEuQ2lwaGVyU29sdmVkRXZlbnRIABJUChtwcmFjdGljZV90ZXN0X3F1ZXN0aW9uX3VzZXIYDSABKAsyLS5jb2RlYnVzdGVycy52MS5QcmFjdGljZVRlc3RRdWVzdGlvblVzZXJFdmVudEgAQgkKB3BheWxvYWQiQwoSUHJhY3RpY2VFdmVudEJhdGNoEi0KBmV2ZW50cxgBIAMoCzIdLmNvZGVidXN0ZXJzLnYxLlByYWN0aWNlRXZlbnQilAMKGVNlcnZlckxvZ2dlZFByYWN0aWNlRXZlbnQSEAoIbG9nX3R5cGUYASABKAkSEgoKZXZlbnRfdHlwZRgCIAEoCRIQCghldmVudF9pZBgDIAEoCRILCgN1aWQYBCABKAkSGwoTY2xpZW50X3RpbWVzdGFtcF9tcxgFIAEoARI6Cg1kcmlsbF9zZXNzaW9uGAogASgLMiEuY29kZWJ1c3RlcnMudjEuRHJpbGxTZXNzaW9uRXZlbnRIABI8Cg5jaXBoZXJfc3RhcnRlZBgLIAEoCzIiLmNvZGVidXN0ZXJzLnYxLkNpcGhlclN0YXJ0ZWRFdmVudEgAEjoKDWNpcGhlcl9zb2x2ZWQYDCABKAsyIS5jb2RlYnVzdGVycy52MS5DaXBoZXJTb2x2ZWRFdmVudEgAElQKG3ByYWN0aWNlX3Rlc3RfcXVlc3Rpb25fdXNlchgNIAEoCzItLmNvZGVidXN0ZXJzLnYxLlByYWN0aWNlVGVzdFF1ZXN0aW9uVXNlckV2ZW50SABCCQoHcGF5bG9hZCqYAQoOUHJhY3RpY2VTb3VyY2USHwobUFJBQ1RJQ0VfU09VUkNFX1VOU1BFQ0lGSUVEEAASHgoaUFJBQ1RJQ0VfU09VUkNFX1NUQU5EQUxPTkUQARIkCiBQUkFDVElDRV9TT1VSQ0VfR0VORVJBTF9QUkFDVElDRRACEh8KG1BSQUNUSUNFX1NPVVJDRV9TSEFSRURfTElOSxADKoMBCg5TY29yZVRpZXJQcm90bxIgChxTQ09SRV9USUVSX1BST1RPX1VOU1BFQ0lGSUVEEAASGQoVU0NPUkVfVElFUl9QUk9UT19GVUxMEAESGQoVU0NPUkVfVElFUl9QUk9UT19IQUxGEAISGQoVU0NPUkVfVElFUl9QUk9UT19aRVJPEANiBnByb3RvMw");
+  fileDesc("CgxldmVudHMucHJvdG8SDmNvZGVidXN0ZXJzLnYxIuABChFEcmlsbFNlc3Npb25FdmVudBIuCghkcmlsbF9pZBgBIAEoDjIcLmNvZGVidXN0ZXJzLnYxLkRyaWxsSWRQcm90bxIcChRzZXNzaW9uX2R1cmF0aW9uX3NlYxgCIAEoARIeChZzZXNzaW9uX2Jlc3RfNjBzX3Njb3JlGAMgASgNEhYKDnRvdGFsX2Fuc3dlcmVkGAQgASgNEhUKDXRvdGFsX2NvcnJlY3QYBSABKA0SLgoGc291cmNlGAYgASgOMh4uY29kZWJ1c3RlcnMudjEuUHJhY3RpY2VTb3VyY2UitgEKEkNpcGhlclN0YXJ0ZWRFdmVudBIvCgZjaXBoZXIYASABKA4yHy5jb2RlYnVzdGVycy52MS5DaXBoZXJUeXBlUHJvdG8SLQoEbW9kZRgCIAEoDjIfLmNvZGVidXN0ZXJzLnYxLkNpcGhlck1vZGVQcm90bxIQCghxdW90ZV9pZBgDIAEoDRIuCgZzb3VyY2UYBCABKA4yHi5jb2RlYnVzdGVycy52MS5QcmFjdGljZVNvdXJjZSKfAwoRQ2lwaGVyU29sdmVkRXZlbnQSLwoGY2lwaGVyGAEgASgOMh8uY29kZWJ1c3RlcnMudjEuQ2lwaGVyVHlwZVByb3RvEi0KBG1vZGUYAiABKA4yHy5jb2RlYnVzdGVycy52MS5DaXBoZXJNb2RlUHJvdG8SEAoIcXVvdGVfaWQYAyABKA0SEwoLZWxhcHNlZF9zZWMYBCABKAESGAoQYWxwaGFfY2hhcl9jb3VudBgFIAEoDRIfChd1bmlxdWVfYWxwaGFfY2hhcl9jb3VudBgGIAEoDRI4CgppbnB1dF9tb2RlGAcgASgOMiQuY29kZWJ1c3RlcnMudjEuQ2lwaGVySW5wdXRNb2RlUHJvdG8SEwoLZXJyb3JfY291bnQYCCABKA0SFQoNY29ycmVjdF9jaGFycxgJIAEoDRIyCgpzY29yZV90aWVyGAogASgOMh4uY29kZWJ1c3RlcnMudjEuU2NvcmVUaWVyUHJvdG8SLgoGc291cmNlGAsgASgOMh4uY29kZWJ1c3RlcnMudjEuUHJhY3RpY2VTb3VyY2Ui+wIKHVByYWN0aWNlVGVzdFF1ZXN0aW9uVXNlckV2ZW50EhIKCmF0dGVtcHRfaWQYASABKAkSDwoHdGVzdF9pZBgCIAEoCRIXCg9xdWVzdGlvbl9udW1iZXIYAyABKA0SLwoGY2lwaGVyGAQgASgOMh8uY29kZWJ1c3RlcnMudjEuQ2lwaGVyVHlwZVByb3RvEi0KBG1vZGUYBSABKA4yHy5jb2RlYnVzdGVycy52MS5DaXBoZXJNb2RlUHJvdG8SEAoIcXVvdGVfaWQYBiABKA0SGAoQaXNfY29sbGFib3JhdGl2ZRgHIAEoCBIRCgl0ZWFtX3NpemUYCCABKA0SHgoWdG90YWxfdGVzdF9lbGFwc2VkX3NlYxgJIAEoARIeChZhY3RpdmVfc2NyZWVuX3RpbWVfc2VjGAogASgBEh8KF2NvcnJlY3RfZ3JhZGFibGVfaW5wdXRzGAsgASgNEhwKFHRvdGFsX2dyYWRhYmxlX3VuaXRzGAwgASgNItUCCg1QcmFjdGljZUV2ZW50EhAKCGV2ZW50X2lkGAEgASgJEhsKE2NsaWVudF90aW1lc3RhbXBfbXMYAiABKAESOgoNZHJpbGxfc2Vzc2lvbhgKIAEoCzIhLmNvZGVidXN0ZXJzLnYxLkRyaWxsU2Vzc2lvbkV2ZW50SAASPAoOY2lwaGVyX3N0YXJ0ZWQYCyABKAsyIi5jb2RlYnVzdGVycy52MS5DaXBoZXJTdGFydGVkRXZlbnRIABI6Cg1jaXBoZXJfc29sdmVkGAwgASgLMiEuY29kZWJ1c3RlcnMudjEuQ2lwaGVyU29sdmVkRXZlbnRIABJUChtwcmFjdGljZV90ZXN0X3F1ZXN0aW9uX3VzZXIYDSABKAsyLS5jb2RlYnVzdGVycy52MS5QcmFjdGljZVRlc3RRdWVzdGlvblVzZXJFdmVudEgAQgkKB3BheWxvYWQiQwoSUHJhY3RpY2VFdmVudEJhdGNoEi0KBmV2ZW50cxgBIAMoCzIdLmNvZGVidXN0ZXJzLnYxLlByYWN0aWNlRXZlbnQitwMKGVNlcnZlckxvZ2dlZFByYWN0aWNlRXZlbnQSEAoIbG9nX3R5cGUYASABKAkSNQoKZXZlbnRfdHlwZRgCIAEoDjIhLmNvZGVidXN0ZXJzLnYxLlByYWN0aWNlRXZlbnRUeXBlEhAKCGV2ZW50X2lkGAMgASgJEgsKA3VpZBgEIAEoCRIbChNjbGllbnRfdGltZXN0YW1wX21zGAUgASgBEjoKDWRyaWxsX3Nlc3Npb24YCiABKAsyIS5jb2RlYnVzdGVycy52MS5EcmlsbFNlc3Npb25FdmVudEgAEjwKDmNpcGhlcl9zdGFydGVkGAsgASgLMiIuY29kZWJ1c3RlcnMudjEuQ2lwaGVyU3RhcnRlZEV2ZW50SAASOgoNY2lwaGVyX3NvbHZlZBgMIAEoCzIhLmNvZGVidXN0ZXJzLnYxLkNpcGhlclNvbHZlZEV2ZW50SAASVAobcHJhY3RpY2VfdGVzdF9xdWVzdGlvbl91c2VyGA0gASgLMi0uY29kZWJ1c3RlcnMudjEuUHJhY3RpY2VUZXN0UXVlc3Rpb25Vc2VyRXZlbnRIAEIJCgdwYXlsb2FkKuMBChFQcmFjdGljZUV2ZW50VHlwZRIjCh9QUkFDVElDRV9FVkVOVF9UWVBFX1VOU1BFQ0lGSUVEEAASJQohUFJBQ1RJQ0VfRVZFTlRfVFlQRV9EUklMTF9TRVNTSU9OEAESJgoiUFJBQ1RJQ0VfRVZFTlRfVFlQRV9DSVBIRVJfU1RBUlRFRBACEiUKIVBSQUNUSUNFX0VWRU5UX1RZUEVfQ0lQSEVSX1NPTFZFRBADEjMKL1BSQUNUSUNFX0VWRU5UX1RZUEVfUFJBQ1RJQ0VfVEVTVF9RVUVTVElPTl9VU0VSEAQqmAEKDlByYWN0aWNlU291cmNlEh8KG1BSQUNUSUNFX1NPVVJDRV9VTlNQRUNJRklFRBAAEh4KGlBSQUNUSUNFX1NPVVJDRV9TVEFOREFMT05FEAESJAogUFJBQ1RJQ0VfU09VUkNFX0dFTkVSQUxfUFJBQ1RJQ0UQAhIfChtQUkFDVElDRV9TT1VSQ0VfU0hBUkVEX0xJTksQAyqDAQoOU2NvcmVUaWVyUHJvdG8SIAocU0NPUkVfVElFUl9QUk9UT19VTlNQRUNJRklFRBAAEhkKFVNDT1JFX1RJRVJfUFJPVE9fRlVMTBABEhkKFVNDT1JFX1RJRVJfUFJPVE9fSEFMRhACEhkKFVNDT1JFX1RJRVJfUFJPVE9fWkVSTxADKqsDCgxEcmlsbElkUHJvdG8SHgoaRFJJTExfSURfUFJPVE9fVU5TUEVDSUZJRUQQABIoCiREUklMTF9JRF9QUk9UT19PRkZTRVRTX0xFVFRFUl9UT19OVU0QARIoCiREUklMTF9JRF9QUk9UT19PRkZTRVRTX05VTV9UT19MRVRURVIQAhIjCh9EUklMTF9JRF9QUk9UT19MRVRURVJfTUFUSF9FQVNZEAMSIwofRFJJTExfSURfUFJPVE9fTEVUVEVSX01BVEhfSEFSRBAEEioKJkRSSUxMX0lEX1BST1RPX0xFVFRFUl9NQVRIX0xFVFRFUl9FQVNZEAUSKgomRFJJTExfSURfUFJPVE9fTEVUVEVSX01BVEhfTEVUVEVSX0hBUkQQBhIZChVEUklMTF9JRF9QUk9UT19BVEJBU0gQBxIZChVEUklMTF9JRF9QUk9UT19QSUdQRU4QCBIbChdEUklMTF9JRF9QUk9UT19HQUxBQ1RJQxAJEhoKFkRSSUxMX0lEX1BST1RPX0tOSUdIVFMQChIWChJEUklMTF9JRF9QUk9UT19UQVAQCyqqAgoPQ2lwaGVyVHlwZVByb3RvEiEKHUNJUEhFUl9UWVBFX1BST1RPX1VOU1BFQ0lGSUVEEAASHAoYQ0lQSEVSX1RZUEVfUFJPVE9fQVRCQVNIEAESHAoYQ0lQSEVSX1RZUEVfUFJPVE9fUElHUEVOEAISHgoaQ0lQSEVSX1RZUEVfUFJPVE9fR0FMQUNUSUMQAxIZChVDSVBIRVJfVFlQRV9QUk9UT19UQVAQBBIdChlDSVBIRVJfVFlQRV9QUk9UT19LTklHSFRTEAUSHAoYQ0lQSEVSX1RZUEVfUFJPVE9fQ0FFU0FSEAYSHgoaQ0lQSEVSX1RZUEVfUFJPVE9fVklHRU5FUkUQBxIgChxDSVBIRVJfVFlQRV9QUk9UT19BUklTVE9DUkFUEAgquQEKD0NpcGhlck1vZGVQcm90bxIaChZDSVBIRVJfTU9ERV9QUk9UT19OT05FEAASGQoVQ0lQSEVSX01PREVfUFJPVE9fUE0zEAESGQoVQ0lQSEVSX01PREVfUFJPVE9fQU5ZEAISGgoWQ0lQSEVSX01PREVfUFJPVE9fRUFTWRADEhwKGENJUEhFUl9NT0RFX1BST1RPX01FRElVTRAEEhoKFkNJUEhFUl9NT0RFX1BST1RPX0hBUkQQBSqDAQoUQ2lwaGVySW5wdXRNb2RlUHJvdG8SJAogQ0lQSEVSX0lOUFVUX01PREVfUFJPVE9fU1RBTkRBUkQQABIiCh5DSVBIRVJfSU5QVVRfTU9ERV9QUk9UT19MSU5LRUQQARIhCh1DSVBIRVJfSU5QVVRfTU9ERV9QUk9UT19QQVBFUhACYgZwcm90bzM");
 
 /**
  * @generated from message codebusters.v1.DrillSessionEvent
  */
 export type DrillSessionEvent = Message<"codebusters.v1.DrillSessionEvent"> & {
   /**
-   * @generated from field: string drill_id = 1;
+   * @generated from field: codebusters.v1.DrillIdProto drill_id = 1;
    */
-  drillId: string;
+  drillId: DrillIdProto;
 
   /**
    * @generated from field: double session_duration_sec = 2;
@@ -59,14 +59,14 @@ export const DrillSessionEventSchema: GenMessage<DrillSessionEvent> = /*@__PURE_
  */
 export type CipherStartedEvent = Message<"codebusters.v1.CipherStartedEvent"> & {
   /**
-   * @generated from field: string cipher = 1;
+   * @generated from field: codebusters.v1.CipherTypeProto cipher = 1;
    */
-  cipher: string;
+  cipher: CipherTypeProto;
 
   /**
-   * @generated from field: string mode = 2;
+   * @generated from field: codebusters.v1.CipherModeProto mode = 2;
    */
-  mode: string;
+  mode: CipherModeProto;
 
   /**
    * @generated from field: uint32 quote_id = 3;
@@ -91,14 +91,14 @@ export const CipherStartedEventSchema: GenMessage<CipherStartedEvent> = /*@__PUR
  */
 export type CipherSolvedEvent = Message<"codebusters.v1.CipherSolvedEvent"> & {
   /**
-   * @generated from field: string cipher = 1;
+   * @generated from field: codebusters.v1.CipherTypeProto cipher = 1;
    */
-  cipher: string;
+  cipher: CipherTypeProto;
 
   /**
-   * @generated from field: string mode = 2;
+   * @generated from field: codebusters.v1.CipherModeProto mode = 2;
    */
-  mode: string;
+  mode: CipherModeProto;
 
   /**
    * @generated from field: uint32 quote_id = 3;
@@ -121,9 +121,9 @@ export type CipherSolvedEvent = Message<"codebusters.v1.CipherSolvedEvent"> & {
   uniqueAlphaCharCount: number;
 
   /**
-   * @generated from field: string input_mode = 7;
+   * @generated from field: codebusters.v1.CipherInputModeProto input_mode = 7;
    */
-  inputMode: string;
+  inputMode: CipherInputModeProto;
 
   /**
    * @generated from field: uint32 error_count = 8;
@@ -173,14 +173,14 @@ export type PracticeTestQuestionUserEvent = Message<"codebusters.v1.PracticeTest
   questionNumber: number;
 
   /**
-   * @generated from field: string cipher = 4;
+   * @generated from field: codebusters.v1.CipherTypeProto cipher = 4;
    */
-  cipher: string;
+  cipher: CipherTypeProto;
 
   /**
-   * @generated from field: string mode = 5;
+   * @generated from field: codebusters.v1.CipherModeProto mode = 5;
    */
-  mode: string;
+  mode: CipherModeProto;
 
   /**
    * @generated from field: uint32 quote_id = 6;
@@ -303,9 +303,9 @@ export type ServerLoggedPracticeEvent = Message<"codebusters.v1.ServerLoggedPrac
   logType: string;
 
   /**
-   * @generated from field: string event_type = 2;
+   * @generated from field: codebusters.v1.PracticeEventType event_type = 2;
    */
-  eventType: string;
+  eventType: PracticeEventType;
 
   /**
    * @generated from field: string event_id = 3;
@@ -360,6 +360,42 @@ export const ServerLoggedPracticeEventSchema: GenMessage<ServerLoggedPracticeEve
   messageDesc(file_events, 6);
 
 /**
+ * @generated from enum codebusters.v1.PracticeEventType
+ */
+export enum PracticeEventType {
+  /**
+   * @generated from enum value: PRACTICE_EVENT_TYPE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: PRACTICE_EVENT_TYPE_DRILL_SESSION = 1;
+   */
+  DRILL_SESSION = 1,
+
+  /**
+   * @generated from enum value: PRACTICE_EVENT_TYPE_CIPHER_STARTED = 2;
+   */
+  CIPHER_STARTED = 2,
+
+  /**
+   * @generated from enum value: PRACTICE_EVENT_TYPE_CIPHER_SOLVED = 3;
+   */
+  CIPHER_SOLVED = 3,
+
+  /**
+   * @generated from enum value: PRACTICE_EVENT_TYPE_PRACTICE_TEST_QUESTION_USER = 4;
+   */
+  PRACTICE_TEST_QUESTION_USER = 4,
+}
+
+/**
+ * Describes the enum codebusters.v1.PracticeEventType.
+ */
+export const PracticeEventTypeSchema: GenEnum<PracticeEventType> = /*@__PURE__*/
+  enumDesc(file_events, 0);
+
+/**
  * @generated from enum codebusters.v1.PracticeSource
  */
 export enum PracticeSource {
@@ -388,7 +424,7 @@ export enum PracticeSource {
  * Describes the enum codebusters.v1.PracticeSource.
  */
 export const PracticeSourceSchema: GenEnum<PracticeSource> = /*@__PURE__*/
-  enumDesc(file_events, 0);
+  enumDesc(file_events, 1);
 
 /**
  * @generated from enum codebusters.v1.ScoreTierProto
@@ -419,5 +455,199 @@ export enum ScoreTierProto {
  * Describes the enum codebusters.v1.ScoreTierProto.
  */
 export const ScoreTierProtoSchema: GenEnum<ScoreTierProto> = /*@__PURE__*/
-  enumDesc(file_events, 1);
+  enumDesc(file_events, 2);
+
+/**
+ * @generated from enum codebusters.v1.DrillIdProto
+ */
+export enum DrillIdProto {
+  /**
+   * @generated from enum value: DRILL_ID_PROTO_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: DRILL_ID_PROTO_OFFSETS_LETTER_TO_NUM = 1;
+   */
+  OFFSETS_LETTER_TO_NUM = 1,
+
+  /**
+   * @generated from enum value: DRILL_ID_PROTO_OFFSETS_NUM_TO_LETTER = 2;
+   */
+  OFFSETS_NUM_TO_LETTER = 2,
+
+  /**
+   * @generated from enum value: DRILL_ID_PROTO_LETTER_MATH_EASY = 3;
+   */
+  LETTER_MATH_EASY = 3,
+
+  /**
+   * @generated from enum value: DRILL_ID_PROTO_LETTER_MATH_HARD = 4;
+   */
+  LETTER_MATH_HARD = 4,
+
+  /**
+   * @generated from enum value: DRILL_ID_PROTO_LETTER_MATH_LETTER_EASY = 5;
+   */
+  LETTER_MATH_LETTER_EASY = 5,
+
+  /**
+   * @generated from enum value: DRILL_ID_PROTO_LETTER_MATH_LETTER_HARD = 6;
+   */
+  LETTER_MATH_LETTER_HARD = 6,
+
+  /**
+   * @generated from enum value: DRILL_ID_PROTO_ATBASH = 7;
+   */
+  ATBASH = 7,
+
+  /**
+   * @generated from enum value: DRILL_ID_PROTO_PIGPEN = 8;
+   */
+  PIGPEN = 8,
+
+  /**
+   * @generated from enum value: DRILL_ID_PROTO_GALACTIC = 9;
+   */
+  GALACTIC = 9,
+
+  /**
+   * @generated from enum value: DRILL_ID_PROTO_KNIGHTS = 10;
+   */
+  KNIGHTS = 10,
+
+  /**
+   * @generated from enum value: DRILL_ID_PROTO_TAP = 11;
+   */
+  TAP = 11,
+}
+
+/**
+ * Describes the enum codebusters.v1.DrillIdProto.
+ */
+export const DrillIdProtoSchema: GenEnum<DrillIdProto> = /*@__PURE__*/
+  enumDesc(file_events, 3);
+
+/**
+ * @generated from enum codebusters.v1.CipherTypeProto
+ */
+export enum CipherTypeProto {
+  /**
+   * @generated from enum value: CIPHER_TYPE_PROTO_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: CIPHER_TYPE_PROTO_ATBASH = 1;
+   */
+  ATBASH = 1,
+
+  /**
+   * @generated from enum value: CIPHER_TYPE_PROTO_PIGPEN = 2;
+   */
+  PIGPEN = 2,
+
+  /**
+   * @generated from enum value: CIPHER_TYPE_PROTO_GALACTIC = 3;
+   */
+  GALACTIC = 3,
+
+  /**
+   * @generated from enum value: CIPHER_TYPE_PROTO_TAP = 4;
+   */
+  TAP = 4,
+
+  /**
+   * @generated from enum value: CIPHER_TYPE_PROTO_KNIGHTS = 5;
+   */
+  KNIGHTS = 5,
+
+  /**
+   * @generated from enum value: CIPHER_TYPE_PROTO_CAESAR = 6;
+   */
+  CAESAR = 6,
+
+  /**
+   * @generated from enum value: CIPHER_TYPE_PROTO_VIGENERE = 7;
+   */
+  VIGENERE = 7,
+
+  /**
+   * @generated from enum value: CIPHER_TYPE_PROTO_ARISTOCRAT = 8;
+   */
+  ARISTOCRAT = 8,
+}
+
+/**
+ * Describes the enum codebusters.v1.CipherTypeProto.
+ */
+export const CipherTypeProtoSchema: GenEnum<CipherTypeProto> = /*@__PURE__*/
+  enumDesc(file_events, 4);
+
+/**
+ * @generated from enum codebusters.v1.CipherModeProto
+ */
+export enum CipherModeProto {
+  /**
+   * @generated from enum value: CIPHER_MODE_PROTO_NONE = 0;
+   */
+  NONE = 0,
+
+  /**
+   * @generated from enum value: CIPHER_MODE_PROTO_PM3 = 1;
+   */
+  PM3 = 1,
+
+  /**
+   * @generated from enum value: CIPHER_MODE_PROTO_ANY = 2;
+   */
+  ANY = 2,
+
+  /**
+   * @generated from enum value: CIPHER_MODE_PROTO_EASY = 3;
+   */
+  EASY = 3,
+
+  /**
+   * @generated from enum value: CIPHER_MODE_PROTO_MEDIUM = 4;
+   */
+  MEDIUM = 4,
+
+  /**
+   * @generated from enum value: CIPHER_MODE_PROTO_HARD = 5;
+   */
+  HARD = 5,
+}
+
+/**
+ * Describes the enum codebusters.v1.CipherModeProto.
+ */
+export const CipherModeProtoSchema: GenEnum<CipherModeProto> = /*@__PURE__*/
+  enumDesc(file_events, 5);
+
+/**
+ * @generated from enum codebusters.v1.CipherInputModeProto
+ */
+export enum CipherInputModeProto {
+  /**
+   * @generated from enum value: CIPHER_INPUT_MODE_PROTO_STANDARD = 0;
+   */
+  STANDARD = 0,
+
+  /**
+   * @generated from enum value: CIPHER_INPUT_MODE_PROTO_LINKED = 1;
+   */
+  LINKED = 1,
+
+  /**
+   * @generated from enum value: CIPHER_INPUT_MODE_PROTO_PAPER = 2;
+   */
+  PAPER = 2,
+}
+
+/**
+ * Describes the enum codebusters.v1.CipherInputModeProto.
+ */
+export const CipherInputModeProtoSchema: GenEnum<CipherInputModeProto> = /*@__PURE__*/
+  enumDesc(file_events, 6);
 

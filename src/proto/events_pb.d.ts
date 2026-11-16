@@ -15,9 +15,9 @@ export declare const file_events: GenFile;
  */
 export declare type DrillSessionEvent = Message<"codebusters.v1.DrillSessionEvent"> & {
   /**
-   * @generated from field: string drill_id = 1;
+   * @generated from field: codebusters.v1.DrillIdProto drill_id = 1;
    */
-  drillId: string;
+  drillId: DrillIdProto;
 
   /**
    * @generated from field: double session_duration_sec = 2;
@@ -56,14 +56,14 @@ export declare const DrillSessionEventSchema: GenMessage<DrillSessionEvent>;
  */
 export declare type CipherStartedEvent = Message<"codebusters.v1.CipherStartedEvent"> & {
   /**
-   * @generated from field: string cipher = 1;
+   * @generated from field: codebusters.v1.CipherTypeProto cipher = 1;
    */
-  cipher: string;
+  cipher: CipherTypeProto;
 
   /**
-   * @generated from field: string mode = 2;
+   * @generated from field: codebusters.v1.CipherModeProto mode = 2;
    */
-  mode: string;
+  mode: CipherModeProto;
 
   /**
    * @generated from field: uint32 quote_id = 3;
@@ -87,14 +87,14 @@ export declare const CipherStartedEventSchema: GenMessage<CipherStartedEvent>;
  */
 export declare type CipherSolvedEvent = Message<"codebusters.v1.CipherSolvedEvent"> & {
   /**
-   * @generated from field: string cipher = 1;
+   * @generated from field: codebusters.v1.CipherTypeProto cipher = 1;
    */
-  cipher: string;
+  cipher: CipherTypeProto;
 
   /**
-   * @generated from field: string mode = 2;
+   * @generated from field: codebusters.v1.CipherModeProto mode = 2;
    */
-  mode: string;
+  mode: CipherModeProto;
 
   /**
    * @generated from field: uint32 quote_id = 3;
@@ -117,9 +117,9 @@ export declare type CipherSolvedEvent = Message<"codebusters.v1.CipherSolvedEven
   uniqueAlphaCharCount: number;
 
   /**
-   * @generated from field: string input_mode = 7;
+   * @generated from field: codebusters.v1.CipherInputModeProto input_mode = 7;
    */
-  inputMode: string;
+  inputMode: CipherInputModeProto;
 
   /**
    * @generated from field: uint32 error_count = 8;
@@ -168,14 +168,14 @@ export declare type PracticeTestQuestionUserEvent = Message<"codebusters.v1.Prac
   questionNumber: number;
 
   /**
-   * @generated from field: string cipher = 4;
+   * @generated from field: codebusters.v1.CipherTypeProto cipher = 4;
    */
-  cipher: string;
+  cipher: CipherTypeProto;
 
   /**
-   * @generated from field: string mode = 5;
+   * @generated from field: codebusters.v1.CipherModeProto mode = 5;
    */
-  mode: string;
+  mode: CipherModeProto;
 
   /**
    * @generated from field: uint32 quote_id = 6;
@@ -295,9 +295,9 @@ export declare type ServerLoggedPracticeEvent = Message<"codebusters.v1.ServerLo
   logType: string;
 
   /**
-   * @generated from field: string event_type = 2;
+   * @generated from field: codebusters.v1.PracticeEventType event_type = 2;
    */
-  eventType: string;
+  eventType: PracticeEventType;
 
   /**
    * @generated from field: string event_id = 3;
@@ -349,6 +349,41 @@ export declare type ServerLoggedPracticeEvent = Message<"codebusters.v1.ServerLo
  * Use `create(ServerLoggedPracticeEventSchema)` to create a new message.
  */
 export declare const ServerLoggedPracticeEventSchema: GenMessage<ServerLoggedPracticeEvent>;
+
+/**
+ * @generated from enum codebusters.v1.PracticeEventType
+ */
+export enum PracticeEventType {
+  /**
+   * @generated from enum value: PRACTICE_EVENT_TYPE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: PRACTICE_EVENT_TYPE_DRILL_SESSION = 1;
+   */
+  DRILL_SESSION = 1,
+
+  /**
+   * @generated from enum value: PRACTICE_EVENT_TYPE_CIPHER_STARTED = 2;
+   */
+  CIPHER_STARTED = 2,
+
+  /**
+   * @generated from enum value: PRACTICE_EVENT_TYPE_CIPHER_SOLVED = 3;
+   */
+  CIPHER_SOLVED = 3,
+
+  /**
+   * @generated from enum value: PRACTICE_EVENT_TYPE_PRACTICE_TEST_QUESTION_USER = 4;
+   */
+  PRACTICE_TEST_QUESTION_USER = 4,
+}
+
+/**
+ * Describes the enum codebusters.v1.PracticeEventType.
+ */
+export declare const PracticeEventTypeSchema: GenEnum<PracticeEventType>;
 
 /**
  * @generated from enum codebusters.v1.PracticeSource
@@ -409,4 +444,194 @@ export enum ScoreTierProto {
  * Describes the enum codebusters.v1.ScoreTierProto.
  */
 export declare const ScoreTierProtoSchema: GenEnum<ScoreTierProto>;
+
+/**
+ * @generated from enum codebusters.v1.DrillIdProto
+ */
+export enum DrillIdProto {
+  /**
+   * @generated from enum value: DRILL_ID_PROTO_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: DRILL_ID_PROTO_OFFSETS_LETTER_TO_NUM = 1;
+   */
+  OFFSETS_LETTER_TO_NUM = 1,
+
+  /**
+   * @generated from enum value: DRILL_ID_PROTO_OFFSETS_NUM_TO_LETTER = 2;
+   */
+  OFFSETS_NUM_TO_LETTER = 2,
+
+  /**
+   * @generated from enum value: DRILL_ID_PROTO_LETTER_MATH_EASY = 3;
+   */
+  LETTER_MATH_EASY = 3,
+
+  /**
+   * @generated from enum value: DRILL_ID_PROTO_LETTER_MATH_HARD = 4;
+   */
+  LETTER_MATH_HARD = 4,
+
+  /**
+   * @generated from enum value: DRILL_ID_PROTO_LETTER_MATH_LETTER_EASY = 5;
+   */
+  LETTER_MATH_LETTER_EASY = 5,
+
+  /**
+   * @generated from enum value: DRILL_ID_PROTO_LETTER_MATH_LETTER_HARD = 6;
+   */
+  LETTER_MATH_LETTER_HARD = 6,
+
+  /**
+   * @generated from enum value: DRILL_ID_PROTO_ATBASH = 7;
+   */
+  ATBASH = 7,
+
+  /**
+   * @generated from enum value: DRILL_ID_PROTO_PIGPEN = 8;
+   */
+  PIGPEN = 8,
+
+  /**
+   * @generated from enum value: DRILL_ID_PROTO_GALACTIC = 9;
+   */
+  GALACTIC = 9,
+
+  /**
+   * @generated from enum value: DRILL_ID_PROTO_KNIGHTS = 10;
+   */
+  KNIGHTS = 10,
+
+  /**
+   * @generated from enum value: DRILL_ID_PROTO_TAP = 11;
+   */
+  TAP = 11,
+}
+
+/**
+ * Describes the enum codebusters.v1.DrillIdProto.
+ */
+export declare const DrillIdProtoSchema: GenEnum<DrillIdProto>;
+
+/**
+ * @generated from enum codebusters.v1.CipherTypeProto
+ */
+export enum CipherTypeProto {
+  /**
+   * @generated from enum value: CIPHER_TYPE_PROTO_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: CIPHER_TYPE_PROTO_ATBASH = 1;
+   */
+  ATBASH = 1,
+
+  /**
+   * @generated from enum value: CIPHER_TYPE_PROTO_PIGPEN = 2;
+   */
+  PIGPEN = 2,
+
+  /**
+   * @generated from enum value: CIPHER_TYPE_PROTO_GALACTIC = 3;
+   */
+  GALACTIC = 3,
+
+  /**
+   * @generated from enum value: CIPHER_TYPE_PROTO_TAP = 4;
+   */
+  TAP = 4,
+
+  /**
+   * @generated from enum value: CIPHER_TYPE_PROTO_KNIGHTS = 5;
+   */
+  KNIGHTS = 5,
+
+  /**
+   * @generated from enum value: CIPHER_TYPE_PROTO_CAESAR = 6;
+   */
+  CAESAR = 6,
+
+  /**
+   * @generated from enum value: CIPHER_TYPE_PROTO_VIGENERE = 7;
+   */
+  VIGENERE = 7,
+
+  /**
+   * @generated from enum value: CIPHER_TYPE_PROTO_ARISTOCRAT = 8;
+   */
+  ARISTOCRAT = 8,
+}
+
+/**
+ * Describes the enum codebusters.v1.CipherTypeProto.
+ */
+export declare const CipherTypeProtoSchema: GenEnum<CipherTypeProto>;
+
+/**
+ * @generated from enum codebusters.v1.CipherModeProto
+ */
+export enum CipherModeProto {
+  /**
+   * @generated from enum value: CIPHER_MODE_PROTO_NONE = 0;
+   */
+  NONE = 0,
+
+  /**
+   * @generated from enum value: CIPHER_MODE_PROTO_PM3 = 1;
+   */
+  PM3 = 1,
+
+  /**
+   * @generated from enum value: CIPHER_MODE_PROTO_ANY = 2;
+   */
+  ANY = 2,
+
+  /**
+   * @generated from enum value: CIPHER_MODE_PROTO_EASY = 3;
+   */
+  EASY = 3,
+
+  /**
+   * @generated from enum value: CIPHER_MODE_PROTO_MEDIUM = 4;
+   */
+  MEDIUM = 4,
+
+  /**
+   * @generated from enum value: CIPHER_MODE_PROTO_HARD = 5;
+   */
+  HARD = 5,
+}
+
+/**
+ * Describes the enum codebusters.v1.CipherModeProto.
+ */
+export declare const CipherModeProtoSchema: GenEnum<CipherModeProto>;
+
+/**
+ * @generated from enum codebusters.v1.CipherInputModeProto
+ */
+export enum CipherInputModeProto {
+  /**
+   * @generated from enum value: CIPHER_INPUT_MODE_PROTO_STANDARD = 0;
+   */
+  STANDARD = 0,
+
+  /**
+   * @generated from enum value: CIPHER_INPUT_MODE_PROTO_LINKED = 1;
+   */
+  LINKED = 1,
+
+  /**
+   * @generated from enum value: CIPHER_INPUT_MODE_PROTO_PAPER = 2;
+   */
+  PAPER = 2,
+}
+
+/**
+ * Describes the enum codebusters.v1.CipherInputModeProto.
+ */
+export declare const CipherInputModeProtoSchema: GenEnum<CipherInputModeProto>;
 
