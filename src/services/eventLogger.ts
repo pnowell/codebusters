@@ -49,8 +49,14 @@ function generateEventId(): string {
 
 export function resolveLogPracticeEventsUrl(): string | null {
   const explicit = import.meta.env.VITE_LOG_EVENTS_URL as string | undefined;
-  if (typeof explicit === 'string' && explicit.trim().length > 0) {
+  if (typeof explicit === 'string' && explicit.trim().startsWith('https://')) {
     return explicit.trim();
+  }
+  const senderId = import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID as
+    | string
+    | undefined;
+  if (typeof senderId === 'string' && /^\d{6,20}$/.test(senderId.trim())) {
+    return `https://codebusters-events-${senderId.trim()}.us-central1.run.app/logPracticeEvents`;
   }
   const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID as
     | string

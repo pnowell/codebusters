@@ -405,7 +405,93 @@ async function ensureRequiredApisEnabled(projectId, accessToken) {
   );
 }
 
-async function cleanupOrphanedTriggerStub(projectId, accessToken) {
+async function ensureArtifactRegistryRepo(projectId, accessToken) {
+  const repoId = 'codebusters-services';
+  const repoUrl = `https://artifactregistry.googleapis.com/v1/projects/${encodeURIComponent(
+    projectId
+  )}/locations/us-central1/repositories/${repoId}`;
+
+  const getRes = await fetch(repoUrl, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (getRes.ok) {
+    console.log(
+      `[setupAnalyticsSink] Artifact Registry repository ${repoId} already exists.`
+    );
+    return;
+  }
+  if (getRes.status !== 404) {
+    throw new Error(
+      `Failed checking Artifact Registry repository ${repoId} (HTTP ${getRes.status}).`
+    );
+  }
+  if (isDryRun) {
+    console.log(
+      `[setupAnalyticsSink] [DRY RUN] Would create Artifact Registry repository ${repoId}.`
+    );
+    return;
+  }
+
+  const createUrl = `https://artifactregistry.googleapis.com/v1/projects/${encodeURIComponent(
+    projectId
+  )}/locations/us-central1/repositories?repositoryId=${repoId}`;
+  const createRes = await fetch(createUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      format: 'DOCKER',
+      description: 'Container images for Codebusters Cloud Run event service',
+      cleanupPolicies: {
+        'keep-recent-2': {
+          id: 'keep-recent-2',
+          action: 'KEEP',
+          mostRecentVersions: {
+            keepCount: 2,
+          },
+        },
+        'delete-older': {
+          id: 'delete-older',
+          action: 'DELETE',
+          condition: {
+            tagState: 'ANY',
+            olderThan: '86400s',
+          },
+        },
+      },
+    }),
+  });
+  if (!createRes.ok) {
+    throw new Error(
+      `Failed creating Artifact Registry repository ${repoId} (HTTP ${createRes.status}).`
+    );
+  }
+
+  let op = await createRes.json();
+  for (
+    let poll = 0;
+    poll < 30 &&
+    !op?.done &&
+    typeof op?.name === 'string' &&
+    /^projects\/[A-Za-z0-9._/-]+$/.test(op.name);
+    poll += 1
+  ) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const pollRes = await fetch(
+      `https://artifactregistry.googleapis.com/v1/${op.name}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    if (!pollRes.ok) break;
+    op = await pollRes.json();
+  }
+  console.log(
+    `[setupAnalyticsSink] Created Artifact Registry repository ${repoId}.`
+  );
+}
+
+async function cleanupLegacyCloudFunctionStubs(projectId, accessToken) {
   for (const fnName of ['logPracticeEvents', 'onTestAttemptCompleted']) {
     const fnUrl = `https://cloudfunctions.googleapis.com/v2/projects/${encodeURIComponent(
       projectId
@@ -413,44 +499,21 @@ async function cleanupOrphanedTriggerStub(projectId, accessToken) {
     const getRes = await fetch(fnUrl, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
-    if (!getRes.ok) {
+    if (!getRes.ok || isDryRun) {
       continue;
     }
-
-    const fnData = await getRes.json();
-    const isHealthy =
-      fnData?.state === 'ACTIVE' &&
-      !fnData?.buildConfig?.automaticUpdatePolicy &&
-      (fnName !== 'onTestAttemptCompleted' || Boolean(fnData?.eventTrigger));
-    if (isHealthy) {
-      continue;
-    }
-
-    if (isDryRun) {
-      console.log(
-        `[setupAnalyticsSink] [DRY RUN] Would delete non-ACTIVE ${fnName} stub.`
-      );
-      continue;
-    }
-
     console.log(
-      `[setupAnalyticsSink] Deleting non-ACTIVE ${fnName} stub (state=${fnData?.state ?? 'unknown'}) before clean redeploy...`
+      `[setupAnalyticsSink] Removing legacy Cloud Function stub ${fnName}...`
     );
     const delRes = await fetch(fnUrl, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${accessToken}` },
     });
-    if (!delRes.ok && delRes.status !== 404) {
-      throw new Error(
-        `Failed deleting non-ACTIVE ${fnName} stub (HTTP ${delRes.status}).`
-      );
-    }
-
     if (delRes.ok) {
       let op = await delRes.json();
       for (
         let poll = 0;
-        poll < 45 &&
+        poll < 30 &&
         !op?.done &&
         typeof op?.name === 'string' &&
         /^projects\/[A-Za-z0-9._/-]+$/.test(op.name);
@@ -465,7 +528,6 @@ async function cleanupOrphanedTriggerStub(projectId, accessToken) {
         op = await pollRes.json();
       }
     }
-    console.log(`[setupAnalyticsSink] Deleted non-ACTIVE ${fnName} stub.`);
   }
 }
 
@@ -489,7 +551,8 @@ async function main() {
     dataset,
     writerIdentity
   );
-  await cleanupOrphanedTriggerStub(creds.projectId, accessToken);
+  await ensureArtifactRegistryRepo(creds.projectId, accessToken);
+  await cleanupLegacyCloudFunctionStubs(creds.projectId, accessToken);
 }
 
 main().catch((err) => {

@@ -68,54 +68,78 @@ jobs:
         if: steps.backend_changes.outputs.changed == 'true'
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Provision BigQuery sink & deploy Cloud Functions
+      - name: Provision BigQuery sink & deploy Cloud Run events service
         if: steps.backend_changes.outputs.changed == 'true'
         run: |
           if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
-            echo "::warning::FIREBASE_SERVICE_ACCOUNT is not set; skipping Cloud Functions deploy."
+            echo "::warning::FIREBASE_SERVICE_ACCOUNT is not set; skipping Cloud Run deploy."
             exit 0
           fi
           npm run setup:analytics
           rm -f functions/package-lock.json
           npm --prefix functions install --no-audit --no-fund --ignore-scripts
           npm --prefix functions run compile
+
           CRED_FILE="$RUNNER_TEMP/firebase-sa.json"
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$CRED_FILE"
           chmod 600 "$CRED_FILE"
           PROJECT_ID=$(node -e 'const fs = require("node:fs"); const p = JSON.parse(fs.readFileSync(process.argv[1], "utf8")).project_id; if (!/^[a-z0-9][a-z0-9-]{4,30}[a-z0-9]$/.test(p)) process.exit(1); process.stdout.write(p);' "$CRED_FILE")
+
+          IMAGE_URI="us-central1-docker.pkg.dev/${PROJECT_ID}/codebusters-services/codebusters-events:${GITHUB_SHA}"
+          docker build -t "$IMAGE_URI" functions
+
+          # Smoke-test the container locally on port 18080 before pushing
+          docker run -d --rm --name events-smoke -p 18080:8080 "$IMAGE_URI"
+          SMOKE_OK=false
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -fsS http://127.0.0.1:18080/healthz >/dev/null 2>&1; then
+              SMOKE_OK=true
+              break
+            fi
+            sleep 0.5
+          done
+          docker stop events-smoke || true
+          if [ "$SMOKE_OK" != "true" ]; then
+            echo "Container smoke test failed on /healthz"
+            exit 1
+          fi
+
           gcloud auth activate-service-account --key-file="$CRED_FILE" --quiet
-          gcloud functions deploy logPracticeEvents \
-            --gen2 \
-            --runtime=nodejs22 \
+          gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+          docker push "$IMAGE_URI"
+
+          PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)")
+          RUNTIME_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+
+          gcloud run deploy codebusters-events \
+            --image="$IMAGE_URI" \
             --region=us-central1 \
-            --runtime-update-policy=on-deploy \
-            --source=functions \
-            --entry-point=logPracticeEvents \
-            --trigger-http \
+            --platform=managed \
             --allow-unauthenticated \
-            --memory=512MiB \
-            --timeout=30s \
+            --port=8080 \
+            --memory=512Mi \
+            --cpu=1 \
             --max-instances=10 \
-            --set-env-vars="GCLOUD_PROJECT=${PROJECT_ID}" \
-            --project="$PROJECT_ID" \
-            --quiet
-          gcloud functions deploy onTestAttemptCompleted \
-            --gen2 \
-            --runtime=nodejs22 \
-            --region=us-central1 \
-            --trigger-location=nam5 \
-            --runtime-update-policy=on-deploy \
-            --source=functions \
-            --entry-point=onTestAttemptCompleted \
-            --trigger-event-filters="type=google.cloud.firestore.document.v1.updated" \
-            --trigger-event-filters="database=(default)" \
-            --trigger-event-filters-path-pattern="document=test_attempts/{attemptId}" \
-            --memory=512MiB \
             --timeout=60s \
-            --max-instances=10 \
-            --set-env-vars="GCLOUD_PROJECT=${PROJECT_ID}" \
+            --service-account="$RUNTIME_SA" \
+            --set-env-vars="GCLOUD_PROJECT=${PROJECT_ID},EVENTARC_INVOKER_SA=${RUNTIME_SA}" \
             --project="$PROJECT_ID" \
             --quiet
+
+          if ! gcloud eventarc triggers describe on-test-attempt-completed --location=nam5 --project="$PROJECT_ID" >/dev/null 2>&1; then
+            gcloud eventarc triggers create on-test-attempt-completed \
+              --location=nam5 \
+              --destination-run-service=codebusters-events \
+              --destination-run-region=us-central1 \
+              --destination-run-path=/events/test-attempt-completed \
+              --event-filters="type=google.cloud.firestore.document.v1.updated" \
+              --event-filters="database=(default)" \
+              --event-filters-path-pattern="document=test_attempts/{attemptId}" \
+              --event-data-content-type="application/protobuf" \
+              --service-account="$RUNTIME_SA" \
+              --project="$PROJECT_ID" \
+              --quiet
+          fi
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
 
