@@ -29,7 +29,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 22
           cache: 'npm'
 
       - name: Check backend changes
@@ -81,7 +81,8 @@ jobs:
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$CRED_FILE"
           chmod 600 "$CRED_FILE"
           PROJECT_ID=$(node -e 'const fs = require("node:fs"); const p = JSON.parse(fs.readFileSync(process.argv[1], "utf8")).project_id; if (!/^[a-z0-9][a-z0-9-]{4,30}[a-z0-9]$/.test(p)) process.exit(1); process.stdout.write(p);' "$CRED_FILE")
-          GOOGLE_APPLICATION_CREDENTIALS="$CRED_FILE" firebase deploy --only functions --project "$PROJECT_ID" --non-interactive --force
+          GOOGLE_APPLICATION_CREDENTIALS="$CRED_FILE" firebase deploy --only functions:logPracticeEvents --project "$PROJECT_ID" --non-interactive --force
+          GOOGLE_APPLICATION_CREDENTIALS="$CRED_FILE" firebase deploy --only functions:onTestAttemptCompleted --project "$PROJECT_ID" --non-interactive --force
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
 

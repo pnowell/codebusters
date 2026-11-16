@@ -3,10 +3,11 @@
   "private": true,
   "version": "1.0.0",
   "engines": {
-    "node": "24"
+    "node": "22"
   },
   "main": "lib/index.js",
   "scripts": {
+    "start": "functions-framework",
     "compile": "node scripts/syncQuotesMap.mjs && tsc",
     "typecheck": "node scripts/syncQuotesMap.mjs && tsc --noEmit"
   },
