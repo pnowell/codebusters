@@ -420,6 +420,7 @@ async function cleanupOrphanedTriggerStub(projectId, accessToken) {
     const fnData = await getRes.json();
     const isHealthy =
       fnData?.state === 'ACTIVE' &&
+      !fnData?.buildConfig?.automaticUpdatePolicy &&
       (fnName !== 'onTestAttemptCompleted' || Boolean(fnData?.eventTrigger));
     if (isHealthy) {
       continue;

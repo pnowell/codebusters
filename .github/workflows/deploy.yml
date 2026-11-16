@@ -64,6 +64,10 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Setup gcloud CLI
+        if: steps.backend_changes.outputs.changed == 'true'
+        uses: google-github-actions/setup-gcloud@v2
+
       - name: Provision BigQuery sink & deploy Cloud Functions
         if: steps.backend_changes.outputs.changed == 'true'
         run: |
@@ -75,14 +79,43 @@ jobs:
           rm -f functions/package-lock.json
           npm --prefix functions install --no-audit --no-fund --ignore-scripts
           npm --prefix functions run compile
-          grep -v '^functions/' .gitignore > .gitignore.deploy && mv .gitignore.deploy .gitignore
-          npm install -g firebase-tools@latest --no-audit --no-fund
           CRED_FILE="$RUNNER_TEMP/firebase-sa.json"
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$CRED_FILE"
           chmod 600 "$CRED_FILE"
           PROJECT_ID=$(node -e 'const fs = require("node:fs"); const p = JSON.parse(fs.readFileSync(process.argv[1], "utf8")).project_id; if (!/^[a-z0-9][a-z0-9-]{4,30}[a-z0-9]$/.test(p)) process.exit(1); process.stdout.write(p);' "$CRED_FILE")
-          GOOGLE_APPLICATION_CREDENTIALS="$CRED_FILE" firebase deploy --only functions:logPracticeEvents --project "$PROJECT_ID" --non-interactive --force
-          GOOGLE_APPLICATION_CREDENTIALS="$CRED_FILE" firebase deploy --only functions:onTestAttemptCompleted --project "$PROJECT_ID" --non-interactive --force
+          gcloud auth activate-service-account --key-file="$CRED_FILE" --quiet
+          gcloud functions deploy logPracticeEvents \
+            --gen2 \
+            --runtime=nodejs22 \
+            --region=us-central1 \
+            --runtime-update-policy=on-deploy \
+            --source=functions \
+            --entry-point=logPracticeEvents \
+            --trigger-http \
+            --allow-unauthenticated \
+            --memory=512MiB \
+            --timeout=30s \
+            --max-instances=10 \
+            --set-env-vars="GCLOUD_PROJECT=${PROJECT_ID}" \
+            --project="$PROJECT_ID" \
+            --quiet
+          gcloud functions deploy onTestAttemptCompleted \
+            --gen2 \
+            --runtime=nodejs22 \
+            --region=us-central1 \
+            --trigger-location=nam5 \
+            --runtime-update-policy=on-deploy \
+            --source=functions \
+            --entry-point=onTestAttemptCompleted \
+            --trigger-event-filters="type=google.cloud.firestore.document.v1.updated" \
+            --trigger-event-filters="database=(default)" \
+            --trigger-event-filters-path-pattern="document=test_attempts/{attemptId}" \
+            --memory=512MiB \
+            --timeout=60s \
+            --max-instances=10 \
+            --set-env-vars="GCLOUD_PROJECT=${PROJECT_ID}" \
+            --project="$PROJECT_ID" \
+            --quiet
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
 
