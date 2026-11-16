@@ -12,6 +12,7 @@
     "proto": "node scripts/generateProto.mjs",
     "preview": "vite preview",
     "setup:analytics": "node scripts/setupAnalyticsSink.mjs",
+    "sync:users": "node scripts/syncUsersToBigQuery.mjs",
     "deploy:version": "node scripts/deployCriticalVersion.mjs",
     "deploy:rules": "node scripts/deployFirestoreRules.mjs",
     "prune:flags": "node scripts/pruneOrphanedQuoteFlags.mjs",
