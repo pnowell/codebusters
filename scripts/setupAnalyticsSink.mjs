@@ -352,6 +352,8 @@ async function ensureSinkDatasetWriterAccess(
 const REQUIRED_SERVICE_IDS = [
   'bigquery.googleapis.com',
   'logging.googleapis.com',
+  'cloudbilling.googleapis.com',
+  'cloudresourcemanager.googleapis.com',
   'cloudfunctions.googleapis.com',
   'run.googleapis.com',
   'cloudbuild.googleapis.com',
