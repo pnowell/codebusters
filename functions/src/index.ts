@@ -63,6 +63,7 @@ export const logPracticeEvents = onRequest(
     cors: true,
     maxInstances: 10,
     memory: '256MiB',
+    timeoutSeconds: 30,
   },
   async (req, res) => {
     if (req.method !== 'POST') {
@@ -116,6 +117,7 @@ export const onTestAttemptCompleted = onDocumentUpdated(
     document: 'test_attempts/{attemptId}',
     region: 'us-central1',
     memory: '256MiB',
+    timeoutSeconds: 60,
   },
   async (event) => {
     const beforeData = event.data?.before.data() as RawAttemptDoc | undefined;
