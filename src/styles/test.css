@@ -2193,3 +2193,112 @@
   border: 1px solid rgba(148, 163, 184, 0.2);
 }
 
+/* Teacher Teammate Contribution Breakdown in TestResultsView */
+.results-contributions-card {
+  flex-shrink: 0;
+  background: var(--bg-secondary);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  border-radius: 14px;
+  padding: 1rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.results-contrib-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.results-contrib-title {
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.results-contrib-sub {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.results-contrib-status {
+  font-size: 0.84rem;
+  color: var(--text-muted);
+}
+
+.results-contrib-status.is-error {
+  color: #fda4af;
+}
+
+.results-contrib-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.65rem;
+}
+
+.results-contrib-chip {
+  background: rgba(15, 23, 42, 0.62);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 0.65rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+}
+
+.results-contrib-name {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--accent-blue);
+}
+
+.results-contrib-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-main);
+}
+
+.results-q-contributions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 8px;
+  background: rgba(56, 189, 248, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.22);
+}
+
+.results-q-contrib-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--accent-blue);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.results-q-contrib-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.18rem 0.55rem;
+  border-radius: 9999px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  font-size: 0.77rem;
+  color: var(--text-main);
+}
+
+.results-q-contrib-stats {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+

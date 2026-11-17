@@ -1004,6 +1004,8 @@ export const TestRunner: React.FC<TestRunnerProps> = ({
         testPacket={testPacket}
         results={results}
         studentUids={memberUids}
+        attemptId={attemptId}
+        isTeacher={isTeacher}
         backLabel={isSpectator ? '← Back to Test' : undefined}
         backTitle={
           isSpectator ? 'Return to Visibility, Teams & Attempts' : undefined

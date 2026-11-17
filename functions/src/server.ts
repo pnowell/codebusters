@@ -1,5 +1,6 @@
 import http from 'node:http';
 import type { RawAttemptDoc, RawTestPacketDoc } from './handlers.js';
+import { handleQueryPracticeAnalytics } from './analytics.js';
 
 const MAX_BODY_BYTES = 262_144; // 256 KiB cap
 const ALLOWLIST_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -372,6 +373,21 @@ const server = http.createServer((req, res) => {
   if (pathname === '/events/test-attempt-completed') {
     void handleTestAttemptCompletedEvent(req, res).catch((err) => {
       console.error('[server] Unhandled error in test-attempt-completed:', err);
+      if (!res.headersSent) {
+        sendJson(res, 500, { error: 'Internal Server Error' });
+      }
+    });
+    return;
+  }
+
+  if (pathname === '/queryPracticeAnalytics') {
+    void handleQueryPracticeAnalytics(req, res, {
+      getAdminServices,
+      readRawBody,
+      sendJson,
+      setCorsHeaders,
+    }).catch((err) => {
+      console.error('[server] Unhandled error in queryPracticeAnalytics:', err);
       if (!res.headersSent) {
         sendJson(res, 500, { error: 'Internal Server Error' });
       }

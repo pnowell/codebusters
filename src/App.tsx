@@ -106,6 +106,12 @@ const QuoteBrowserView = lazy(() =>
   }))
 );
 
+const TeacherAnalyticsView = lazy(() =>
+  import('./components/analytics/TeacherAnalyticsView').then((m) => ({
+    default: m.TeacherAnalyticsView,
+  }))
+);
+
 type ActiveScreen =
   | { kind: 'menu' }
   | {
@@ -124,6 +130,7 @@ type ActiveScreen =
     }
   | { kind: 'testsList' }
   | { kind: 'quotesBrowser' }
+  | { kind: 'analytics' }
   | {
       kind: 'testEditor';
       editTarget: string;
@@ -174,6 +181,9 @@ function initScreen(): ActiveScreen {
       aristocratDifficulty: route.aristocratDifficulty,
       quoteId: route.quoteId,
     };
+  }
+  if (route.analytics) {
+    return { kind: 'analytics' };
   }
   if (route.quotesBrowser) {
     return { kind: 'quotesBrowser' };
@@ -561,6 +571,7 @@ export const App: React.FC = () => {
     }
 
     const isTeacherScreen =
+      screen.kind === 'analytics' ||
       screen.kind === 'testEditor' ||
       screen.kind === 'quotesBrowser' ||
       screen.kind === 'spectateLoading' ||
@@ -569,7 +580,7 @@ export const App: React.FC = () => {
 
     if (isTeacherScreen) {
       queueMicrotask(() => {
-        if (isAllowed) {
+        if (isAllowed && screen.kind !== 'analytics') {
           const listUrl = buildRouteUrl({ drill: null, testsList: true });
           window.history.replaceState({ testsList: true }, '', listUrl);
           setScreen({ kind: 'testsList' });
@@ -872,6 +883,8 @@ export const App: React.FC = () => {
           aristocratDifficulty: route.aristocratDifficulty,
           quoteId: isTeacher ? route.quoteId : undefined,
         });
+      } else if (route.analytics) {
+        setScreen({ kind: 'analytics' });
       } else if (route.quotesBrowser) {
         setScreen({ kind: 'quotesBrowser' });
       } else if (route.editTest) {
@@ -974,6 +987,12 @@ export const App: React.FC = () => {
         currentUrl
       );
     } else if (
+      route.analytics &&
+      (!window.history.state || !('analytics' in window.history.state))
+    ) {
+      window.history.replaceState({ drill: null }, '', buildRouteUrl({ drill: null }));
+      window.history.pushState({ analytics: true }, '', currentUrl);
+    } else if (
       route.quotesBrowser &&
       (!window.history.state || !('quotesBrowser' in window.history.state))
     ) {
@@ -1050,6 +1069,23 @@ export const App: React.FC = () => {
     setScreen({ kind: 'quotesBrowser' });
     const newUrl = buildRouteUrl({ drill: null, quotesBrowser: true });
     window.history.pushState({ quotesBrowser: true }, '', newUrl);
+  };
+
+  const handleOpenAnalytics = () => {
+    if (!isTeacher) return;
+    setScreen({ kind: 'analytics' });
+    const newUrl = buildRouteUrl({ drill: null, analytics: true });
+    window.history.pushState({ analytics: true }, '', newUrl);
+  };
+
+  const handleBackFromAnalytics = () => {
+    if (window.history.state && window.history.state.analytics) {
+      window.history.back();
+    } else {
+      setScreen({ kind: 'menu' });
+      const newUrl = buildRouteUrl({ drill: null });
+      window.history.replaceState({ drill: null }, '', newUrl);
+    }
   };
 
   const handleNewTest = () => {
@@ -1479,6 +1515,7 @@ export const App: React.FC = () => {
           onStartWorkout={() => startWorkout(1)}
           onOpenTestsList={handleOpenTestsList}
           onOpenLeaderboard={openLeaderboard}
+          onOpenAnalytics={isTeacher ? handleOpenAnalytics : undefined}
           onOpenOptions={openOptions}
           onSelectDrill={(drill, section, options) => {
             selectMenuTab(section === 'cipher' ? 'ciphers' : 'drills');
@@ -1616,6 +1653,8 @@ export const App: React.FC = () => {
             }
             results={screen.results}
             studentUids={screen.attempt?.studentUids}
+            attemptId={screen.attempt?.attemptId}
+            isTeacher={isTeacher}
             backLabel={screen.returnToEditTestId ? '← Back to Test' : undefined}
             backTitle={
               screen.returnToEditTestId
@@ -1644,6 +1683,12 @@ export const App: React.FC = () => {
           onOpenQuotesBrowser={handleOpenQuotesBrowser}
           onBack={handleBackFromTestsList}
         />
+      )}
+
+      {screen.kind === 'analytics' && isTeacher && (
+        <Suspense fallback={suspenseFallback}>
+          <TeacherAnalyticsView onBack={handleBackFromAnalytics} />
+        </Suspense>
       )}
 
       {screen.kind === 'quotesBrowser' && isTeacher && (

@@ -22,7 +22,8 @@
     "@bufbuild/protobuf": "^2.17.0",
     "firebase": "^13.1.0",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "uplot": "^1.6.31"
   },
   "devDependencies": {
     "@bufbuild/buf": "^1.75.0",

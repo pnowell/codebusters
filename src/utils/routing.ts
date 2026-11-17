@@ -25,6 +25,7 @@ export interface Route {
   editTest?: string;
   editTab?: TestEditorTab;
   quotesBrowser?: boolean;
+  analytics?: boolean;
 }
 
 function isOffsetsMode(val: string | null): val is OffsetsMode {
@@ -76,6 +77,7 @@ export function parseUrlRoute(search = window.location.search): Route {
   const editTestRaw = p.get('editTest');
   const tabParam = p.get('tab');
   const quotesParam = p.get('quotes');
+  const analyticsParam = p.get('analytics');
   const quoteId = q !== null ? parseInt(q, 10) : NaN;
 
   const shareToken =
@@ -144,10 +146,11 @@ export function parseUrlRoute(search = window.location.search): Route {
         : getDefaultEditorTab(editTest)
       : undefined,
     quotesBrowser: quotesParam === 'true' || quotesParam === '1',
+    analytics: analyticsParam === 'true' || analyticsParam === '1',
   };
 }
 
-/** Returns a URL for the current path with share/drill/cipher/mode/q/test/spectate/tests/results/editTest/quotes set (or removed). */
+/** Returns a URL for the current path with share/drill/cipher/mode/q/test/spectate/tests/results/editTest/quotes/analytics set (or removed). */
 export function buildRouteUrl(route: Route): string {
   const p = new URLSearchParams(window.location.search);
   p.delete('unlocked');
@@ -166,6 +169,7 @@ export function buildRouteUrl(route: Route): string {
     p.delete('editTest');
     p.delete('tab');
     p.delete('quotes');
+    p.delete('analytics');
     const qs = p.toString();
     return qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
   }
@@ -229,6 +233,8 @@ export function buildRouteUrl(route: Route): string {
   }
   if (route.quotesBrowser) p.set('quotes', 'true');
   else p.delete('quotes');
+  if (route.analytics) p.set('analytics', 'true');
+  else p.delete('analytics');
   const qs = p.toString();
   return qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
 }

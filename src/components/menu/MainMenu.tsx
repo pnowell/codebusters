@@ -33,6 +33,7 @@ interface MainMenuProps {
   onStartWorkout: () => void;
   onOpenTestsList: () => void;
   onOpenLeaderboard: () => void;
+  onOpenAnalytics?: () => void;
   onOpenOptions: () => void;
   onSelectDrill: (
     drill: CipherType,
@@ -64,6 +65,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   onStartWorkout,
   onOpenTestsList,
   onOpenLeaderboard,
+  onOpenAnalytics,
   onOpenOptions,
   onSelectDrill,
 }) => {
@@ -336,6 +338,17 @@ export const MainMenu: React.FC<MainMenuProps> = ({
 
         <div className="header-user-actions">
           <UserAuthBadge displayName={studentName} onOpenOptions={onOpenOptions} />
+          {isTeacher && onOpenAnalytics && (
+            <button
+              type="button"
+              className="btn-simple btn-icon-square"
+              onClick={onOpenAnalytics}
+              title="Class Analytics"
+              aria-label="Class Analytics"
+            >
+              <span className="btn-icon">📊</span>
+            </button>
+          )}
           {isAllowed && (
             <button
               type="button"
