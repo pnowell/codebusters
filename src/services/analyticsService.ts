@@ -1,6 +1,7 @@
 import { auth, isFirebaseConfigured } from './firebase';
 
 export type AnalyticsWindow = '7d' | '30d' | '90d' | 'all';
+export type DashboardScope = 'all' | 'summary' | 'drills' | 'ciphers';
 
 export interface AnalyticsProfileInfo {
   displayName: string;
@@ -52,6 +53,7 @@ export interface CipherSeriesPoint {
 
 export interface DashboardAnalyticsResponse {
   mode: 'dashboard';
+  scope?: DashboardScope;
   window: AnalyticsWindow;
   includeSharedLinks: boolean;
   profiles: Record<string, AnalyticsProfileInfo>;
@@ -120,7 +122,7 @@ async function postAnalyticsQuery<T>(
   signal?: AbortSignal
 ): Promise<T> {
   if (!isFirebaseConfigured() || !auth?.currentUser) {
-    throw new Error('Sign in as a teacher to query analytics.');
+    throw new Error('Sign in as a teacher to view analytics.');
   }
 
   const endpoint = getQueryAnalyticsEndpointUrl();
@@ -156,6 +158,7 @@ async function postAnalyticsQuery<T>(
 }
 
 export async function fetchDashboardAnalytics(options: {
+  scope?: DashboardScope;
   window: AnalyticsWindow;
   includeSharedLinks: boolean;
   uid?: string;
@@ -163,6 +166,7 @@ export async function fetchDashboardAnalytics(options: {
 }): Promise<DashboardAnalyticsResponse> {
   const payload: Record<string, unknown> = {
     mode: 'dashboard',
+    scope: options.scope ?? 'all',
     window: options.window,
     includeSharedLinks: options.includeSharedLinks,
   };

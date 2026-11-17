@@ -1,9 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React from 'react';
 import {
   DRILLS,
   isCipherEnabledForStudent,
   type CipherType,
 } from '../../data/drills';
+import { useDualPaneTabs } from '../../hooks/useDualPaneTabs';
 import type {
   AristocratDifficulty,
   CaesarRangeMode,
@@ -14,6 +15,10 @@ import type {
 } from '../../types';
 import type { DrillSection } from '../../utils/routing';
 import { UserAuthBadge } from '../auth/UserAuthBadge';
+import {
+  CiphersTabIcon,
+  DrillsTabIcon,
+} from '../shared/DualPaneTabIcons';
 
 export interface SelectDrillOptions {
   offsetsMode?: OffsetsMode;
@@ -42,18 +47,6 @@ interface MainMenuProps {
   ) => void;
 }
 
-const SIDE_BY_SIDE_MEDIA_QUERY = '(min-width: 820px)';
-
-interface SwipeState {
-  pointerId: number;
-  startX: number;
-  startY: number;
-  startTime: number;
-  viewportWidth: number;
-  axis: 'x' | 'y' | null;
-  lastDx: number;
-}
-
 export const MainMenu: React.FC<MainMenuProps> = ({
   studentName,
   isAllowed,
@@ -71,33 +64,24 @@ export const MainMenu: React.FC<MainMenuProps> = ({
 }) => {
   const hasPreviewAccess = isTeacher || isBetaTester;
 
-  const [isSideBySide, setIsSideBySide] = useState<boolean>(() =>
-    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-      ? window.matchMedia(SIDE_BY_SIDE_MEDIA_QUERY).matches
-      : false
-  );
-  const [dragOffsetPx, setDragOffsetPx] = useState<number>(0);
-  const [dragViewportWidth, setDragViewportWidth] = useState<number>(360);
-  const [isDragging, setIsDragging] = useState<boolean>(false);
-
-  const viewportRef = useRef<HTMLDivElement | null>(null);
-  const swipeRef = useRef<SwipeState | null>(null);
-  const suppressClickUntilRef = useRef<number>(0);
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-      return;
-    }
-    const mql = window.matchMedia(SIDE_BY_SIDE_MEDIA_QUERY);
-    const handleChange = (e: MediaQueryListEvent) => {
-      setIsSideBySide(e.matches);
-      setDragOffsetPx(0);
-      setIsDragging(false);
-      swipeRef.current = null;
-    };
-    mql.addEventListener('change', handleChange);
-    return () => mql.removeEventListener('change', handleChange);
-  }, []);
+  const {
+    viewportRef,
+    isSideBySide,
+    isDragging,
+    indicatorProgress,
+    visualActiveTab,
+    trackTransform,
+    handlePointerDown,
+    handlePointerMove,
+    finishSwipe,
+    handleClickCapture,
+    handleTabKeyDown,
+  } = useDualPaneTabs({
+    activeTab,
+    onSelectTab,
+    drillsTabId: 'menu-tab-drills',
+    ciphersTabId: 'menu-tab-ciphers',
+  });
 
   const isNumMathVisible =
     hasPreviewAccess ||
@@ -178,146 +162,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({
     );
   };
 
-  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (isSideBySide) return;
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
-
-    const width = viewportRef.current?.clientWidth || 360;
-    setDragViewportWidth(width);
-    swipeRef.current = {
-      pointerId: e.pointerId,
-      startX: e.clientX,
-      startY: e.clientY,
-      startTime: Date.now(),
-      viewportWidth: width,
-      axis: null,
-      lastDx: 0,
-    };
-  };
-
-  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const state = swipeRef.current;
-    if (!state || state.pointerId !== e.pointerId || isSideBySide) return;
-
-    const dx = e.clientX - state.startX;
-    const dy = e.clientY - state.startY;
-
-    if (state.axis === null) {
-      if (Math.hypot(dx, dy) < 10) return;
-      if (Math.abs(dx) > Math.abs(dy) * 1.15) {
-        state.axis = 'x';
-        setIsDragging(true);
-        window.getSelection()?.removeAllRanges();
-        try {
-          e.currentTarget.setPointerCapture(e.pointerId);
-        } catch {
-          // Ignore pointer capture errors
-        }
-      } else {
-        state.axis = 'y';
-        swipeRef.current = null;
-        return;
-      }
-    }
-
-    if (state.axis === 'x') {
-      state.lastDx = dx;
-      // Apply rubber-band resistance when dragging past outer bounds
-      const isPullingPastStart = activeTab === 'drills' && dx > 0;
-      const isPullingPastEnd = activeTab === 'ciphers' && dx < 0;
-      const dampedDx =
-        isPullingPastStart || isPullingPastEnd ? dx * 0.25 : dx;
-      const clampedDx = Math.max(
-        -state.viewportWidth,
-        Math.min(state.viewportWidth, dampedDx)
-      );
-      setDragOffsetPx(clampedDx);
-    }
-  };
-
-  const finishSwipe = (e: React.PointerEvent<HTMLDivElement>, cancelled: boolean) => {
-    const state = swipeRef.current;
-    if (!state || state.pointerId !== e.pointerId) return;
-    swipeRef.current = null;
-
-    if (state.axis === 'x') {
-      try {
-        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-          e.currentTarget.releasePointerCapture(e.pointerId);
-        }
-      } catch {
-        // Ignore pointer capture release errors
-      }
-
-      if (!cancelled) {
-        const dx = state.lastDx;
-        const dt = Math.max(1, Date.now() - state.startTime);
-        const vx = dx / dt;
-        const threshold = state.viewportWidth * 0.2;
-
-        if (
-          activeTab === 'drills' &&
-          (dx < -threshold || (dx < -28 && vx < -0.35))
-        ) {
-          onSelectTab('ciphers');
-        } else if (
-          activeTab === 'ciphers' &&
-          (dx > threshold || (dx > 28 && vx > 0.35))
-        ) {
-          onSelectTab('drills');
-        }
-
-        if (Math.abs(dx) > 10) {
-          suppressClickUntilRef.current = Date.now() + 90;
-        }
-      }
-    }
-
-    setIsDragging(false);
-    setDragOffsetPx(0);
-  };
-
-  const handleClickCapture = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (Date.now() < suppressClickUntilRef.current) {
-      e.preventDefault();
-      e.stopPropagation();
-      suppressClickUntilRef.current = 0;
-    }
-  };
-
-  const handleTabKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-      e.preventDefault();
-      const nextTab: MainMenuTab = activeTab === 'drills' ? 'ciphers' : 'drills';
-      onSelectTab(nextTab);
-      const targetId =
-        nextTab === 'drills' ? 'menu-tab-drills' : 'menu-tab-ciphers';
-      document.getElementById(targetId)?.focus();
-    }
-  };
-
   const drillsBgUrl = `${import.meta.env.BASE_URL}images/menu-drills-bg.jpg`;
   const ciphersBgUrl = `${import.meta.env.BASE_URL}images/menu-ciphers-bg.jpg`;
-
-  const baseTabProgress = activeTab === 'ciphers' ? 1 : 0;
-  const indicatorProgress = Math.max(
-    0,
-    Math.min(
-      1,
-      dragViewportWidth > 0
-        ? baseTabProgress - dragOffsetPx / dragViewportWidth
-        : baseTabProgress
-    )
-  );
-  const visualActiveTab: MainMenuTab = isDragging
-    ? indicatorProgress >= 0.5
-      ? 'ciphers'
-      : 'drills'
-    : activeTab;
-
-  const trackTransform = isSideBySide
-    ? undefined
-    : `translate3d(calc(${activeTab === 'ciphers' ? '-50%' : '0%'} + ${dragOffsetPx}px), 0, 0)`;
 
   return (
     <>
@@ -413,22 +259,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
             }`}
             onClick={() => onSelectTab('drills')}
           >
-            <svg
-              className="menu-tab-icon"
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.9"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <line x1="8" y1="2" x2="12" y2="2" />
-              <line x1="10" y1="2" x2="10" y2="4.5" />
-              <line x1="14.8" y1="5.2" x2="16.2" y2="3.8" />
-              <circle cx="10" cy="11.5" r="6.5" />
-              <polyline points="10 8 10 11.5 12.6 13" />
-            </svg>
+            <DrillsTabIcon />
             <span>Drills</span>
           </button>
 
@@ -444,21 +275,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
             }`}
             onClick={() => onSelectTab('ciphers')}
           >
-            <svg
-              className="menu-tab-icon"
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <rect x="2.5" y="3" width="6.2" height="6.2" rx="1.2" />
-              <rect x="11.3" y="3" width="6.2" height="6.2" rx="1.2" />
-              <rect x="2.5" y="11.3" width="6.2" height="6.2" rx="1.2" />
-              <path d="M12.2 14.4h4.4M14.4 12.2v4.4" />
-            </svg>
+            <CiphersTabIcon />
             <span>Ciphers</span>
           </button>
         </div>
@@ -500,22 +317,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
               <div className="menu-pane-content">
                 <div className="menu-pane-header">
                   <h2 id="menu-heading-drills" className="menu-pane-title">
-                    <svg
-                      className="menu-tab-icon"
-                      viewBox="0 0 20 20"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.9"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <line x1="8" y1="2" x2="12" y2="2" />
-                      <line x1="10" y1="2" x2="10" y2="4.5" />
-                      <line x1="14.8" y1="5.2" x2="16.2" y2="3.8" />
-                      <circle cx="10" cy="11.5" r="6.5" />
-                      <polyline points="10 8 10 11.5 12.6 13" />
-                    </svg>
+                    <DrillsTabIcon />
                     <span>Drills</span>
                   </h2>
                   <span className="menu-pane-subtitle">
@@ -741,21 +543,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
               <div className="menu-pane-content">
                 <div className="menu-pane-header">
                   <h2 id="menu-heading-ciphers" className="menu-pane-title">
-                    <svg
-                      className="menu-tab-icon"
-                      viewBox="0 0 20 20"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <rect x="2.5" y="3" width="6.2" height="6.2" rx="1.2" />
-                      <rect x="11.3" y="3" width="6.2" height="6.2" rx="1.2" />
-                      <rect x="2.5" y="11.3" width="6.2" height="6.2" rx="1.2" />
-                      <path d="M12.2 14.4h4.4M14.4 12.2v4.4" />
-                    </svg>
+                    <CiphersTabIcon />
                     <span>Ciphers</span>
                   </h2>
                   <span className="menu-pane-subtitle">

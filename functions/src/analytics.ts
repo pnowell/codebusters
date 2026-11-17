@@ -3,6 +3,7 @@ import { BigQuery } from '@google-cloud/bigquery';
 import type { Firestore } from 'firebase-admin/firestore';
 
 export type AnalyticsWindow = '7d' | '30d' | '90d' | 'all';
+export type DashboardScope = 'all' | 'summary' | 'drills' | 'ciphers';
 
 export interface AnalyticsProfileInfo {
   displayName: string;
@@ -29,6 +30,7 @@ export interface AnalyticsServerHelpers {
 
 interface ParsedDashboardRequest {
   mode: 'dashboard';
+  scope: DashboardScope;
   window: AnalyticsWindow;
   includeSharedLinks: boolean;
   uid?: string;
@@ -117,6 +119,16 @@ function parseAnalyticsRequest(raw: unknown): ParsedAnalyticsRequest {
   }
 
   if (mode === 'dashboard' || mode === undefined) {
+    const rawScope = body.scope ?? 'all';
+    if (
+      rawScope !== 'all' &&
+      rawScope !== 'summary' &&
+      rawScope !== 'drills' &&
+      rawScope !== 'ciphers'
+    ) {
+      throw new AnalyticsRequestError('Invalid scope parameter.');
+    }
+
     const rawWindow = body.window ?? '30d';
     if (
       rawWindow !== '7d' &&
@@ -139,6 +151,7 @@ function parseAnalyticsRequest(raw: unknown): ParsedAnalyticsRequest {
 
     return {
       mode: 'dashboard',
+      scope: rawScope,
       window: rawWindow,
       includeSharedLinks,
       uid: uidFilter,
@@ -205,28 +218,15 @@ function toStr(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
-async function runDashboardQueries(reqData: ParsedDashboardRequest) {
-  const { client, tableRef } = getBigQueryClient();
-  const minTimestamp = resolveWindowStartIso(reqData.window);
-  const hasUidFilter = Boolean(reqData.uid);
-  const uidFilter = reqData.uid ?? '';
-  const excludeSharedLinks = !reqData.includeSharedLinks;
-
-  const baseParams = {
-    minTimestamp,
-    hasUidFilter,
-    uidFilter,
-    excludeSharedLinks,
-  };
-  const baseTypes = {
-    minTimestamp: 'STRING',
-    hasUidFilter: 'BOOL',
-    uidFilter: 'STRING',
-    excludeSharedLinks: 'BOOL',
-  };
-
+function buildDedupedCte(
+  tableRef: string,
+  hasEventTypeFilter: boolean
+): string {
+  const eventTypeClause = hasEventTypeFilter
+    ? 'AND event_type = @eventTypeFilter'
+    : '';
   // Deduplicate on event_id so client batch retries never double-count sessions.
-  const dedupedCte = `
+  return `
     WITH deduped AS (
       SELECT
         timestamp,
@@ -254,6 +254,7 @@ async function runDashboardQueries(reqData: ParsedDashboardRequest) {
         AND uid IS NOT NULL
         AND uid != ''
         AND (NOT @hasUidFilter OR uid = @uidFilter)
+        ${eventTypeClause}
       QUALIFY ROW_NUMBER() OVER (PARTITION BY event_id ORDER BY timestamp ASC) = 1
     ),
     scoped AS (
@@ -267,9 +268,34 @@ async function runDashboardQueries(reqData: ParsedDashboardRequest) {
       )
     )
   `;
+}
+
+async function runDashboardQueries(reqData: ParsedDashboardRequest) {
+  const { client, tableRef } = getBigQueryClient();
+  const minTimestamp = resolveWindowStartIso(reqData.window);
+  const hasUidFilter = Boolean(reqData.uid);
+  const uidFilter = reqData.uid ?? '';
+  const excludeSharedLinks = !reqData.includeSharedLinks;
+
+  const baseParams = {
+    minTimestamp,
+    hasUidFilter,
+    uidFilter,
+    excludeSharedLinks,
+  };
+  const baseTypes = {
+    minTimestamp: 'STRING',
+    hasUidFilter: 'BOOL',
+    uidFilter: 'STRING',
+    excludeSharedLinks: 'BOOL',
+  };
+
+  const summaryCte = buildDedupedCte(tableRef, false);
+  const drillCte = buildDedupedCte(tableRef, true);
+  const cipherCte = buildDedupedCte(tableRef, true);
 
   const studentSummarySql = `
-    ${dedupedCte}
+    ${summaryCte}
     SELECT
       uid,
       COUNTIF(event_type = 'drill_session') AS drill_sessions,
@@ -290,7 +316,7 @@ async function runDashboardQueries(reqData: ParsedDashboardRequest) {
   `;
 
   const drillSeriesSql = `
-    ${dedupedCte}
+    ${drillCte}
     SELECT
       FORMAT_DATE('%Y-%m-%d', DATE(event_ts, 'UTC')) AS day,
       uid,
@@ -302,15 +328,14 @@ async function runDashboardQueries(reqData: ParsedDashboardRequest) {
       SUM(COALESCE(total_correct, 0)) AS total_correct,
       SUM(COALESCE(session_duration_sec, 0)) AS total_duration_sec
     FROM scoped
-    WHERE event_type = 'drill_session'
-      AND drill_id IS NOT NULL
+    WHERE drill_id IS NOT NULL
       AND drill_id != ''
     GROUP BY day, uid, drill_id
     ORDER BY day ASC
   `;
 
   const cipherSeriesSql = `
-    ${dedupedCte},
+    ${cipherCte},
     cipher_rows AS (
       SELECT
         FORMAT_DATE('%Y-%m-%d', DATE(event_ts, 'UTC')) AS day,
@@ -326,8 +351,7 @@ async function runDashboardQueries(reqData: ParsedDashboardRequest) {
           ELSE SAFE_DIVIDE(elapsed_sec, NULLIF(alpha_char_count, 0))
         END AS normalized_pace
       FROM scoped
-      WHERE event_type = 'cipher_solved'
-        AND cipher IS NOT NULL
+      WHERE cipher IS NOT NULL
         AND cipher != ''
     )
     SELECT
@@ -348,46 +372,60 @@ async function runDashboardQueries(reqData: ParsedDashboardRequest) {
     ORDER BY day ASC
   `;
 
-  const [summaryRes, drillRes, cipherRes] = await Promise.all([
-    client.query({
-      query: studentSummarySql,
-      params: baseParams,
-      types: baseTypes,
-      maximumBytesBilled: MAX_BYTES_BILLED,
-    }),
-    client.query({
-      query: drillSeriesSql,
-      params: baseParams,
-      types: baseTypes,
-      maximumBytesBilled: MAX_BYTES_BILLED,
-    }),
-    client.query({
-      query: cipherSeriesSql,
-      params: baseParams,
-      types: baseTypes,
-      maximumBytesBilled: MAX_BYTES_BILLED,
-    }),
+  const wantSummary = reqData.scope === 'all' || reqData.scope === 'summary';
+  const wantDrills = reqData.scope === 'all' || reqData.scope === 'drills';
+  const wantCiphers = reqData.scope === 'all' || reqData.scope === 'ciphers';
+
+  const [summaryRows, drillRows, cipherRows] = await Promise.all([
+    wantSummary
+      ? client
+          .query({
+            query: studentSummarySql,
+            params: baseParams,
+            types: baseTypes,
+            maximumBytesBilled: MAX_BYTES_BILLED,
+          })
+          .then((res) => res[0] as Record<string, unknown>[])
+      : Promise.resolve<Record<string, unknown>[]>([]),
+    wantDrills
+      ? client
+          .query({
+            query: drillSeriesSql,
+            params: { ...baseParams, eventTypeFilter: 'drill_session' },
+            types: { ...baseTypes, eventTypeFilter: 'STRING' },
+            maximumBytesBilled: MAX_BYTES_BILLED,
+          })
+          .then((res) => res[0] as Record<string, unknown>[])
+      : Promise.resolve<Record<string, unknown>[]>([]),
+    wantCiphers
+      ? client
+          .query({
+            query: cipherSeriesSql,
+            params: { ...baseParams, eventTypeFilter: 'cipher_solved' },
+            types: { ...baseTypes, eventTypeFilter: 'STRING' },
+            maximumBytesBilled: MAX_BYTES_BILLED,
+          })
+          .then((res) => res[0] as Record<string, unknown>[])
+      : Promise.resolve<Record<string, unknown>[]>([]),
   ]);
 
-  const studentSummaries = (summaryRes[0] as Record<string, unknown>[]).map(
-    (row) => ({
-      uid: toStr(row.uid),
-      drillSessions: toNum(row.drill_sessions),
-      drillDurationSec: toNum(row.drill_duration_sec),
-      drillAnswered: toNum(row.drill_answered),
-      drillCorrect: toNum(row.drill_correct),
-      ciphersStarted: toNum(row.ciphers_started),
-      ciphersSolved: toNum(row.ciphers_solved),
-      ciphersPassed: toNum(row.ciphers_passed),
-      ciphersFullScore: toNum(row.ciphers_full_score),
-      cipherSolveDurationSec: toNum(row.cipher_solve_duration_sec),
-      testActiveSec: toNum(row.test_active_sec),
-      testsParticipated: toNum(row.tests_participated),
-      lastActiveIso: toStr(row.last_active_iso),
-    })
-  );
+  const studentSummaries = summaryRows.map((row) => ({
+    uid: toStr(row.uid),
+    drillSessions: toNum(row.drill_sessions),
+    drillDurationSec: toNum(row.drill_duration_sec),
+    drillAnswered: toNum(row.drill_answered),
+    drillCorrect: toNum(row.drill_correct),
+    ciphersStarted: toNum(row.ciphers_started),
+    ciphersSolved: toNum(row.ciphers_solved),
+    ciphersPassed: toNum(row.ciphers_passed),
+    ciphersFullScore: toNum(row.ciphers_full_score),
+    cipherSolveDurationSec: toNum(row.cipher_solve_duration_sec),
+    testActiveSec: toNum(row.test_active_sec),
+    testsParticipated: toNum(row.tests_participated),
+    lastActiveIso: toStr(row.last_active_iso),
+  }));
 
-  const drillSeries = (drillRes[0] as Record<string, unknown>[]).map((row) => ({
+  const drillSeries = drillRows.map((row) => ({
     day: toStr(row.day),
     uid: toStr(row.uid),
     drillId: toStr(row.drill_id),
@@ -399,22 +437,20 @@ async function runDashboardQueries(reqData: ParsedDashboardRequest) {
     totalDurationSec: toNum(row.total_duration_sec),
   }));
 
-  const cipherSeries = (cipherRes[0] as Record<string, unknown>[]).map(
-    (row) => ({
-      day: toStr(row.day),
-      uid: toStr(row.uid),
-      cipher: toStr(row.cipher),
-      mode: toStr(row.mode),
-      inputMode: toStr(row.input_mode) || 'standard',
-      submissions: toNum(row.submissions),
-      passingSolves: toNum(row.passing_solves),
-      fullScoreCount: toNum(row.full_score_count),
-      sumElapsedSec: toNum(row.sum_elapsed_sec),
-      sumNormalizedPace: toNum(row.sum_normalized_pace),
-      pacedSolveCount: toNum(row.paced_solve_count),
-      bestNormalizedPace: toNullableNum(row.best_normalized_pace),
-    })
-  );
+  const cipherSeries = cipherRows.map((row) => ({
+    day: toStr(row.day),
+    uid: toStr(row.uid),
+    cipher: toStr(row.cipher),
+    mode: toStr(row.mode),
+    inputMode: toStr(row.input_mode) || 'standard',
+    submissions: toNum(row.submissions),
+    passingSolves: toNum(row.passing_solves),
+    fullScoreCount: toNum(row.full_score_count),
+    sumElapsedSec: toNum(row.sum_elapsed_sec),
+    sumNormalizedPace: toNum(row.sum_normalized_pace),
+    pacedSolveCount: toNum(row.paced_solve_count),
+    bestNormalizedPace: toNullableNum(row.best_normalized_pace),
+  }));
 
   return { studentSummaries, drillSeries, cipherSeries };
 }
@@ -569,6 +605,7 @@ export async function handleQueryPracticeAnalytics(
     const dashboardData = await runDashboardQueries(queryRequest);
     sendJson(res, 200, {
       mode: 'dashboard',
+      scope: queryRequest.scope,
       window: queryRequest.window,
       includeSharedLinks: queryRequest.includeSharedLinks,
       profiles,

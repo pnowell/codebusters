@@ -1,19 +1,28 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { GENERAL_PRACTICE_DRILLS } from '../../data/drills';
+import { useDualPaneTabs, type DualPaneTab } from '../../hooks/useDualPaneTabs';
 import {
   fetchDashboardAnalytics,
   type AnalyticsProfileInfo,
   type AnalyticsWindow,
   type CipherSeriesPoint,
   type DashboardAnalyticsResponse,
+  type DashboardScope,
   type DrillSeriesPoint,
   type StudentEngagementSummary,
 } from '../../services/analyticsService';
 import '../../styles/analytics.css';
+import {
+  CiphersTabIcon,
+  DrillsTabIcon,
+} from '../shared/DualPaneTabIcons';
 import { UPlotChart, type UPlotLineSeries } from './UPlotChart';
 
 interface TeacherAnalyticsViewProps {
   onBack: () => void;
 }
+
+type AristocratModeFilter = 'all' | 'linked' | 'paper';
 
 const WINDOW_OPTIONS: ReadonlyArray<{ id: AnalyticsWindow; label: string }> = [
   { id: '7d', label: '7 Days' },
@@ -22,56 +31,46 @@ const WINDOW_OPTIONS: ReadonlyArray<{ id: AnalyticsWindow; label: string }> = [
   { id: 'all', label: 'All Time' },
 ];
 
-const DRILL_LABELS: Record<string, string> = {
-  offsetsLetterToNum: 'Letter Offsets (A → 1)',
-  offsetsNumToLetter: 'Letter Offsets (1 → A)',
-  letterMathEasy: 'ABC ± # (Num Easy)',
-  letterMathHard: 'ABC ± # (Num Hard)',
-  letterMathLetterEasy: 'ABC ± # (Letter Easy)',
-  letterMathLetterHard: 'ABC ± # (Letter Hard)',
-  atbash: 'Atbash Symbols',
-  pigpen: 'Pigpen Symbols',
-  galactic: 'Galactic Symbols',
-  tap: 'Tap Code Symbols',
-  knights: 'Knights Templar Symbols',
+const WINDOW_SECONDS: Record<AnalyticsWindow, number> = {
+  '7d': 7 * 86_400,
+  '30d': 30 * 86_400,
+  '90d': 90 * 86_400,
+  all: 30 * 86_400,
 };
 
-const CIPHER_LABELS: Record<string, string> = {
-  aristocrat: 'Aristocrat',
-  caesar: 'Caesar',
-  vigenere: 'Vigenère',
-  atbash: 'Atbash',
-  pigpen: 'Pigpen',
-  galactic: 'Standard Galactic',
-  tap: 'Tap Code',
-  knights: 'Knights Templar',
-};
+const CANONICAL_DRILLS: ReadonlyArray<{ id: string; label: string }> = [
+  { id: 'offsetsLetterToNum', label: 'Letter Offsets (A → 1)' },
+  { id: 'offsetsNumToLetter', label: 'Letter Offsets (1 → A)' },
+  { id: 'letterMathEasy', label: 'ABC ± # (Num Easy)' },
+  { id: 'letterMathHard', label: 'ABC ± # (Num Hard)' },
+  { id: 'letterMathLetterEasy', label: 'ABC ± # (Letter Easy)' },
+  { id: 'letterMathLetterHard', label: 'ABC ± # (Letter Hard)' },
+  { id: 'atbash', label: 'Atbash' },
+  { id: 'pigpen', label: 'Pigpen' },
+  { id: 'galactic', label: 'Standard Galactic' },
+  { id: 'tap', label: 'Tap Code' },
+  { id: 'knights', label: 'Knights Templar' },
+];
 
-const MODE_LABELS: Record<string, string> = {
-  '': 'Default',
-  pm3: '±3',
-  any: 'Any Shift',
-  easy: 'Easy',
-  medium: 'Medium',
-  hard: 'Hard',
-};
+const CANONICAL_CIPHERS: ReadonlyArray<{ id: string; label: string }> =
+  GENERAL_PRACTICE_DRILLS.map((d) => ({
+    id: d.id,
+    label: d.shortTitle,
+  }));
 
-const MODE_COLORS: Record<string, string> = {
-  easy: '#10b981',
-  pm3: '#10b981',
-  medium: '#f59e0b',
-  any: '#38bdf8',
-  hard: '#f43f5e',
-  '': '#38bdf8',
-};
-
-const FALLBACK_PALETTE = [
-  '#38bdf8',
-  '#10b981',
-  '#f59e0b',
-  '#a855f7',
-  '#f43f5e',
-  '#22d3ee',
+const STUDENT_PALETTE: readonly string[] = [
+  '#38bdf8', // Sky
+  '#10b981', // Emerald
+  '#f59e0b', // Amber
+  '#a855f7', // Violet
+  '#fb7185', // Rose
+  '#22d3ee', // Cyan
+  '#60a5fa', // Blue
+  '#facc15', // Yellow
+  '#4ade80', // Mint
+  '#f97316', // Orange
+  '#c084fc', // Lavender
+  '#e879f9', // Fuchsia
 ];
 
 const UTC_TOOLTIP_FMT = new Intl.DateTimeFormat('en-US', {
@@ -114,75 +113,25 @@ function dayToMiddayEpochSec(day: string): number {
   return Number.isFinite(parsed) ? Math.floor(parsed / 1000) : 0;
 }
 
-function formatPace(val: number): string {
-  return `${val.toFixed(2)}s`;
-}
-
-function buildDrillBreakdown(rows: DrillSeriesPoint[]) {
-  const byDrill = new Map<
-    string,
-    { drillId: string; sessions: number; durationSec: number; answered: number; correct: number; best60s: number }
-  >();
-  for (const r of rows) {
-    const prev = byDrill.get(r.drillId) ?? {
-      drillId: r.drillId,
-      sessions: 0,
-      durationSec: 0,
-      answered: 0,
-      correct: 0,
-      best60s: 0,
-    };
-    prev.sessions += r.sessions;
-    prev.durationSec += r.totalDurationSec;
-    prev.answered += r.totalAnswered;
-    prev.correct += r.totalCorrect;
-    prev.best60s = Math.max(prev.best60s, r.best60sScore);
-    byDrill.set(r.drillId, prev);
-  }
-  return Array.from(byDrill.values()).sort((a, b) => b.sessions - a.sessions);
-}
-
-function buildCipherBreakdown(rows: CipherSeriesPoint[]) {
-  const byCipher = new Map<
-    string,
-    { cipher: string; passingSolves: number; fullScoreCount: number; submissions: number; durationSec: number }
-  >();
-  for (const r of rows) {
-    const prev = byCipher.get(r.cipher) ?? {
-      cipher: r.cipher,
-      passingSolves: 0,
-      fullScoreCount: 0,
-      submissions: 0,
-      durationSec: 0,
-    };
-    prev.passingSolves += r.passingSolves;
-    prev.fullScoreCount += r.fullScoreCount;
-    prev.submissions += r.submissions;
-    prev.durationSec += r.sumElapsedSec;
-    byCipher.set(r.cipher, prev);
-  }
-  return Array.from(byCipher.values()).sort(
-    (a, b) => b.passingSolves - a.passingSolves || b.submissions - a.submissions
-  );
+interface ScopedAnalyticsState {
+  data: DashboardAnalyticsResponse | null;
+  isLoading: boolean;
+  error: string | null;
 }
 
 /**
- * Lazy-loaded teacher analytics dashboard backed by BigQuery + Firestore profiles.
+ * Fetches one analytics dashboard scope independently without synchronous setState inside effects.
  */
-export const TeacherAnalyticsView: React.FC<TeacherAnalyticsViewProps> = ({
-  onBack,
-}) => {
-  const [windowRange, setWindowRange] = useState<AnalyticsWindow>('30d');
-  const [includeSharedLinks, setIncludeSharedLinks] = useState<boolean>(false);
-  const [selectedUid, setSelectedUid] = useState<string>('');
-  const [selectedDrillId, setSelectedDrillId] = useState<string>('');
-  const [selectedCipher, setSelectedCipher] = useState<string>('');
-  const [aristocratInputFilter, setAristocratInputFilter] = useState<
-    'all' | 'linked' | 'standard_paper'
-  >('all');
-  const [refreshNonce, setRefreshNonce] = useState<number>(0);
-
-  const requestKey = `${windowRange}|${includeSharedLinks ? '1' : '0'}|${refreshNonce}`;
+function useScopedAnalytics(
+  scope: Exclude<DashboardScope, 'all'>,
+  windowRange: AnalyticsWindow,
+  includeSharedLinks: boolean,
+  refreshNonce: number,
+  enabled: boolean
+): ScopedAnalyticsState {
+  const expectedKey = enabled
+    ? `${scope}|${windowRange}|${includeSharedLinks ? '1' : '0'}|${refreshNonce}`
+    : '';
   const [fetchState, setFetchState] = useState<{
     key: string;
     data: DashboardAnalyticsResponse | null;
@@ -190,16 +139,18 @@ export const TeacherAnalyticsView: React.FC<TeacherAnalyticsViewProps> = ({
   }>({ key: '', data: null, error: null });
 
   useEffect(() => {
-    const controller = new AbortController();
+    if (!expectedKey) return;
 
+    const controller = new AbortController();
     fetchDashboardAnalytics({
+      scope,
       window: windowRange,
       includeSharedLinks,
       signal: controller.signal,
     })
       .then((res) => {
         if (!controller.signal.aborted) {
-          setFetchState({ key: requestKey, data: res, error: null });
+          setFetchState({ key: expectedKey, data: res, error: null });
         }
       })
       .catch((err: unknown) => {
@@ -209,62 +160,252 @@ export const TeacherAnalyticsView: React.FC<TeacherAnalyticsViewProps> = ({
             ? err.message
             : 'Unable to load practice analytics.';
         setFetchState((prev) => ({
-          key: requestKey,
+          key: expectedKey,
           data: prev.data,
           error: message,
         }));
       });
 
     return () => controller.abort();
-  }, [requestKey, windowRange, includeSharedLinks]);
+  }, [expectedKey, scope, windowRange, includeSharedLinks]);
 
-  const isLoading = fetchState.key !== requestKey;
-  const data = fetchState.data;
-  const errorMsg = fetchState.key === requestKey ? fetchState.error : null;
+  if (!enabled) {
+    return {
+      data: fetchState.data,
+      isLoading: false,
+      error: null,
+    };
+  }
+
+  return {
+    data: fetchState.data,
+    isLoading: fetchState.key !== expectedKey,
+    error: fetchState.key === expectedKey ? fetchState.error : null,
+  };
+}
+
+interface VolumeSegment {
+  uid: string;
+  label: string;
+  color: string;
+  value: number;
+  detail: string;
+}
+
+interface VolumeBarProps {
+  label: string;
+  statText: string;
+  segments: VolumeSegment[];
+  totalValue: number;
+  maxColumnValue: number;
+}
+
+const VolumeBar: React.FC<VolumeBarProps> = ({
+  label,
+  statText,
+  segments,
+  totalValue,
+  maxColumnValue,
+}) => {
+  const fillPct =
+    totalValue > 0 && maxColumnValue > 0
+      ? Math.min(100, Math.max(4, (totalValue / maxColumnValue) * 100))
+      : 0;
+
+  return (
+    <div className="analytics-volume-block">
+      <div className="analytics-volume-meta">
+        <span>{label}</span>
+        <span className="analytics-volume-stat">{statText}</span>
+      </div>
+      <div className="analytics-bar-track" aria-label={`${label}: ${statText}`}>
+        {fillPct > 0 && totalValue > 0 && (
+          <div
+            className="analytics-bar-segments"
+            style={{ width: `${fillPct.toFixed(2)}%` }}
+          >
+            {segments.map((seg) => {
+              const segPct = (seg.value / totalValue) * 100;
+              return (
+                <span
+                  key={seg.uid}
+                  className="analytics-bar-seg"
+                  style={{
+                    width: `${segPct.toFixed(2)}%`,
+                    backgroundColor: seg.color,
+                  }}
+                  title={seg.detail}
+                />
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+function buildStudentSeriesModel(options: {
+  days: string[];
+  uidList: string[];
+  getValue: (day: string, uid: string) => number | null;
+  profiles: Record<string, AnalyticsProfileInfo>;
+  studentColorMap: Map<string, string>;
+  formatValue: (val: number) => string;
+}): { timestamps: number[]; dateLabels: string[]; series: UPlotLineSeries[] } {
+  const sortedDays = [...options.days].sort();
+  const timestamps = sortedDays.map(dayToMiddayEpochSec);
+  const dateLabels = sortedDays.map((d) => formatShortDate(`${d}T12:00:00Z`));
+
+  const series: UPlotLineSeries[] = [];
+  for (const uid of options.uidList) {
+    const values = sortedDays.map((day) => options.getValue(day, uid));
+    if (!values.some((v) => v !== null && Number.isFinite(v))) {
+      continue;
+    }
+    series.push({
+      id: uid,
+      label: getProfileName(uid, options.profiles),
+      color: options.studentColorMap.get(uid) ?? STUDENT_PALETTE[0],
+      values,
+      formatValue: options.formatValue,
+    });
+  }
+
+  return { timestamps, dateLabels, series };
+}
+
+/**
+ * Lazy-loaded teacher analytics dashboard mirroring MainMenu's Drills / Ciphers split.
+ */
+export const TeacherAnalyticsView: React.FC<TeacherAnalyticsViewProps> = ({
+  onBack,
+}) => {
+  const [windowRange, setWindowRange] = useState<AnalyticsWindow>('30d');
+  const [includeSharedLinks, setIncludeSharedLinks] = useState<boolean>(false);
+  const [selectedUid, setSelectedUid] = useState<string>('');
+  const [aristocratModeFilter, setAristocratModeFilter] =
+    useState<AristocratModeFilter>('all');
+  const [refreshNonce, setRefreshNonce] = useState<number>(0);
+  const [mountNowSec] = useState<number>(() => Math.floor(Date.now() / 1000));
+
+  const [activeTab, setActiveTab] = useState<DualPaneTab>('drills');
+  const {
+    viewportRef,
+    isSideBySide,
+    isDragging,
+    indicatorProgress,
+    visualActiveTab,
+    trackTransform,
+    handlePointerDown,
+    handlePointerMove,
+    finishSwipe,
+    handleClickCapture,
+    handleTabKeyDown,
+  } = useDualPaneTabs({
+    activeTab,
+    onSelectTab: setActiveTab,
+    drillsTabId: 'analytics-tab-drills',
+    ciphersTabId: 'analytics-tab-ciphers',
+  });
+
+  const summaryScope = useScopedAnalytics(
+    'summary',
+    windowRange,
+    includeSharedLinks,
+    refreshNonce,
+    true
+  );
+  const drillsScope = useScopedAnalytics(
+    'drills',
+    windowRange,
+    includeSharedLinks,
+    refreshNonce,
+    isSideBySide || activeTab === 'drills'
+  );
+  const ciphersScope = useScopedAnalytics(
+    'ciphers',
+    windowRange,
+    includeSharedLinks,
+    refreshNonce,
+    isSideBySide || activeTab === 'ciphers' || (isDragging && activeTab === 'drills')
+  );
+
+  const isAnyLoading =
+    summaryScope.isLoading || drillsScope.isLoading || ciphersScope.isLoading;
+
+  const firstError =
+    summaryScope.error || drillsScope.error || ciphersScope.error;
 
   const handleRefresh = useCallback(() => {
     setRefreshNonce((n) => n + 1);
   }, []);
 
-  const profiles = useMemo(() => data?.profiles ?? {}, [data]);
+  const profiles = useMemo<Record<string, AnalyticsProfileInfo>>(
+    () => ({
+      ...(ciphersScope.data?.profiles ?? {}),
+      ...(drillsScope.data?.profiles ?? {}),
+      ...(summaryScope.data?.profiles ?? {}),
+    }),
+    [ciphersScope.data?.profiles, drillsScope.data?.profiles, summaryScope.data?.profiles]
+  );
 
-  const studentOptions = useMemo(() => {
+  // Order students consistently (summary volume first, then alphabetically by name).
+  const orderedStudentUids = useMemo(() => {
+    const rankByUid = new Map<string, number>();
+    (summaryScope.data?.studentSummaries ?? []).forEach((s, idx) => {
+      rankByUid.set(s.uid, idx);
+    });
+
     const uids = new Set<string>();
-    for (const s of data?.studentSummaries ?? []) {
-      uids.add(s.uid);
-    }
-    return Array.from(uids)
-      .map((uid) => ({
-        uid,
-        displayName: getProfileName(uid, profiles),
-        role: profiles[uid]?.role ?? 'student',
-      }))
-      .sort((a, b) => a.displayName.localeCompare(b.displayName));
-  }, [data, profiles]);
+    for (const s of summaryScope.data?.studentSummaries ?? []) uids.add(s.uid);
+    for (const r of drillsScope.data?.drillSeries ?? []) uids.add(r.uid);
+    for (const r of ciphersScope.data?.cipherSeries ?? []) uids.add(r.uid);
 
-  // Clear selectedUid if it no longer exists in the fetched window
+    return Array.from(uids).sort((a, b) => {
+      const rankA = rankByUid.get(a);
+      const rankB = rankByUid.get(b);
+      if (rankA !== undefined && rankB !== undefined) return rankA - rankB;
+      if (rankA !== undefined) return -1;
+      if (rankB !== undefined) return 1;
+      return getProfileName(a, profiles).localeCompare(getProfileName(b, profiles));
+    });
+  }, [
+    ciphersScope.data?.cipherSeries,
+    drillsScope.data?.drillSeries,
+    profiles,
+    summaryScope.data?.studentSummaries,
+  ]);
+
+  const studentColorMap = useMemo(() => {
+    const map = new Map<string, string>();
+    orderedStudentUids.forEach((uid, idx) => {
+      map.set(uid, STUDENT_PALETTE[idx % STUDENT_PALETTE.length]);
+    });
+    return map;
+  }, [orderedStudentUids]);
+
+  const studentOptions = useMemo(
+    () =>
+      orderedStudentUids
+        .map((uid) => ({
+          uid,
+          displayName: getProfileName(uid, profiles),
+        }))
+        .sort((a, b) => a.displayName.localeCompare(b.displayName)),
+    [orderedStudentUids, profiles]
+  );
+
   const effectiveSelectedUid = useMemo(() => {
     if (!selectedUid) return '';
-    return studentOptions.some((s) => s.uid === selectedUid) ? selectedUid : '';
-  }, [selectedUid, studentOptions]);
+    return orderedStudentUids.includes(selectedUid) ? selectedUid : '';
+  }, [orderedStudentUids, selectedUid]);
 
   const filteredSummaries = useMemo<StudentEngagementSummary[]>(() => {
-    const list = data?.studentSummaries ?? [];
+    const list = summaryScope.data?.studentSummaries ?? [];
     if (!effectiveSelectedUid) return list;
     return list.filter((s) => s.uid === effectiveSelectedUid);
-  }, [data, effectiveSelectedUid]);
-
-  const filteredDrillRows = useMemo<DrillSeriesPoint[]>(() => {
-    const rows = data?.drillSeries ?? [];
-    if (!effectiveSelectedUid) return rows;
-    return rows.filter((r) => r.uid === effectiveSelectedUid);
-  }, [data, effectiveSelectedUid]);
-
-  const filteredCipherRows = useMemo<CipherSeriesPoint[]>(() => {
-    const rows = data?.cipherSeries ?? [];
-    if (!effectiveSelectedUid) return rows;
-    return rows.filter((r) => r.uid === effectiveSelectedUid);
-  }, [data, effectiveSelectedUid]);
+  }, [effectiveSelectedUid, summaryScope.data?.studentSummaries]);
 
   const kpis = useMemo(() => {
     let totalActiveSec = 0;
@@ -274,7 +415,6 @@ export const TeacherAnalyticsView: React.FC<TeacherAnalyticsViewProps> = ({
     let ciphersPassed = 0;
     let ciphersFullScore = 0;
     let ciphersSolved = 0;
-    let testsParticipated = 0;
 
     for (const s of filteredSummaries) {
       totalActiveSec +=
@@ -285,7 +425,6 @@ export const TeacherAnalyticsView: React.FC<TeacherAnalyticsViewProps> = ({
       ciphersPassed += s.ciphersPassed;
       ciphersFullScore += s.ciphersFullScore;
       ciphersSolved += s.ciphersSolved;
-      testsParticipated += s.testsParticipated;
     }
 
     const drillAccuracyPct =
@@ -303,189 +442,226 @@ export const TeacherAnalyticsView: React.FC<TeacherAnalyticsViewProps> = ({
       ciphersPassed,
       ciphersFullScore,
       fullRatePct,
-      testsParticipated,
     };
   }, [filteredSummaries]);
 
-  const drillBreakdown = useMemo(
-    () => buildDrillBreakdown(filteredDrillRows),
-    [filteredDrillRows]
+  const emptyWindowSec = useMemo<[number, number]>(
+    () => [mountNowSec - WINDOW_SECONDS[windowRange], mountNowSec],
+    [mountNowSec, windowRange]
   );
 
-  const cipherBreakdown = useMemo(
-    () => buildCipherBreakdown(filteredCipherRows),
-    [filteredCipherRows]
-  );
-
-  // Pick default drill & cipher automatically based on volume
-  const activeDrillId = useMemo(() => {
-    if (
-      selectedDrillId &&
-      drillBreakdown.some((d) => d.drillId === selectedDrillId)
-    ) {
-      return selectedDrillId;
-    }
-    return drillBreakdown[0]?.drillId ?? '';
-  }, [selectedDrillId, drillBreakdown]);
-
-  const activeCipher = useMemo(() => {
-    if (
-      selectedCipher &&
-      cipherBreakdown.some((c) => c.cipher === selectedCipher)
-    ) {
-      return selectedCipher;
-    }
-    return cipherBreakdown[0]?.cipher ?? '';
-  }, [selectedCipher, cipherBreakdown]);
-
-  // Build uPlot data for Drill sessionBest60sScore over time
-  const drillChartModel = useMemo(() => {
-    if (!activeDrillId) {
-      return { timestamps: [], dateLabels: [], series: [] as UPlotLineSeries[] };
-    }
-    const byDay = new Map<
-      string,
-      { best60s: number; sumBest60s: number; sessions: number }
-    >();
-    for (const r of filteredDrillRows) {
-      if (r.drillId !== activeDrillId) continue;
-      const cur = byDay.get(r.day) ?? {
-        best60s: 0,
-        sumBest60s: 0,
-        sessions: 0,
-      };
-      cur.best60s = Math.max(cur.best60s, r.best60sScore);
-      cur.sumBest60s += r.sumBest60sScore;
-      cur.sessions += r.sessions;
-      byDay.set(r.day, cur);
-    }
-
-    const sortedDays = Array.from(byDay.keys()).sort();
-    const timestamps = sortedDays.map(dayToMiddayEpochSec);
-    const dateLabels = sortedDays.map((d) => formatShortDate(`${d}T12:00:00Z`));
-    const bestVals = sortedDays.map((d) => byDay.get(d)?.best60s ?? null);
-    const avgVals = sortedDays.map((d) => {
-      const entry = byDay.get(d);
-      if (!entry || entry.sessions <= 0) return null;
-      return Number((entry.sumBest60s / entry.sessions).toFixed(1));
-    });
-
-    const series: UPlotLineSeries[] = [
-      {
-        label: 'Daily Best 60s Score',
-        color: '#38bdf8',
-        fill: 'rgba(56, 189, 248, 0.12)',
-        values: bestVals,
-        formatValue: (v) => `${Math.round(v)} pts`,
-      },
-      {
-        label: 'Daily Avg 60s Score',
-        color: '#a855f7',
-        dash: [5, 4],
-        values: avgVals,
-        formatValue: (v) => `${v.toFixed(1)} pts`,
-      },
-    ];
-
-    return { timestamps, dateLabels, series };
-  }, [activeDrillId, filteredDrillRows]);
-
-  // Build uPlot data for normalized Cipher solve pace by difficulty mode
-  const cipherChartModel = useMemo(() => {
-    if (!activeCipher) {
-      return { timestamps: [], dateLabels: [], series: [] as UPlotLineSeries[], hasLinked: false };
-    }
-
-    const matching = filteredCipherRows.filter((r) => {
-      if (r.cipher !== activeCipher || r.pacedSolveCount <= 0) return false;
-      if (activeCipher === 'aristocrat') {
-        if (aristocratInputFilter === 'linked') return r.inputMode === 'linked';
-        if (aristocratInputFilter === 'standard_paper') {
-          return r.inputMode !== 'linked';
-        }
-      }
-      return true;
-    });
-
-    const hasLinked = filteredCipherRows.some(
-      (r) =>
-        r.cipher === 'aristocrat' &&
-        r.inputMode === 'linked' &&
-        r.pacedSolveCount > 0
+  // Build per-drill models across all 11 canonical drills (including empty ones).
+  const { drillCards, maxDrillSessions } = useMemo(() => {
+    const rows = (drillsScope.data?.drillSeries ?? []).filter(
+      (r) => !effectiveSelectedUid || r.uid === effectiveSelectedUid
     );
 
-    const daySet = new Set<string>();
-    const seriesKeys = new Set<string>();
-    const grid = new Map<
-      string,
-      Map<string, { sumPace: number; count: number }>
-    >();
-
-    for (const r of matching) {
-      daySet.add(r.day);
-      const key =
-        activeCipher === 'aristocrat' && aristocratInputFilter === 'all'
-          ? `${r.mode || ''}|${r.inputMode === 'linked' ? 'linked' : 'std'}`
-          : `${r.mode || ''}|all`;
-      seriesKeys.add(key);
-      let dayMap = grid.get(r.day);
-      if (!dayMap) {
-        dayMap = new Map();
-        grid.set(r.day, dayMap);
-      }
-      const cur = dayMap.get(key) ?? { sumPace: 0, count: 0 };
-      cur.sumPace += r.sumNormalizedPace;
-      cur.count += r.pacedSolveCount;
-      dayMap.set(key, cur);
+    const byDrill = new Map<string, DrillSeriesPoint[]>();
+    for (const r of rows) {
+      const list = byDrill.get(r.drillId) ?? [];
+      list.push(r);
+      byDrill.set(r.drillId, list);
     }
 
-    const sortedDays = Array.from(daySet).sort();
-    const timestamps = sortedDays.map(dayToMiddayEpochSec);
-    const dateLabels = sortedDays.map((d) => formatShortDate(`${d}T12:00:00Z`));
-    const orderedKeys = Array.from(seriesKeys).sort();
+    const cards = CANONICAL_DRILLS.map((drillDef) => {
+      const drillRows = byDrill.get(drillDef.id) ?? [];
+      let totalSessions = 0;
+      let totalDurationSec = 0;
+      let overallBest60s = 0;
 
-    const series: UPlotLineSeries[] = orderedKeys.map((key, idx) => {
-      const [mode, inputGroup] = key.split('|');
-      const modeLabel = MODE_LABELS[mode] ?? (mode || 'Default');
-      const inputSuffix =
-        inputGroup === 'linked'
-          ? ' · Linked (s/uniq)'
-          : inputGroup === 'std'
-            ? ' · Std/Paper (s/char)'
-            : '';
-      const baseColor =
-        MODE_COLORS[mode] ?? FALLBACK_PALETTE[idx % FALLBACK_PALETTE.length];
+      const daySet = new Set<string>();
+      const bestByDayUid = new Map<string, number>();
+      const volumeByUid = new Map<string, { sessions: number; durationSec: number }>();
 
-      const values = sortedDays.map((day) => {
-        const bucket = grid.get(day)?.get(key);
-        if (!bucket || bucket.count <= 0) return null;
-        return Number((bucket.sumPace / bucket.count).toFixed(2));
+      for (const r of drillRows) {
+        totalSessions += r.sessions;
+        totalDurationSec += r.totalDurationSec;
+        overallBest60s = Math.max(overallBest60s, r.best60sScore);
+        daySet.add(r.day);
+
+        const dayUidKey = `${r.day}|${r.uid}`;
+        const prevScore = bestByDayUid.get(dayUidKey);
+        if (prevScore === undefined || r.best60sScore > prevScore) {
+          bestByDayUid.set(dayUidKey, r.best60sScore);
+        }
+
+        const vol = volumeByUid.get(r.uid) ?? { sessions: 0, durationSec: 0 };
+        vol.sessions += r.sessions;
+        vol.durationSec += r.totalDurationSec;
+        volumeByUid.set(r.uid, vol);
+      }
+
+      const segments: VolumeSegment[] = orderedStudentUids
+        .filter((uid) => (volumeByUid.get(uid)?.sessions ?? 0) > 0)
+        .map((uid) => {
+          const vol = volumeByUid.get(uid)!;
+          const name = getProfileName(uid, profiles);
+          return {
+            uid,
+            label: name,
+            color: studentColorMap.get(uid) ?? STUDENT_PALETTE[0],
+            value: vol.sessions,
+            detail: `${name}: ${vol.sessions} sessions (${formatDuration(vol.durationSec)})`,
+          };
+        });
+
+      const chart = buildStudentSeriesModel({
+        days: Array.from(daySet),
+        uidList: orderedStudentUids,
+        getValue: (day, uid) => bestByDayUid.get(`${day}|${uid}`) ?? null,
+        profiles,
+        studentColorMap,
+        formatValue: (v) => `${Math.round(v)} pts`,
       });
 
       return {
-        label: `${modeLabel}${inputSuffix}`,
-        color: baseColor,
-        dash: inputGroup === 'std' ? [5, 4] : undefined,
-        values,
-        formatValue: (v) =>
-          inputGroup === 'linked' ||
-          (activeCipher === 'aristocrat' && aristocratInputFilter === 'linked')
-            ? `${formatPace(v)} / unique char`
-            : `${formatPace(v)} / char`,
+        id: drillDef.id,
+        label: drillDef.label,
+        totalSessions,
+        totalDurationSec,
+        overallBest60s,
+        segments,
+        chart,
       };
     });
 
-    return { timestamps, dateLabels, series, hasLinked };
-  }, [activeCipher, aristocratInputFilter, filteredCipherRows]);
+    const maxSessions = Math.max(1, ...cards.map((c) => c.totalSessions));
+    return { drillCards: cards, maxDrillSessions: maxSessions };
+  }, [
+    drillsScope.data?.drillSeries,
+    effectiveSelectedUid,
+    orderedStudentUids,
+    profiles,
+    studentColorMap,
+  ]);
 
-  const maxDrillSessions = Math.max(
-    1,
-    ...drillBreakdown.map((d) => d.sessions)
-  );
-  const maxCipherSolves = Math.max(
-    1,
-    ...cipherBreakdown.map((c) => c.passingSolves || c.submissions)
-  );
+  // Build per-cipher models across all 8 canonical ciphers (including empty ones).
+  const { cipherCards, maxCipherSolves } = useMemo(() => {
+    const rows = (ciphersScope.data?.cipherSeries ?? []).filter(
+      (r) => !effectiveSelectedUid || r.uid === effectiveSelectedUid
+    );
+
+    const byCipher = new Map<string, CipherSeriesPoint[]>();
+    for (const r of rows) {
+      const list = byCipher.get(r.cipher) ?? [];
+      list.push(r);
+      byCipher.set(r.cipher, list);
+    }
+
+    const cards = CANONICAL_CIPHERS.map((cipherDef) => {
+      const rawRows = byCipher.get(cipherDef.id) ?? [];
+      const matchingRows =
+        cipherDef.id === 'aristocrat'
+          ? rawRows.filter((r) => {
+              if (aristocratModeFilter === 'linked') return r.inputMode === 'linked';
+              if (aristocratModeFilter === 'paper') return r.inputMode !== 'linked';
+              return true;
+            })
+          : rawRows;
+
+      let totalPassingSolves = 0;
+      let totalSubmissions = 0;
+      let totalDurationSec = 0;
+
+      const daySet = new Set<string>();
+      const paceByDayUid = new Map<string, { sumPace: number; count: number }>();
+      const volumeByUid = new Map<string, { solves: number; durationSec: number }>();
+
+      for (const r of matchingRows) {
+        totalPassingSolves += r.passingSolves;
+        totalSubmissions += r.submissions;
+        totalDurationSec += r.sumElapsedSec;
+
+        const rowSolves = r.passingSolves || r.submissions;
+        if (rowSolves > 0) {
+          const vol = volumeByUid.get(r.uid) ?? { solves: 0, durationSec: 0 };
+          vol.solves += rowSolves;
+          vol.durationSec += r.sumElapsedSec;
+          volumeByUid.set(r.uid, vol);
+        }
+
+        if (r.pacedSolveCount > 0) {
+          daySet.add(r.day);
+          const dayUidKey = `${r.day}|${r.uid}`;
+          const cur = paceByDayUid.get(dayUidKey) ?? { sumPace: 0, count: 0 };
+          cur.sumPace += r.sumNormalizedPace;
+          cur.count += r.pacedSolveCount;
+          paceByDayUid.set(dayUidKey, cur);
+        }
+      }
+
+      const displayVol = totalPassingSolves || totalSubmissions;
+
+      const segments: VolumeSegment[] = orderedStudentUids
+        .filter((uid) => (volumeByUid.get(uid)?.solves ?? 0) > 0)
+        .map((uid) => {
+          const vol = volumeByUid.get(uid)!;
+          const name = getProfileName(uid, profiles);
+          return {
+            uid,
+            label: name,
+            color: studentColorMap.get(uid) ?? STUDENT_PALETTE[0],
+            value: vol.solves,
+            detail: `${name}: ${vol.solves} solves (${formatDuration(vol.durationSec)})`,
+          };
+        });
+
+      const isAristocratLinked =
+        cipherDef.id === 'aristocrat' && aristocratModeFilter === 'linked';
+      const isAristocratAll =
+        cipherDef.id === 'aristocrat' && aristocratModeFilter === 'all';
+
+      const paceFormat = (v: number) =>
+        isAristocratLinked
+          ? `${v.toFixed(2)}s / uniq`
+          : isAristocratAll
+            ? `${v.toFixed(2)}s`
+            : `${v.toFixed(2)}s / char`;
+
+      const chart = buildStudentSeriesModel({
+        days: Array.from(daySet),
+        uidList: orderedStudentUids,
+        getValue: (day, uid) => {
+          const bucket = paceByDayUid.get(`${day}|${uid}`);
+          if (!bucket || bucket.count <= 0) return null;
+          return Number((bucket.sumPace / bucket.count).toFixed(2));
+        },
+        profiles,
+        studentColorMap,
+        formatValue: paceFormat,
+      });
+
+      return {
+        id: cipherDef.id,
+        label: cipherDef.label,
+        totalPassingSolves,
+        totalSubmissions,
+        totalDurationSec,
+        displayVol,
+        segments,
+        chart,
+        yAxisUnitSuffix: 's',
+        subtitle:
+          cipherDef.id === 'aristocrat'
+            ? aristocratModeFilter === 'linked'
+              ? 'Normalized pace: sec / unique letter'
+              : aristocratModeFilter === 'paper'
+                ? 'Normalized pace: sec / letter'
+                : 'Linked uses sec/unique letter; Paper uses sec/letter'
+            : 'Normalized solve pace (sec / letter)',
+      };
+    });
+
+    const maxSolves = Math.max(1, ...cards.map((c) => c.displayVol));
+    return { cipherCards: cards, maxCipherSolves: maxSolves };
+  }, [
+    aristocratModeFilter,
+    ciphersScope.data?.cipherSeries,
+    effectiveSelectedUid,
+    orderedStudentUids,
+    profiles,
+    studentColorMap,
+  ]);
 
   return (
     <div className="analytics-view">
@@ -503,14 +679,18 @@ export const TeacherAnalyticsView: React.FC<TeacherAnalyticsViewProps> = ({
           type="button"
           className="btn-simple analytics-refresh-btn"
           onClick={handleRefresh}
-          disabled={isLoading}
+          disabled={isAnyLoading}
         >
-          {isLoading ? 'Loading…' : '↻ Refresh'}
+          {isAnyLoading ? 'Loading…' : '↻ Refresh'}
         </button>
       </header>
 
       <div className="analytics-filters-bar">
-        <div className="analytics-window-pills" role="group" aria-label="Time window">
+        <div
+          className="analytics-window-pills"
+          role="group"
+          aria-label="Time window"
+        >
           {WINDOW_OPTIONS.map((opt) => (
             <button
               key={opt.id}
@@ -551,338 +731,356 @@ export const TeacherAnalyticsView: React.FC<TeacherAnalyticsViewProps> = ({
         </div>
       </div>
 
-      {errorMsg && (
-        <div className="analytics-state-banner is-error">{errorMsg}</div>
+      {firstError && (
+        <div className="analytics-state-banner is-error">{firstError}</div>
       )}
 
-      {isLoading && !data && !errorMsg && (
-        <div className="analytics-state-banner">
-          Querying BigQuery practice logs…
+      <div className="analytics-kpi-grid">
+        <div className="analytics-kpi-card">
+          <span className="analytics-kpi-label">Active Practice Time</span>
+          <span className="analytics-kpi-value">
+            {summaryScope.isLoading
+              ? '…'
+              : formatDuration(kpis.totalActiveSec)}
+          </span>
+          <span className="analytics-kpi-sub">
+            Drills, ciphers &amp; test screen time
+          </span>
         </div>
-      )}
 
-      {data && (
-        <>
-          <div className="analytics-kpi-grid">
-            <div className="analytics-kpi-card">
-              <span className="analytics-kpi-label">Active Practice Time</span>
-              <span className="analytics-kpi-value">
-                {formatDuration(kpis.totalActiveSec)}
-              </span>
-              <span className="analytics-kpi-sub">
-                Drills + cipher solves + test screen time
-              </span>
-            </div>
+        <div className="analytics-kpi-card">
+          <span className="analytics-kpi-label">Flashcard Sessions</span>
+          <span className="analytics-kpi-value">
+            {summaryScope.isLoading ? '…' : kpis.drillSessions}
+          </span>
+          <span className="analytics-kpi-sub">
+            {summaryScope.isLoading
+              ? 'Loading…'
+              : `${kpis.drillAnswered} cards answered${
+                  kpis.drillAccuracyPct !== null
+                    ? ` (${kpis.drillAccuracyPct}% accuracy)`
+                    : ''
+                }`}
+          </span>
+        </div>
 
-            <div className="analytics-kpi-card">
-              <span className="analytics-kpi-label">Flashcard Sessions</span>
-              <span className="analytics-kpi-value">{kpis.drillSessions}</span>
-              <span className="analytics-kpi-sub">
-                {kpis.drillAnswered} cards answered
-                {kpis.drillAccuracyPct !== null
-                  ? ` (${kpis.drillAccuracyPct}% accuracy)`
-                  : ''}
-              </span>
-            </div>
+        <div className="analytics-kpi-card">
+          <span className="analytics-kpi-label">Ciphers Solved</span>
+          <span className="analytics-kpi-value">
+            {summaryScope.isLoading ? '…' : kpis.ciphersPassed}
+          </span>
+          <span className="analytics-kpi-sub">
+            {summaryScope.isLoading
+              ? 'Loading…'
+              : `${kpis.ciphersFullScore} full score${
+                  kpis.fullRatePct !== null ? ` (${kpis.fullRatePct}% rate)` : ''
+                }`}
+          </span>
+        </div>
+      </div>
 
-            <div className="analytics-kpi-card">
-              <span className="analytics-kpi-label">Ciphers Solved</span>
-              <span className="analytics-kpi-value">{kpis.ciphersPassed}</span>
-              <span className="analytics-kpi-sub">
-                {kpis.ciphersFullScore} full score
-                {kpis.fullRatePct !== null ? ` (${kpis.fullRatePct}% rate)` : ''}
-              </span>
-            </div>
-
-            <div className="analytics-kpi-card">
-              <span className="analytics-kpi-label">Practice Tests</span>
-              <span className="analytics-kpi-value">
-                {kpis.testsParticipated}
-              </span>
-              <span className="analytics-kpi-sub">
-                Student-test participations logged
-              </span>
-            </div>
+      <section className="analytics-section-card">
+        <div className="analytics-section-header">
+          <div>
+            <h3 className="analytics-section-title">
+              Student Practice Volume &amp; Engagement
+            </h3>
+            <p className="analytics-section-subtitle">
+              Click any student row to focus all charts below.
+            </p>
           </div>
+          {effectiveSelectedUid && (
+            <button
+              type="button"
+              className="btn-simple"
+              onClick={() => setSelectedUid('')}
+            >
+              Show All Students
+            </button>
+          )}
+        </div>
 
-          <section className="analytics-section-card">
-            <div className="analytics-section-header">
-              <div>
-                <h3 className="analytics-section-title">
-                  Student Practice Volume &amp; Engagement
-                </h3>
-                <p className="analytics-section-subtitle">
-                  Click any row to filter charts and breakdowns to that student.
-                </p>
-              </div>
-              {effectiveSelectedUid && (
-                <button
-                  type="button"
-                  className="btn-simple"
-                  onClick={() => setSelectedUid('')}
-                >
-                  Show All Students
-                </button>
-              )}
-            </div>
-
-            {data.studentSummaries.length === 0 ? (
-              <div className="analytics-chart-empty">
-                No practice events recorded in this time window.
-              </div>
-            ) : (
-              <div className="analytics-table-scroll">
-                <table className="analytics-table">
-                  <thead>
-                    <tr>
-                      <th>Student</th>
-                      <th className="is-num">Active Time</th>
-                      <th className="is-num">Drill Sessions</th>
-                      <th className="is-num">Drill Acc</th>
-                      <th className="is-num">Ciphers Solved</th>
-                      <th className="is-num">Test Time</th>
-                      <th className="is-num">Last Active</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.studentSummaries.map((s) => {
-                      const totalSec =
-                        s.drillDurationSec +
-                        s.cipherSolveDurationSec +
-                        s.testActiveSec;
-                      const acc =
-                        s.drillAnswered > 0
-                          ? `${Math.round((s.drillCorrect / s.drillAnswered) * 100)}%`
-                          : '—';
-                      const isRowSelected = effectiveSelectedUid === s.uid;
-                      const role = profiles[s.uid]?.role;
-
-                      return (
-                        <tr
-                          key={s.uid}
-                          className={isRowSelected ? 'is-selected' : ''}
-                          onClick={() =>
-                            setSelectedUid((prev) =>
-                              prev === s.uid ? '' : s.uid
-                            )
-                          }
-                        >
-                          <td>
-                            <span className="analytics-student-cell">
-                              <span>{getProfileName(s.uid, profiles)}</span>
-                              {role === 'teacher' && (
-                                <span className="analytics-role-tag">Coach</span>
-                              )}
-                            </span>
-                          </td>
-                          <td className="is-num">{formatDuration(totalSec)}</td>
-                          <td className="is-num">{s.drillSessions}</td>
-                          <td className="is-num">{acc}</td>
-                          <td className="is-num">
-                            {s.ciphersPassed}
-                            {s.ciphersSolved > s.ciphersPassed
-                              ? ` / ${s.ciphersSolved}`
-                              : ''}
-                          </td>
-                          <td className="is-num">
-                            {formatDuration(s.testActiveSec)}
-                            {s.testsParticipated > 0
-                              ? ` (${s.testsParticipated})`
-                              : ''}
-                          </td>
-                          <td className="is-num">
-                            {formatShortDate(s.lastActiveIso)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-
-          <div className="analytics-two-col">
-            <section className="analytics-section-card">
-              <div className="analytics-section-header">
-                <h3 className="analytics-section-title">Volume by Drill</h3>
-              </div>
-              {drillBreakdown.length === 0 ? (
-                <div className="analytics-chart-empty">No drill sessions yet.</div>
-              ) : (
-                <div className="analytics-bar-list">
-                  {drillBreakdown.map((d) => {
-                    const pct = Math.max(
-                      4,
-                      Math.round((d.sessions / maxDrillSessions) * 100)
-                    );
-                    return (
-                      <div key={d.drillId} className="analytics-bar-row">
-                        <div className="analytics-bar-meta">
-                          <span className="analytics-bar-name">
-                            {DRILL_LABELS[d.drillId] ?? d.drillId}
-                          </span>
-                          <span className="analytics-bar-stat">
-                            {d.sessions} sess · {formatDuration(d.durationSec)} · best{' '}
-                            {d.best60s}
-                          </span>
-                        </div>
-                        <div className="analytics-bar-track">
-                          <div
-                            className="analytics-bar-fill"
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
-
-            <section className="analytics-section-card">
-              <div className="analytics-section-header">
-                <h3 className="analytics-section-title">Volume by Cipher</h3>
-              </div>
-              {cipherBreakdown.length === 0 ? (
-                <div className="analytics-chart-empty">No cipher solves yet.</div>
-              ) : (
-                <div className="analytics-bar-list">
-                  {cipherBreakdown.map((c) => {
-                    const count = c.passingSolves || c.submissions;
-                    const pct = Math.max(
-                      4,
-                      Math.round((count / maxCipherSolves) * 100)
-                    );
-                    const fullPct =
-                      c.submissions > 0
-                        ? Math.round((c.fullScoreCount / c.submissions) * 100)
-                        : 0;
-                    return (
-                      <div key={c.cipher} className="analytics-bar-row">
-                        <div className="analytics-bar-meta">
-                          <span className="analytics-bar-name">
-                            {CIPHER_LABELS[c.cipher] ?? c.cipher}
-                          </span>
-                          <span className="analytics-bar-stat">
-                            {c.passingSolves} passed · {fullPct}% full ·{' '}
-                            {formatDuration(c.durationSec)}
-                          </span>
-                        </div>
-                        <div className="analytics-bar-track">
-                          <div
-                            className="analytics-bar-fill is-cipher"
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
+        {summaryScope.isLoading ? (
+          <div className="analytics-table-loading">
+            <span className="analytics-spinner" aria-hidden="true" />
+            <span>Loading…</span>
           </div>
-
-          <section className="analytics-section-card">
-            <div className="analytics-section-header">
-              <div>
-                <h3 className="analytics-section-title">
-                  Flashcard Fluency Progression (Best 60s Score)
-                </h3>
-                <p className="analytics-section-subtitle">
-                  Daily peak and session average `sessionBest60sScore` over time
-                  (higher is faster).
-                </p>
-              </div>
-              {drillBreakdown.length > 0 && (
-                <div className="analytics-chart-controls">
-                  <select
-                    className="analytics-select"
-                    value={activeDrillId}
-                    onChange={(e) => setSelectedDrillId(e.target.value)}
-                    aria-label="Select drill for 60s progression chart"
-                  >
-                    {drillBreakdown.map((d) => (
-                      <option key={d.drillId} value={d.drillId}>
-                        {DRILL_LABELS[d.drillId] ?? d.drillId}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-
-            <UPlotChart
-              timestamps={drillChartModel.timestamps}
-              dateLabels={drillChartModel.dateLabels}
-              series={drillChartModel.series}
-              yAxisUnitSuffix=" pts"
-              emptyMessage="No flashcard drill sessions recorded for this selection."
-            />
-          </section>
-
-          <section className="analytics-section-card">
-            <div className="analytics-section-header">
-              <div>
-                <h3 className="analytics-section-title">
-                  Cipher Solve Pace Progression
-                </h3>
-                <p className="analytics-section-subtitle">
-                  Normalized pace ({activeCipher === 'aristocrat' && aristocratInputFilter === 'linked'
-                    ? 'elapsedSec / uniqueAlphaCharCount for Linked Aristocrat'
-                    : activeCipher === 'aristocrat'
-                      ? 'elapsedSec / uniqueAlphaCharCount (Linked) or elapsedSec / alphaCharCount (Std/Paper)'
-                      : 'elapsedSec / alphaCharCount'}
-                  ) across passing solves (lower is faster).
-                </p>
-              </div>
-              {cipherBreakdown.length > 0 && (
-                <div className="analytics-chart-controls">
-                  <select
-                    className="analytics-select"
-                    value={activeCipher}
-                    onChange={(e) => setSelectedCipher(e.target.value)}
-                    aria-label="Select cipher for pace progression chart"
-                  >
-                    {cipherBreakdown.map((c) => (
-                      <option key={c.cipher} value={c.cipher}>
-                        {CIPHER_LABELS[c.cipher] ?? c.cipher}
-                      </option>
-                    ))}
-                  </select>
-
-                  {activeCipher === 'aristocrat' && cipherChartModel.hasLinked && (
-                    <select
-                      className="analytics-select"
-                      value={aristocratInputFilter}
-                      onChange={(e) =>
-                        setAristocratInputFilter(
-                          e.target.value as 'all' | 'linked' | 'standard_paper'
+        ) : !summaryScope.data || summaryScope.data.studentSummaries.length === 0 ? (
+          <div className="analytics-chart-empty">
+            No practice activity recorded in this time window.
+          </div>
+        ) : (
+          <div className="analytics-table-scroll">
+            <table className="analytics-table">
+              <thead>
+                <tr>
+                  <th>Student</th>
+                  <th className="is-num">Active Time</th>
+                  <th className="is-num">Drill Sessions</th>
+                  <th className="is-num">Drill Acc</th>
+                  <th className="is-num">Ciphers Solved</th>
+                  <th className="is-num">Last Active</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summaryScope.data.studentSummaries.map((s) => {
+                  const totalSec =
+                    s.drillDurationSec +
+                    s.cipherSolveDurationSec +
+                    s.testActiveSec;
+                  const acc =
+                    s.drillAnswered > 0
+                      ? `${Math.round((s.drillCorrect / s.drillAnswered) * 100)}%`
+                      : '—';
+                  const isSelected = effectiveSelectedUid === s.uid;
+                  const role = profiles[s.uid]?.role;
+                  const swatchColor =
+                    studentColorMap.get(s.uid) ?? STUDENT_PALETTE[0];
+                  return (
+                    <tr
+                      key={s.uid}
+                      className={isSelected ? 'is-selected' : undefined}
+                      onClick={() =>
+                        setSelectedUid((prev) =>
+                          prev === s.uid ? '' : s.uid
                         )
                       }
-                      aria-label="Filter Aristocrat input mode"
                     >
-                      <option value="all">All Input Modes</option>
-                      <option value="linked">Linked Only (s / unique letter)</option>
-                      <option value="standard_paper">
-                        Standard / Paper Only (s / letter)
-                      </option>
-                    </select>
-                  )}
-                </div>
-              )}
+                      <td>
+                        <span className="analytics-student-cell">
+                          <span
+                            className="analytics-student-dot"
+                            style={{ backgroundColor: swatchColor }}
+                            aria-hidden="true"
+                          />
+                          <span>{getProfileName(s.uid, profiles)}</span>
+                          {role === 'teacher' && (
+                            <span className="analytics-role-tag">Coach</span>
+                          )}
+                        </span>
+                      </td>
+                      <td className="is-num">{formatDuration(totalSec)}</td>
+                      <td className="is-num">{s.drillSessions}</td>
+                      <td className="is-num">{acc}</td>
+                      <td className="is-num">
+                        {s.ciphersPassed} / {s.ciphersSolved}
+                      </td>
+                      <td className="is-num">
+                        {formatShortDate(s.lastActiveIso)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* Swipeable / Narrow-viewport tab bar mirroring MainMenu */}
+      <div
+        className="menu-tabs-bar analytics-tabs-bar-wrap"
+        role="tablist"
+        aria-label="Practice category"
+        onKeyDown={handleTabKeyDown}
+      >
+        <div
+          className={`menu-tabs-indicator ${
+            visualActiveTab === 'ciphers' ? 'is-ciphers' : 'is-drills'
+          }${isDragging ? ' is-dragging' : ''}`}
+          style={{
+            transform: `translate3d(${indicatorProgress * 100}%, 0, 0)`,
+          }}
+          aria-hidden="true"
+        />
+        <button
+          id="analytics-tab-drills"
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'drills'}
+          aria-controls="analytics-panel-drills"
+          tabIndex={activeTab === 'drills' ? 0 : -1}
+          className={`menu-tab-btn menu-tab-btn-drills ${
+            visualActiveTab === 'drills' ? 'active' : ''
+          }`}
+          onClick={() => setActiveTab('drills')}
+        >
+          <DrillsTabIcon />
+          <span>Drills</span>
+        </button>
+
+        <button
+          id="analytics-tab-ciphers"
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'ciphers'}
+          aria-controls="analytics-panel-ciphers"
+          tabIndex={activeTab === 'ciphers' ? 0 : -1}
+          className={`menu-tab-btn menu-tab-btn-ciphers ${
+            visualActiveTab === 'ciphers' ? 'active' : ''
+          }`}
+          onClick={() => setActiveTab('ciphers')}
+        >
+          <CiphersTabIcon />
+          <span>Ciphers</span>
+        </button>
+      </div>
+
+      {/* Swipeable Viewport on Narrow Screens / Side-by-Side Grid on Wide Screens */}
+      <div
+        ref={viewportRef}
+        className="menu-panes-viewport analytics-panes-viewport"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={(e) => finishSwipe(e, false)}
+        onPointerCancel={(e) => finishSwipe(e, true)}
+        onClickCapture={handleClickCapture}
+      >
+        <div
+          className={`menu-panes-track analytics-panes-track${isDragging ? ' is-dragging' : ''}`}
+          style={trackTransform ? { transform: trackTransform } : undefined}
+        >
+          <section
+            id="analytics-panel-drills"
+            role={isSideBySide ? 'region' : 'tabpanel'}
+            aria-labelledby={
+              isSideBySide ? 'analytics-heading-drills' : 'analytics-tab-drills'
+            }
+            inert={!isSideBySide && activeTab !== 'drills' ? true : undefined}
+            className="analytics-column"
+          >
+            <div className="analytics-column-header">
+              <h3
+                id="analytics-heading-drills"
+                className="analytics-column-title is-drills"
+              >
+                <DrillsTabIcon />
+                <span>Drills</span>
+              </h3>
+              <span className="analytics-column-subtitle">
+                Volume &amp; daily best 60s score per student
+              </span>
             </div>
 
-            <UPlotChart
-              timestamps={cipherChartModel.timestamps}
-              dateLabels={cipherChartModel.dateLabels}
-              series={cipherChartModel.series}
-              yAxisUnitSuffix="s"
-              emptyMessage="No passing cipher solves with timing recorded for this selection."
-            />
+            {drillCards.map((card) => (
+              <article key={card.id} className="analytics-skill-card">
+                <div className="analytics-skill-header">
+                  <div className="analytics-skill-title-group">
+                    <h4 className="analytics-skill-title">{card.label}</h4>
+                    <span className="analytics-skill-note">
+                      Daily best 60s score by student
+                    </span>
+                  </div>
+                  <div className="analytics-skill-right">
+                    {card.overallBest60s > 0 && (
+                      <span className="analytics-skill-badge">
+                        Peak {card.overallBest60s} pts
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <VolumeBar
+                  label="Practice volume"
+                  statText={
+                    drillsScope.isLoading
+                      ? 'Loading…'
+                      : `${card.totalSessions} ${card.totalSessions === 1 ? 'session' : 'sessions'} · ${formatDuration(card.totalDurationSec)}`
+                  }
+                  segments={card.segments}
+                  totalValue={card.totalSessions}
+                  maxColumnValue={maxDrillSessions}
+                />
+
+                <UPlotChart
+                  timestamps={card.chart.timestamps}
+                  dateLabels={card.chart.dateLabels}
+                  series={card.chart.series}
+                  height={170}
+                  isLoading={drillsScope.isLoading}
+                  emptyWindowSec={emptyWindowSec}
+                  emptyMessage="No activity in this window"
+                />
+              </article>
+            ))}
           </section>
-        </>
-      )}
+
+          <section
+            id="analytics-panel-ciphers"
+            role={isSideBySide ? 'region' : 'tabpanel'}
+            aria-labelledby={
+              isSideBySide ? 'analytics-heading-ciphers' : 'analytics-tab-ciphers'
+            }
+            inert={!isSideBySide && activeTab !== 'ciphers' ? true : undefined}
+            className="analytics-column"
+          >
+            <div className="analytics-column-header">
+              <h3
+                id="analytics-heading-ciphers"
+                className="analytics-column-title is-ciphers"
+              >
+                <CiphersTabIcon />
+                <span>Ciphers</span>
+              </h3>
+              <span className="analytics-column-subtitle">
+                Volume &amp; daily solve pace per student
+              </span>
+            </div>
+
+            {cipherCards.map((card) => (
+              <article key={card.id} className="analytics-skill-card">
+                <div className="analytics-skill-header">
+                  <div className="analytics-skill-title-group">
+                    <h4 className="analytics-skill-title">{card.label}</h4>
+                    <span className="analytics-skill-note">{card.subtitle}</span>
+                  </div>
+                  <div className="analytics-skill-right">
+                    {card.id === 'aristocrat' && (
+                      <select
+                        className="analytics-select analytics-select-compact"
+                        aria-label="Aristocrat input mode"
+                        value={aristocratModeFilter}
+                        onChange={(e) =>
+                          setAristocratModeFilter(
+                            e.target.value as AristocratModeFilter
+                          )
+                        }
+                      >
+                        <option value="all">All Modes</option>
+                        <option value="linked">Linked</option>
+                        <option value="paper">Paper</option>
+                      </select>
+                    )}
+                  </div>
+                </div>
+
+                <VolumeBar
+                  label="Practice volume"
+                  statText={
+                    ciphersScope.isLoading
+                      ? 'Loading…'
+                      : `${card.displayVol} ${card.displayVol === 1 ? 'solve' : 'solves'} · ${formatDuration(card.totalDurationSec)}`
+                  }
+                  segments={card.segments}
+                  totalValue={card.displayVol}
+                  maxColumnValue={maxCipherSolves}
+                />
+
+                <UPlotChart
+                  timestamps={card.chart.timestamps}
+                  dateLabels={card.chart.dateLabels}
+                  series={card.chart.series}
+                  yAxisUnitSuffix={card.yAxisUnitSuffix}
+                  height={170}
+                  isLoading={ciphersScope.isLoading}
+                  emptyWindowSec={emptyWindowSec}
+                  emptyMessage="No activity in this window"
+                />
+              </article>
+            ))}
+          </section>
+        </div>
+      </div>
     </div>
   );
 };

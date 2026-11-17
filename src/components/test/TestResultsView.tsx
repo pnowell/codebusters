@@ -382,13 +382,13 @@ export const TestResultsView: React.FC<TestResultsViewProps> = ({
           <div className="results-contrib-header">
             <h3 className="results-contrib-title">Teammate Contributions</h3>
             <span className="results-contrib-sub">
-              Per-user active screen time &amp; correct inputs from BigQuery
+              Per-user active screen time &amp; correct inputs
             </span>
           </div>
 
           {isBreakdownLoading && (
             <div className="results-contrib-status">
-              Loading teammate activity breakdown…
+              Loading…
             </div>
           )}
 
@@ -402,7 +402,7 @@ export const TestResultsView: React.FC<TestResultsViewProps> = ({
             !breakdownError &&
             teammateTotals.length === 0 && (
               <div className="results-contrib-status">
-                No BigQuery activity rows found yet for this attempt.
+                No activity details recorded yet for this attempt.
               </div>
             )}
 
