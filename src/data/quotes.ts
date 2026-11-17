@@ -100,6 +100,27 @@ export function pickRandomCleanLookupQuote(
   return pool[Math.floor(Math.random() * pool.length)] ?? ALL_QUOTES[0];
 }
 
+const MAX_RIDDLE_OR_FUN_FACT_SHARE = 0.4;
+
+function isRiddleOrFunFactQuote(q: Quote): boolean {
+  return (
+    q.category === 'kid_joke' ||
+    q.category === 'kid_science' ||
+    Boolean(q.tags?.includes('riddle') || q.tags?.includes('fun_fact'))
+  );
+}
+
+function pickWeightedBucket<T>(
+  primary: readonly T[],
+  secondary: readonly T[],
+  primaryWeight: number
+): readonly T[] {
+  if (primary.length > 0 && secondary.length > 0) {
+    return Math.random() < primaryWeight ? primary : secondary;
+  }
+  return primary.length > 0 ? primary : secondary;
+}
+
 function pickFromKidAndGeneralPools(
   basePool: readonly Quote[],
   excludeId: number | undefined,
@@ -109,52 +130,7 @@ function pickFromKidAndGeneralPools(
   const flaggedSet = getFlaggedQuoteIds();
   const reservedSet = getReservedTestQuoteIds();
 
-  const kidPool = basePool.filter(q => q.category && q.category !== 'general');
-  const generalPool = basePool.filter(q => !q.category || q.category === 'general');
-
-  const safeKidPool = kidPool.filter(
-    q =>
-      !flaggedSet.has(q.id) &&
-      !reservedSet.has(q.id) &&
-      isQuoteEligibleForCipher(q, cipher)
-  );
-  const safeGeneralPool = generalPool.filter(
-    q =>
-      !flaggedSet.has(q.id) &&
-      !reservedSet.has(q.id) &&
-      isQuoteEligibleForCipher(q, cipher)
-  );
-
-  // Filter out completed quotes (and current quote if requesting "New") from both pools
-  const uncompletedKid = safeKidPool.filter(
-    q => !completedSet.has(q.id) && q.id !== excludeId
-  );
-  const uncompletedGeneral = safeGeneralPool.filter(
-    q => !completedSet.has(q.id) && q.id !== excludeId
-  );
-
-  const nonCurrentKid = safeKidPool.filter(q => q.id !== excludeId);
-  const nonCurrentGeneral = safeGeneralPool.filter(q => q.id !== excludeId);
-
-  const kidCandidates =
-    uncompletedKid.length > 0
-      ? uncompletedKid
-      : nonCurrentKid.length > 0
-      ? nonCurrentKid
-      : safeKidPool;
-  const generalCandidates =
-    uncompletedGeneral.length > 0
-      ? uncompletedGeneral
-      : nonCurrentGeneral.length > 0
-      ? nonCurrentGeneral
-      : safeGeneralPool;
-
-  // 80% preference for kid-friendly jokes/facts/lyrics/movies, 20% for general quotes
-  const preferKid = Math.random() < 0.8;
-  const primary = preferKid ? kidCandidates : generalCandidates;
-  const secondary = preferKid ? generalCandidates : kidCandidates;
-
-  const fallbackEligible = basePool.filter(
+  const eligiblePool = basePool.filter(
     q =>
       !flaggedSet.has(q.id) &&
       !reservedSet.has(q.id) &&
@@ -163,17 +139,38 @@ function pickFromKidAndGeneralPools(
   const cipherFallback = basePool.filter(q =>
     isQuoteEligibleForCipher(q, cipher)
   );
-
-  const chosenPool =
-    primary.length > 0
-      ? primary
-      : secondary.length > 0
-      ? secondary
-      : fallbackEligible.length > 0
-      ? fallbackEligible
+  const workingPool =
+    eligiblePool.length > 0
+      ? eligiblePool
       : cipherFallback.length > 0
       ? cipherFallback
       : basePool;
+
+  const nonCurrent = workingPool.filter(q => q.id !== excludeId);
+  const nonCurrentOrAll = nonCurrent.length > 0 ? nonCurrent : workingPool;
+  const uncompleted = nonCurrentOrAll.filter(q => !completedSet.has(q.id));
+  const candidatePool = uncompleted.length > 0 ? uncompleted : nonCurrentOrAll;
+
+  const riddleOrFunFactPool = candidatePool.filter(isRiddleOrFunFactQuote);
+  const otherPool = candidatePool.filter(q => !isRiddleOrFunFactQuote(q));
+
+  // Cap riddle + fun_fact quotes at <= 40% (never more than half the time)
+  let chosenPool = pickWeightedBucket(
+    riddleOrFunFactPool,
+    otherPool,
+    MAX_RIDDLE_OR_FUN_FACT_SHARE
+  );
+
+  // Within non-riddle/fun-fact quotes, give movie/book/lyric quotes a modest 20% share when present
+  if (chosenPool === otherPool) {
+    const storyKidPool = otherPool.filter(
+      q => q.category && q.category !== 'general'
+    );
+    const generalPool = otherPool.filter(
+      q => !q.category || q.category === 'general'
+    );
+    chosenPool = pickWeightedBucket(storyKidPool, generalPool, 0.2);
+  }
 
   return chosenPool[Math.floor(Math.random() * chosenPool.length)] ?? ALL_QUOTES[0];
 }
