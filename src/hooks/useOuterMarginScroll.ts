@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 
 const PRIMARY_SCROLL_CONTAINER_SELECTOR = [
   '.menu-container',
+  '.analytics-view',
   '.practice-tests-scroll-list',
   '.test-editor-scroll-body',
   '.quote-browser-virtual-scroller',
