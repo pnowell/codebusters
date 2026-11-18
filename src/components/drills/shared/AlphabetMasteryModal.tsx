@@ -1,6 +1,11 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import {
+  countMasteredDeckCards,
+  getDrillDeckLetters,
+  normalizeDrillDeckProgress,
+} from '../../../hooks/useSpacedDeck';
 import { offsetToLetter } from '../../../utils/ciphers';
-import type { DrillProgress, OffsetsMode } from '../../../types';
+import type { DrillId, DrillProgress, OffsetsMode } from '../../../types';
 import { Modal } from '../../common/Modal';
 
 interface AlphabetMasteryModalProps {
@@ -8,6 +13,7 @@ interface AlphabetMasteryModalProps {
   onClose: () => void;
   progress: DrillProgress;
   onResetProgress: () => void;
+  drillId?: DrillId;
   mode?: OffsetsMode;
   title?: string;
 }
@@ -21,6 +27,7 @@ export const AlphabetMasteryModal: React.FC<AlphabetMasteryModalProps> = ({
   onClose,
   progress,
   onResetProgress,
+  drillId,
   mode,
   title,
 }) => {
@@ -39,13 +46,33 @@ export const AlphabetMasteryModal: React.FC<AlphabetMasteryModalProps> = ({
     onClose();
   };
 
-  const masteredCount = progress
-    ? Object.values(progress).filter(p => p && typeof p === 'object' && (p.streak || 0) >= 3).length
-    : 0;
+  const normalizedProgress = useMemo(
+    () => normalizeDrillDeckProgress(drillId, progress),
+    [drillId, progress]
+  );
+  const deckSize = getDrillDeckLetters(drillId).length;
+  const masteredCount = useMemo(
+    () => countMasteredDeckCards(drillId, normalizedProgress),
+    [drillId, normalizedProgress]
+  );
 
   const renderBadge = (offset: number) => {
     const letter = offsetToLetter(offset);
-    const p = progress[letter];
+    if (
+      (drillId === 'knights' && letter === 'J') ||
+      (drillId === 'tap' && letter === 'K')
+    ) {
+      return null;
+    }
+
+    const displayLabel =
+      drillId === 'knights' && letter === 'I'
+        ? 'I/J'
+        : drillId === 'tap' && letter === 'C'
+          ? 'C/K'
+          : letter;
+    const isDualLetter = displayLabel.length > 1;
+    const p = normalizedProgress[letter];
 
     let statusClass = 'status-unseen';
     let statusLabel = 'Unseen';
@@ -63,12 +90,18 @@ export const AlphabetMasteryModal: React.FC<AlphabetMasteryModalProps> = ({
       }
     }
 
-    const classes = ['mastery-badge', statusClass].join(' ');
-    const badgeTitle = `${letter}: ${statusLabel}`;
+    const classes = [
+      'mastery-badge',
+      isDualLetter ? 'is-dual-letter' : '',
+      statusClass,
+    ]
+      .filter(Boolean)
+      .join(' ');
+    const badgeTitle = `${displayLabel}: ${statusLabel}`;
 
     return (
       <div key={letter} className={classes} title={badgeTitle}>
-        {letter}
+        {displayLabel}
       </div>
     );
   };
@@ -86,7 +119,7 @@ export const AlphabetMasteryModal: React.FC<AlphabetMasteryModalProps> = ({
             {title || `Alphabet Mastery ${mode ? `(${mode === 'numToLetter' ? '# → ABC' : 'ABC → #'})` : ''}`}
           </h3>
           <div className="modal-subtitle" style={{ fontSize: '0.8rem', color: '#34d399', fontWeight: 700, marginTop: '2px' }}>
-            {masteredCount} / 26 Mastered (Streak 3+)
+            {masteredCount} / {deckSize} Mastered (Streak 3+)
           </div>
         </div>
         <button
@@ -131,7 +164,7 @@ export const AlphabetMasteryModal: React.FC<AlphabetMasteryModalProps> = ({
         {!isConfirmingReset ? (
           <>
             <div className="modal-danger-warning">
-              ⚠️ <strong>Reset Notice:</strong> Resetting clears individual letter streaks and returns all 26 letters to unseen in the deck.
+              ⚠️ <strong>Reset Notice:</strong> Resetting clears individual letter streaks and returns all {deckSize} {deckSize === 25 ? 'symbols' : 'letters'} to unseen in the deck.
             </div>
             <button
               type="button"
@@ -144,7 +177,7 @@ export const AlphabetMasteryModal: React.FC<AlphabetMasteryModalProps> = ({
         ) : (
           <div className="modal-confirm-reset-box">
             <div className="modal-danger-warning" style={{ color: '#f87171', fontWeight: 600 }}>
-              Are you sure you want to reset all letter mastery streaks? All 26 letters will return to unseen.
+              Are you sure you want to reset all letter mastery streaks? All {deckSize} {deckSize === 25 ? 'symbols' : 'letters'} will return to unseen.
             </div>
             <div className="modal-confirm-actions">
               <button

@@ -60,8 +60,6 @@ const CIPHER_INFO: Record<
   },
 };
 
-const DUAL_LETTER_CONFIRM_MS = 420;
-
 const NON_ANSWER_KEYS = new Set([
   'Shift',
   'Control',
@@ -80,6 +78,7 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
   const {
     progress,
     masteredCount,
+    deckSize,
     currentLetter,
     recordAttempt,
     advanceCard,
@@ -116,28 +115,11 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
   const [isMasteryOpen, setIsMasteryOpen] = useState<boolean>(false);
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState<boolean>(false);
   const [inputVal, setInputVal] = useState<string>('');
-  const [confirmReveal, setConfirmReveal] = useState<string | null>(null);
   const [totalQuestions, setTotalQuestions] = useState<number>(0);
   const [correctQuestions, setCorrectQuestions] = useState<number>(0);
   const isAnyDialogOpen = isMasteryOpen || isLeaderboardOpen;
 
   const answerInputRef = useRef<HTMLInputElement | null>(null);
-  const isConfirmingRef = useRef<boolean>(false);
-  const confirmTimerRef = useRef<number | null>(null);
-
-  const clearConfirmTimer = useCallback(() => {
-    if (confirmTimerRef.current !== null) {
-      window.clearTimeout(confirmTimerRef.current);
-      confirmTimerRef.current = null;
-    }
-    isConfirmingRef.current = false;
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      clearConfirmTimer();
-    };
-  }, [clearConfirmTimer]);
 
   const focusAnswerInput = useCallback(() => {
     setTimeout(() => {
@@ -152,8 +134,6 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
   }, [currentLetter]);
 
   const handleResetProgress = () => {
-    clearConfirmTimer();
-    setConfirmReveal(null);
     clearWrongLockout();
     resetProgress();
     setIsMasteryOpen(false);
@@ -164,9 +144,6 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
   const confirmAnswerWithChar = useCallback(
     (answeredChar: string) => {
       if (isAnyDialogOpen || document.querySelector('[role="dialog"]')) {
-        return;
-      }
-      if (isConfirmingRef.current) {
         return;
       }
       if (isLockedRef.current) {
@@ -196,30 +173,16 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
       if (isCorrect) {
         setCorrectQuestions((prev) => prev + 1);
         recordHit();
-
-        if (dualPairLabel) {
-          recordAttempt(true, false);
-          spawnGhost(`${dualPairLabel} ✓`);
-          isConfirmingRef.current = true;
-          setConfirmReveal(dualPairLabel);
-          confirmTimerRef.current = window.setTimeout(() => {
-            confirmTimerRef.current = null;
-            isConfirmingRef.current = false;
-            setConfirmReveal(null);
-            setInputVal('');
-            advanceCard();
-            focusAnswerInput();
-          }, DUAL_LETTER_CONFIRM_MS);
-        } else {
-          recordAttempt(true, true);
-          spawnGhost(
-            cipher === 'atbash'
+        recordAttempt(true, true);
+        spawnGhost(
+          dualPairLabel
+            ? `${dualPairLabel} ✓`
+            : cipher === 'atbash'
               ? `${atbashChar(currentLetter)} ➔ ${currentLetter} ✓`
               : `${currentLetter} ✓`
-          );
-          setInputVal('');
-          focusAnswerInput();
-        }
+        );
+        setInputVal('');
+        focusAnswerInput();
       } else {
         setInputVal('');
         recordMiss();
@@ -273,13 +236,6 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
         return;
       }
 
-      if (isConfirmingRef.current) {
-        if (!NON_ANSWER_KEYS.has(e.key)) {
-          e.preventDefault();
-        }
-        return;
-      }
-
       const {
         confirmAnswerWithChar: handleChar,
         registerBlockedInput: handleBlocked,
@@ -326,7 +282,7 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
       onAdvanceWarmup={handleAdvanceWarmup}
       menuProps={{
         masteryAction: !isLargeStage
-          ? { masteredCount, onOpen: () => setIsMasteryOpen(true) }
+          ? { masteredCount, totalCount: deckSize, onOpen: () => setIsMasteryOpen(true) }
           : undefined,
         onOpenLeaderboard:
           !isLargeStage && isAllowed ? () => setIsLeaderboardOpen(true) : undefined,
@@ -388,6 +344,7 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
               isLargeStage
                 ? {
                     masteredCount,
+                    totalCount: deckSize,
                     onOpenMastery: () => setIsMasteryOpen(true),
                     onOpenLeaderboard: isAllowed
                       ? () => setIsLeaderboardOpen(true)
@@ -396,7 +353,6 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
                 : undefined
             }
             layout={cipher === 'tap' ? 'stacked' : 'horizontal'}
-            confirmReveal={confirmReveal}
             isWrong={isWrong}
             wrongAnswer={wrongAnswer}
             correctAnswer={correctAnswer}
@@ -411,9 +367,6 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
             maxLength={1}
             onInputChange={(e) => {
               if (isAnyDialogOpen || document.querySelector('[role="dialog"]')) {
-                return;
-              }
-              if (isConfirmingRef.current) {
                 return;
               }
               if (isLockedRef.current) {
@@ -433,12 +386,6 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
               }
               if (e.repeat && (e.key === 'Enter' || e.key === 'Backspace')) {
                 e.preventDefault();
-                return;
-              }
-              if (isConfirmingRef.current) {
-                if (!NON_ANSWER_KEYS.has(e.key)) {
-                  e.preventDefault();
-                }
                 return;
               }
               if (isLockedRef.current) {
@@ -465,6 +412,7 @@ export const SymbolDrill: React.FC<SymbolDrillProps> = ({ cipher, onBack, workou
         }}
         progress={progress}
         onResetProgress={handleResetProgress}
+        drillId={cipher}
         title={`${info.shortTitle} Alphabet Mastery`}
       />
 

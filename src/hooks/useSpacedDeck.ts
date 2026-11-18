@@ -8,6 +8,72 @@ import {
 import type { DrillId, DrillProgress } from '../types';
 
 const ALL_LETTERS: readonly string[] = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+const KNIGHTS_DECK_LETTERS: readonly string[] = ALL_LETTERS.filter((l) => l !== 'J');
+const TAP_DECK_LETTERS: readonly string[] = ALL_LETTERS.filter((l) => l !== 'K');
+
+/**
+ * Returns the canonical deck letters for a flashcard drill:
+ * - Knights Templar: 25 letters ('I' represents the combined I/J symbol; 'J' is omitted)
+ * - Tap Code: 25 letters ('C' represents the combined C/K symbol; 'K' is omitted)
+ * - All other drills: 26 letters (A-Z)
+ */
+export function getDrillDeckLetters(drillId?: DrillId): readonly string[] {
+  if (drillId === 'knights') return KNIGHTS_DECK_LETTERS;
+  if (drillId === 'tap') return TAP_DECK_LETTERS;
+  return ALL_LETTERS;
+}
+
+/**
+ * Merges any legacy progress stored under the omitted twin letter ('J' for Knights,
+ * 'K' for Tap Code) into its canonical representative ('I' or 'C').
+ */
+export function normalizeDrillDeckProgress(
+  drillId: DrillId | undefined,
+  progress?: DrillProgress
+): DrillProgress {
+  if (!progress) return {};
+  const pair =
+    drillId === 'knights'
+      ? ({ primary: 'I', omitted: 'J' } as const)
+      : drillId === 'tap'
+        ? ({ primary: 'C', omitted: 'K' } as const)
+        : null;
+  if (!pair || !(pair.omitted in progress)) {
+    return progress;
+  }
+
+  const next: DrillProgress = { ...progress };
+  const omittedEntry = next[pair.omitted];
+  delete next[pair.omitted];
+
+  if (omittedEntry && typeof omittedEntry === 'object' && omittedEntry.attempts > 0) {
+    const primaryEntry = next[pair.primary] || { streak: 0, attempts: 0, correct: 0 };
+    next[pair.primary] = {
+      streak: Math.max(primaryEntry.streak || 0, omittedEntry.streak || 0),
+      attempts: (primaryEntry.attempts || 0) + (omittedEntry.attempts || 0),
+      correct: (primaryEntry.correct || 0) + (omittedEntry.correct || 0),
+    };
+  }
+
+  return next;
+}
+
+export function countMasteredDeckCards(
+  drillId: DrillId | undefined,
+  progress?: DrillProgress
+): number {
+  if (!progress) return 0;
+  const normalized = normalizeDrillDeckProgress(drillId, progress);
+  const deckLetters = getDrillDeckLetters(drillId);
+  let count = 0;
+  for (const letter of deckLetters) {
+    const p = normalized[letter];
+    if (p && typeof p === 'object' && (p.streak || 0) >= 3) {
+      count += 1;
+    }
+  }
+  return count;
+}
 
 function shuffle<T>(arr: readonly T[] | T[]): T[] {
   const copy = [...arr];
@@ -41,12 +107,12 @@ function getMasteredInsertIndex(deckLength: number): number {
   return Math.max(0, deckLength - offsetFromBack);
 }
 
-function initDeck(progress: DrillProgress): string[] {
+function initDeck(progress: DrillProgress, deckLetters: readonly string[]): string[] {
   const learningOrMissed: string[] = [];
   const unseen: string[] = [];
   const mastered: string[] = [];
 
-  for (const letter of ALL_LETTERS) {
+  for (const letter of deckLetters) {
     const p = progress ? progress[letter] : undefined;
     if (!p || typeof p !== 'object' || p.attempts === 0) {
       unseen.push(letter);
@@ -57,9 +123,9 @@ function initDeck(progress: DrillProgress): string[] {
     }
   }
 
-  // Fresh start or reset (all 26 unseen): fully shuffle all 26 letters
-  if (unseen.length === 26) {
-    return shuffle(ALL_LETTERS);
+  // Fresh start or reset (all unseen): fully shuffle all deck letters
+  if (unseen.length === deckLetters.length) {
+    return shuffle(deckLetters);
   }
 
   // Resumed progress: learning items come first, then unseen, then mastered
@@ -71,9 +137,12 @@ function initDeck(progress: DrillProgress): string[] {
 }
 
 export function useSpacedDeck(drillId: DrillId) {
+  const deckLetters = useMemo(() => getDrillDeckLetters(drillId), [drillId]);
+
   const [initialState] = useState(() => {
-    const initialProgress = loadDrillProgress(drillId);
-    const initialDeck = initDeck(initialProgress);
+    const rawProgress = loadDrillProgress(drillId);
+    const initialProgress = normalizeDrillDeckProgress(drillId, rawProgress);
+    const initialDeck = initDeck(initialProgress, getDrillDeckLetters(drillId));
     const initialLetter = initialDeck[0] ?? 'A';
     return { initialProgress, initialDeck, initialLetter };
   });
@@ -85,10 +154,12 @@ export function useSpacedDeck(drillId: DrillId) {
   const advanceCard = useCallback((): string => {
     const deck = deckQueueRef.current;
     const nextLetter =
-      deck.length > 0 ? deck[0] : ALL_LETTERS[Math.floor(Math.random() * 26)];
+      deck.length > 0
+        ? deck[0]
+        : deckLetters[Math.floor(Math.random() * deckLetters.length)];
     setCurrentLetter(nextLetter);
     return nextLetter;
-  }, []);
+  }, [deckLetters]);
 
   const recordAttempt = useCallback(
     (isCorrect: boolean, advanceImmediately = isCorrect) => {
@@ -175,17 +246,14 @@ export function useSpacedDeck(drillId: DrillId) {
     resetDrillProgress(drillId);
     const freshProgress: DrillProgress = {};
     setProgress(freshProgress);
-    const freshDeck = initDeck(freshProgress);
+    const freshDeck = initDeck(freshProgress, deckLetters);
     deckQueueRef.current = freshDeck;
     setCurrentLetter(freshDeck[0] ?? 'A');
-  }, [drillId]);
+  }, [deckLetters, drillId]);
 
   const masteredCount = useMemo(
-    () =>
-      Object.values(progress).filter(
-        (p) => p && typeof p === 'object' && (p.streak || 0) >= 3
-      ).length,
-    [progress]
+    () => countMasteredDeckCards(drillId, progress),
+    [drillId, progress]
   );
 
   const currentOffset = letterToOffset(currentLetter);
@@ -193,6 +261,7 @@ export function useSpacedDeck(drillId: DrillId) {
   return {
     progress,
     masteredCount,
+    deckSize: deckLetters.length,
     currentLetter,
     currentOffset,
     recordAttempt,

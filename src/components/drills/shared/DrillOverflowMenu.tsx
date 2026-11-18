@@ -11,6 +11,7 @@ export interface DrillOverflowMenuProps {
   onSelectMode?: (modeId: string) => void;
   masteryAction?: {
     masteredCount: number;
+    totalCount?: number;
     onOpen: () => void;
   };
   onOpenLeaderboard?: () => void;
@@ -168,7 +169,7 @@ export const DrillOverflowMenu: React.FC<DrillOverflowMenuProps> = ({
                 >
                   <span>📊 Alphabet Mastery</span>
                   <span className="popover-action-badge">
-                    {masteryAction.masteredCount}/26
+                    {masteryAction.masteredCount}/{masteryAction.totalCount ?? 26}
                   </span>
                 </button>
               )}

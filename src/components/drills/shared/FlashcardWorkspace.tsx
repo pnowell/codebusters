@@ -14,6 +14,7 @@ export interface FlashcardStats {
 
 export interface FlashcardStageActions {
   masteredCount?: number;
+  totalCount?: number;
   onOpenMastery?: () => void;
   onOpenLeaderboard?: () => void;
 }
@@ -27,7 +28,6 @@ export interface FlashcardWorkspaceProps {
   stats: FlashcardStats;
   stageActions?: FlashcardStageActions;
   layout?: 'horizontal' | 'stacked';
-  confirmReveal?: string | null;
   isWrong: boolean;
   wrongAnswer?: string | null;
   correctAnswer?: string | null;
@@ -58,7 +58,6 @@ export const FlashcardWorkspace: React.FC<FlashcardWorkspaceProps> = ({
   stats,
   stageActions,
   layout = 'horizontal',
-  confirmReveal = null,
   isWrong,
   wrongAnswer = null,
   correctAnswer = null,
@@ -91,11 +90,8 @@ export const FlashcardWorkspace: React.FC<FlashcardWorkspaceProps> = ({
       : 'wrong-shake-b'
     : '';
 
-  const isConfirming = !isWrong && confirmReveal !== null;
-  const hideNativeInput = isWrong || isConfirming;
   const isWideAnswer = Boolean(
-    (isConfirming && confirmReveal.length > 1) ||
-      (isWrong && correctAnswer && correctAnswer.length > 1)
+    isWrong && correctAnswer && correctAnswer.length > 1
   );
 
   const accuracyPct =
@@ -175,14 +171,13 @@ export const FlashcardWorkspace: React.FC<FlashcardWorkspaceProps> = ({
                   className={[
                     'user-answer-box-wrapper',
                     isWrong ? 'is-locked' : '',
-                    isConfirming ? 'is-correct-confirm' : '',
                     isWideAnswer ? 'is-wide-answer' : '',
                     shakeClass,
                   ]
                     .filter(Boolean)
                     .join(' ')}
                   onClick={() => {
-                    if (!hideNativeInput) {
+                    if (!isWrong) {
                       inputRef.current?.focus();
                     }
                   }}
@@ -198,24 +193,13 @@ export const FlashcardWorkspace: React.FC<FlashcardWorkspaceProps> = ({
                     spellCheck="false"
                     enterKeyHint="done"
                     maxLength={maxLength}
-                    aria-disabled={hideNativeInput}
-                    className={`user-answer-native-input ${hideNativeInput ? 'is-hidden-for-reveal' : ''}`.trim()}
+                    aria-disabled={isWrong}
+                    className={`user-answer-native-input ${isWrong ? 'is-hidden-for-reveal' : ''}`.trim()}
                     value={inputVal}
                     placeholder="?"
                     onChange={onInputChange}
                     onKeyDown={onInputKeyDown}
                   />
-
-                  {isConfirming && (
-                    <span
-                      className="correct-confirm-reveal"
-                      role="status"
-                      aria-live="polite"
-                      aria-label={`Correct answer ${confirmReveal}`}
-                    >
-                      {confirmReveal}
-                    </span>
-                  )}
 
                   {isWrong && correctAnswer !== null && (
                     <span
@@ -243,7 +227,7 @@ export const FlashcardWorkspace: React.FC<FlashcardWorkspaceProps> = ({
               {inlineSubmit && (
                 <button
                   type="button"
-                  className={`btn-inline-submit ${hideNativeInput ? 'is-hidden-for-reveal' : ''}`.trim()}
+                  className={`btn-inline-submit ${isWrong ? 'is-hidden-for-reveal' : ''}`.trim()}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={inlineSubmit.onSubmit}
                   disabled={inlineSubmit.disabled}
@@ -289,7 +273,7 @@ export const FlashcardWorkspace: React.FC<FlashcardWorkspaceProps> = ({
               >
                 <span>📊 Alphabet Mastery</span>
                 <span className="popover-action-badge">
-                  {stageActions.masteredCount ?? 0}/26
+                  {stageActions.masteredCount ?? 0}/{stageActions.totalCount ?? 26}
                 </span>
               </button>
             )}

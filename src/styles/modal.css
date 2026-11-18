@@ -450,6 +450,11 @@
   box-sizing: border-box;
 }
 
+.mastery-badge.is-dual-letter {
+  grid-column: span 2;
+  letter-spacing: -0.02em;
+}
+
 .mastery-badge.status-unseen {
   background: rgba(255, 255, 255, 0.04);
   color: var(--text-muted);

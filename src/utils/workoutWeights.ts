@@ -1,5 +1,9 @@
 import { IMPLEMENTED_DRILLS, type CipherType } from '../data/drills';
 import {
+  countMasteredDeckCards,
+  getDrillDeckLetters,
+} from '../hooks/useSpacedDeck';
+import {
   loadAllDrillHistory,
   loadAllDrillProgress,
   loadAllDrillScores,
@@ -11,7 +15,6 @@ import {
 } from '../services/storage';
 import type {
   DrillId,
-  DrillProgress,
   LetterMathMode,
   OffsetsMode,
 } from '../types';
@@ -81,7 +84,6 @@ export const CIPHER_PRACTICE_EXPECTED_POINTS: Readonly<
   aristocrat: 180,
 };
 
-const DECK_SIZE = 26;
 const SKILL_FLOOR = 0.15;
 const SKILL_DECAY_RATE = 2.0;
 const RECENCY_MIN = 0.05;
@@ -116,13 +118,6 @@ function drawWeightedItem<T extends { weight: number }>(
   return items[items.length - 1];
 }
 
-function countMasteredCards(progress?: DrillProgress): number {
-  if (!progress) return 0;
-  return Object.values(progress).filter(
-    (entry) => entry && typeof entry === 'object' && (entry.streak || 0) >= 3
-  ).length;
-}
-
 function getEffectiveMean60s(
   drillId: DrillId,
   scores: DrillScoresRecord,
@@ -150,8 +145,9 @@ function computeDrillProficiency(
     return { proficiency: speedRatio, mean60s, masteredCount: 0 };
   }
 
-  const masteredCount = countMasteredCards(progress[drillId]);
-  const masteryRatio = Math.min(1, masteredCount / DECK_SIZE);
+  const deckSize = getDrillDeckLetters(drillId).length;
+  const masteredCount = countMasteredDeckCards(drillId, progress[drillId]);
+  const masteryRatio = Math.min(1, masteredCount / deckSize);
   const proficiency = 0.65 * speedRatio + 0.35 * masteryRatio;
   return { proficiency, mean60s, masteredCount };
 }
