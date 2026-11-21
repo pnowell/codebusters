@@ -121,6 +121,26 @@ export function isValidCaesarAnyOffset(val: unknown): val is number {
 }
 
 /**
+ * Normalizes any non-zero integer Caesar shift (signed `-25..25` or unsigned `1..25`)
+ * into its canonical signed offset in `[-12..-1, 1..13]`. Returns `undefined` for `0` or non-integers.
+ */
+export function normalizeCaesarOffset(val: unknown): number | undefined {
+  if (typeof val !== 'number' || !Number.isInteger(val)) return undefined;
+  const mod = ((val % 26) + 26) % 26;
+  if (mod === 0) return undefined;
+  return mod > 13 ? mod - 26 : mod;
+}
+
+/**
+ * Converts a Caesar shift into its unsigned modulo-26 residue (`1..25` for valid shifts, `0` otherwise)
+ * suitable for `uint32` Protobuf serialization in share links.
+ */
+export function toUnsignedCaesarOffset(val: unknown): number {
+  if (typeof val !== 'number' || !Number.isFinite(val)) return 0;
+  return ((Math.trunc(val) % 26) + 26) % 26;
+}
+
+/**
  * Caesar mapping: shifts A-Z by `offset` modulo 26 (`cipher = (plain + offset) mod 26`).
  * Non-alphabetic characters are returned unchanged.
  */

@@ -1,4 +1,5 @@
 import { isCipherType, isTestableCipher } from '../data/drills';
+import { normalizeCaesarOffset } from '../utils/ciphers';
 import type {
   ActiveCipherSessionSnapshot,
   AristocratCornerTuple,
@@ -900,6 +901,7 @@ export function sanitizeActiveCipherSession(
   const meaningfullySeen = Boolean(obj.meaningfullySeen);
   const isSubmitted = Boolean(obj.isSubmitted);
   const result = isSubmitted ? sanitizeEvaluationResult(obj.result) : null;
+  const normalizedCaesarOffset = normalizeCaesarOffset(obj.caesarOffset);
 
   return {
     version: 1,
@@ -909,10 +911,8 @@ export function sanitizeActiveCipherSession(
     ...(caesarRange ? { caesarRange } : {}),
     ...(aristocratDifficulty ? { aristocratDifficulty } : {}),
     quoteId: obj.quoteId,
-    ...(typeof obj.caesarOffset === 'number' &&
-    obj.caesarOffset >= 1 &&
-    obj.caesarOffset <= 25
-      ? { caesarOffset: Math.trunc(obj.caesarOffset) }
+    ...(normalizedCaesarOffset !== undefined
+      ? { caesarOffset: normalizedCaesarOffset }
       : {}),
     ...(typeof obj.vigenereKeyword === 'string' && obj.vigenereKeyword.length > 0
       ? { vigenereKeyword: obj.vigenereKeyword.slice(0, 16) }

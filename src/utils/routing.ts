@@ -5,6 +5,7 @@ import type {
   LetterMathMode,
   OffsetsMode,
 } from '../types';
+import { normalizeCaesarOffset } from './ciphers';
 
 export type DrillSection = 'memorize' | 'cipher';
 export type TestEditorTab = 'questions' | 'teams';
@@ -15,6 +16,7 @@ export interface Route {
   offsetsMode?: OffsetsMode;
   letterMathMode?: LetterMathMode;
   caesarRange?: CaesarRangeMode;
+  caesarOffset?: number;
   aristocratDifficulty?: AristocratDifficulty;
   quoteId?: number;
   shareToken?: string;
@@ -58,6 +60,7 @@ function isTestEditorTab(val: string | null): val is TestEditorTab {
 const SAFE_TEST_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
 const SAFE_ATTEMPT_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,240}$/;
 const SAFE_SHARE_TOKEN_PARAM_RE = /^[0-9A-Za-z]{1,128}$/;
+const SAFE_CAESAR_OFFSET_PARAM_RE = /^[+-]?\d{1,2}$/;
 
 export function getDefaultEditorTab(editTarget: string): TestEditorTab {
   return editTarget === 'new' ? 'questions' : 'teams';
@@ -70,6 +73,7 @@ export function parseUrlRoute(search = window.location.search): Route {
   const drillParam = p.get('drill');
   const modeParam = p.get('mode');
   const q = p.get('q');
+  const offsetRaw = p.get('offset');
   const testRaw = p.get('test');
   const spectateRaw = p.get('spectate');
   const tests = p.get('tests');
@@ -100,6 +104,28 @@ export function parseUrlRoute(search = window.location.search): Route {
     }
   }
 
+  let caesarOffset: number | undefined;
+  if (
+    !shareToken &&
+    drill === 'caesar' &&
+    section === 'cipher' &&
+    offsetRaw !== null
+  ) {
+    // URLSearchParams decodes unescaped '+' in `?offset=+2` to a leading space `' 2'`
+    const trimmedOffset = offsetRaw.trim();
+    if (SAFE_CAESAR_OFFSET_PARAM_RE.test(trimmedOffset)) {
+      const parsedOffset = parseInt(trimmedOffset, 10);
+      if (parsedOffset >= -25 && parsedOffset <= 25 && parsedOffset !== 0) {
+        caesarOffset = normalizeCaesarOffset(parsedOffset);
+      }
+    }
+  }
+
+  const caesarRange: CaesarRangeMode | undefined =
+    drill === 'caesar' && section === 'cipher' && isCaesarRangeMode(modeParam)
+      ? modeParam
+      : undefined;
+
   const testId =
     testRaw && SAFE_TEST_ID_RE.test(testRaw) ? testRaw : undefined;
   const spectateAttemptId =
@@ -120,10 +146,8 @@ export function parseUrlRoute(search = window.location.search): Route {
       drill === 'letterMath' && isLetterMathMode(modeParam)
         ? modeParam
         : undefined,
-    caesarRange:
-      drill === 'caesar' && section === 'cipher' && isCaesarRangeMode(modeParam)
-        ? modeParam
-        : undefined,
+    caesarRange,
+    caesarOffset,
     aristocratDifficulty:
       drill === 'aristocrat' &&
       section === 'cipher' &&
@@ -150,7 +174,7 @@ export function parseUrlRoute(search = window.location.search): Route {
   };
 }
 
-/** Returns a URL for the current path with share/drill/cipher/mode/q/test/spectate/tests/results/editTest/quotes/analytics set (or removed). */
+/** Returns a URL for the current path with share/drill/cipher/mode/q/offset/test/spectate/tests/results/editTest/quotes/analytics set (or removed). */
 export function buildRouteUrl(route: Route): string {
   const p = new URLSearchParams(window.location.search);
   p.delete('unlocked');
@@ -162,6 +186,7 @@ export function buildRouteUrl(route: Route): string {
     p.delete('cipher');
     p.delete('mode');
     p.delete('q');
+    p.delete('offset');
     p.delete('test');
     p.delete('spectate');
     p.delete('tests');
@@ -212,6 +237,15 @@ export function buildRouteUrl(route: Route): string {
 
   if (route.drill && route.quoteId !== undefined) p.set('q', String(route.quoteId));
   else p.delete('q');
+  if (
+    route.drill === 'caesar' &&
+    route.section === 'cipher' &&
+    route.caesarOffset !== undefined
+  ) {
+    p.set('offset', String(route.caesarOffset));
+  } else {
+    p.delete('offset');
+  }
   if (route.testId) p.set('test', route.testId);
   else p.delete('test');
   if (route.testId && route.spectateAttemptId) p.set('spectate', route.spectateAttemptId);

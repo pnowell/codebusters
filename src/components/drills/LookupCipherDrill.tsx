@@ -91,6 +91,8 @@ interface LookupCipherDrillProps {
   isTeacher?: boolean;
   /** Teacher-only `?q=<id>` override */
   initialQuoteId?: number;
+  /** Teacher-only `?offset=<shift>` override for Caesar demonstrations */
+  initialCaesarOffset?: number;
   onClearExplicitQuote?: () => void;
   /** Decoded `?share=<token>` exercise config */
   shareToken?: string;
@@ -152,6 +154,7 @@ function freshPuzzle(
   aristocratDifficulty: AristocratDifficulty,
   options?: {
     deterministic?: boolean;
+    explicitCaesarOffset?: number;
     prevOffset?: number;
     prevKeyword?: string;
     prevAlphabet?: string;
@@ -166,9 +169,11 @@ function freshPuzzle(
     cipher === 'caesar'
       ? shared?.caesarOffset !== undefined
         ? shared.caesarOffset
-        : options?.deterministic
-          ? deterministicCaesarOffset(quote.id, caesarRange)
-          : pickRandomCaesarOffset(caesarRange, options?.prevOffset)
+        : options?.explicitCaesarOffset !== undefined
+          ? options.explicitCaesarOffset
+          : options?.deterministic
+            ? deterministicCaesarOffset(quote.id, caesarRange)
+            : pickRandomCaesarOffset(caesarRange, options?.prevOffset)
       : undefined;
 
   const vigenereKeyword =
@@ -313,12 +318,13 @@ interface InitialDrillState {
 
 export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
   cipher,
-  caesarRange = 'pm3',
+  caesarRange: caesarRangeProp = 'pm3',
   aristocratDifficulty,
   onAristocratDifficultyChange,
   onBack,
   isTeacher = false,
   initialQuoteId,
+  initialCaesarOffset,
   onClearExplicitQuote,
   shareToken,
   sharedConfig,
@@ -339,6 +345,16 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
   const [explicitQuoteCleared, setExplicitQuoteCleared] = useState(false);
   const activeExplicitQuoteId =
     !isSharedExercise && !explicitQuoteCleared ? initialQuoteId : undefined;
+  const activeExplicitCaesarOffset =
+    !isSharedExercise && !explicitQuoteCleared && cipher === 'caesar'
+      ? initialCaesarOffset
+      : undefined;
+
+  const caesarRange: CaesarRangeMode =
+    activeExplicitCaesarOffset !== undefined &&
+    Math.abs(activeExplicitCaesarOffset) > 3
+      ? 'any'
+      : caesarRangeProp;
 
   const sessionKey = useMemo(
     () =>
@@ -346,11 +362,13 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
         shareToken,
         workoutContext,
         explicitTeacherQuoteId: activeExplicitQuoteId,
+        explicitTeacherCaesarOffset: activeExplicitCaesarOffset,
         cipher,
         caesarRange,
         aristocratDifficulty: effectiveAristocratDifficulty,
       }),
     [
+      activeExplicitCaesarOffset,
       activeExplicitQuoteId,
       caesarRange,
       cipher,
@@ -460,7 +478,10 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
           cipher,
           caesarRange,
           effectiveAristocratDifficulty,
-          { deterministic: true }
+          {
+            deterministic: true,
+            explicitCaesarOffset: activeExplicitCaesarOffset,
+          }
         ),
         elapsedMs: 0,
         meaningfullySeen: false,
@@ -482,7 +503,8 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
             randomQuote,
             cipher,
             caesarRange,
-            effectiveAristocratDifficulty
+            effectiveAristocratDifficulty,
+            { explicitCaesarOffset: activeExplicitCaesarOffset }
           )
         : null,
       elapsedMs: 0,
@@ -799,7 +821,10 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
       effectiveAristocratDifficulty
     );
     if (nextQ) {
-      if (activeExplicitQuoteId !== undefined) {
+      if (
+        activeExplicitQuoteId !== undefined ||
+        activeExplicitCaesarOffset !== undefined
+      ) {
         setExplicitQuoteCleared(true);
         onClearExplicitQuote?.();
       }
@@ -811,7 +836,7 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
         freshPuzzle(
           nextQ,
           cipher,
-          caesarRange,
+          caesarRangeProp,
           effectiveAristocratDifficulty,
           {
             prevOffset: prev?.caesarOffset,
@@ -826,8 +851,9 @@ export const LookupCipherDrill: React.FC<LookupCipherDrillProps> = ({
       resetTimer();
     }
   }, [
+    activeExplicitCaesarOffset,
     activeExplicitQuoteId,
-    caesarRange,
+    caesarRangeProp,
     cipher,
     effectiveAristocratDifficulty,
     onClearExplicitQuote,

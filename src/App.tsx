@@ -121,6 +121,7 @@ type ActiveScreen =
       offsetsMode?: OffsetsMode;
       letterMathMode?: LetterMathMode;
       caesarRange?: CaesarRangeMode;
+      caesarOffset?: number;
       aristocratDifficulty?: AristocratDifficulty;
       quoteId?: number;
     }
@@ -178,6 +179,7 @@ function initScreen(): ActiveScreen {
       offsetsMode: route.offsetsMode,
       letterMathMode: route.letterMathMode,
       caesarRange: route.caesarRange,
+      caesarOffset: route.caesarOffset,
       aristocratDifficulty: route.aristocratDifficulty,
       quoteId: route.quoteId,
     };
@@ -536,11 +538,14 @@ export const App: React.FC = () => {
     }
   }, [screen]);
 
-  // Redirect non-teachers away from teacher-only routes (?editTest=..., ?quotes=true, ?spectate=..., or raw ?q=...)
+  // Redirect non-teachers away from teacher-only routes (?editTest=..., ?quotes=true, ?spectate=..., or raw ?q=... / ?offset=...)
   useEffect(() => {
     if (isAuthLoading || isTeacher) return;
 
-    if (screen.kind === 'drill' && screen.quoteId !== undefined) {
+    if (
+      screen.kind === 'drill' &&
+      (screen.quoteId !== undefined || screen.caesarOffset !== undefined)
+    ) {
       queueMicrotask(() => {
         const cleanUrl = buildRouteUrl({
           drill: screen.drill,
@@ -550,6 +555,7 @@ export const App: React.FC = () => {
           caesarRange: screen.caesarRange,
           aristocratDifficulty: screen.aristocratDifficulty,
           quoteId: undefined,
+          caesarOffset: undefined,
         });
         window.history.replaceState(
           {
@@ -564,7 +570,9 @@ export const App: React.FC = () => {
           cleanUrl
         );
         setScreen((prev) =>
-          prev.kind === 'drill' ? { ...prev, quoteId: undefined } : prev
+          prev.kind === 'drill'
+            ? { ...prev, quoteId: undefined, caesarOffset: undefined }
+            : prev
         );
       });
       return;
@@ -880,6 +888,7 @@ export const App: React.FC = () => {
           offsetsMode: route.offsetsMode,
           letterMathMode: route.letterMathMode,
           caesarRange: route.caesarRange,
+          caesarOffset: isTeacher ? route.caesarOffset : undefined,
           aristocratDifficulty: route.aristocratDifficulty,
           quoteId: isTeacher ? route.quoteId : undefined,
         });
@@ -980,6 +989,7 @@ export const App: React.FC = () => {
           offsetsMode: route.offsetsMode,
           letterMathMode: route.letterMathMode,
           caesarRange: route.caesarRange,
+          caesarOffset: route.caesarOffset,
           aristocratDifficulty: route.aristocratDifficulty,
           quoteId: route.quoteId,
         },
@@ -1348,7 +1358,12 @@ export const App: React.FC = () => {
 
   const handleClearExplicitQuote = useCallback(() => {
     setScreen((prev) => {
-      if (prev.kind !== 'drill' || prev.quoteId === undefined) return prev;
+      if (
+        prev.kind !== 'drill' ||
+        (prev.quoteId === undefined && prev.caesarOffset === undefined)
+      ) {
+        return prev;
+      }
       const newUrl = buildRouteUrl({
         drill: prev.drill,
         section: prev.section,
@@ -1357,6 +1372,7 @@ export const App: React.FC = () => {
         caesarRange: prev.caesarRange,
         aristocratDifficulty: prev.aristocratDifficulty,
         quoteId: undefined,
+        caesarOffset: undefined,
       });
       window.history.replaceState(
         {
@@ -1370,7 +1386,7 @@ export const App: React.FC = () => {
         '',
         newUrl
       );
-      return { ...prev, quoteId: undefined };
+      return { ...prev, quoteId: undefined, caesarOffset: undefined };
     });
   }, []);
 
@@ -1588,7 +1604,8 @@ export const App: React.FC = () => {
         canRenderDrillScreen &&
         screen.section === 'cipher' &&
         isTestableCipher(screen.drill) &&
-        (screen.quoteId !== undefined && isAuthLoading ? (
+        ((screen.quoteId !== undefined || screen.caesarOffset !== undefined) &&
+        isAuthLoading ? (
           suspenseFallback
         ) : (
           <Suspense fallback={suspenseFallback}>
@@ -1604,6 +1621,7 @@ export const App: React.FC = () => {
               }
               isTeacher={isTeacher}
               initialQuoteId={isTeacher ? screen.quoteId : undefined}
+              initialCaesarOffset={isTeacher ? screen.caesarOffset : undefined}
               onClearExplicitQuote={handleClearExplicitQuote}
               onBack={navigateToMenu}
               workoutContext={workoutContext}

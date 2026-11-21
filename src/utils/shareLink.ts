@@ -9,7 +9,11 @@ import type {
   TestableCipherType,
   WorkoutStepContext,
 } from '../types';
-import { sanitizeVigenereKeyword } from './ciphers';
+import {
+  normalizeCaesarOffset,
+  sanitizeVigenereKeyword,
+  toUnsignedCaesarOffset,
+} from './ciphers';
 
 const BASE62_ALPHABET =
   '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
@@ -199,7 +203,7 @@ export function encodeShareToken(
     quoteId: Math.max(0, Math.trunc(config.quoteId)) >>> 0,
     caesarOffset:
       config.cipher === 'caesar' && config.caesarOffset !== undefined
-        ? Math.max(1, Math.min(25, Math.trunc(config.caesarOffset)))
+        ? toUnsignedCaesarOffset(config.caesarOffset)
         : 0,
     vigenereKeyword:
       config.cipher === 'vigenere' && config.vigenereKeyword
@@ -291,7 +295,10 @@ export function decodeShareToken(token: string): ShareLinkConfig | null {
 
   if (mapped.cipher === 'caesar') {
     if (msg.caesarOffset >= 1 && msg.caesarOffset <= 25) {
-      result.caesarOffset = msg.caesarOffset;
+      const normalized = normalizeCaesarOffset(msg.caesarOffset);
+      if (normalized !== undefined) {
+        result.caesarOffset = normalized;
+      }
     }
   } else if (mapped.cipher === 'vigenere') {
     const cleanKw = sanitizeVigenereKeyword(msg.vigenereKeyword);
@@ -318,6 +325,7 @@ export function buildCipherSessionKey(params: {
   shareToken?: string;
   workoutContext?: WorkoutStepContext;
   explicitTeacherQuoteId?: number;
+  explicitTeacherCaesarOffset?: number;
   cipher: TestableCipherType;
   caesarRange: CaesarRangeMode;
   aristocratDifficulty: AristocratDifficulty;
@@ -334,8 +342,12 @@ export function buildCipherSessionKey(params: {
       : params.cipher === 'aristocrat'
         ? params.aristocratDifficulty
         : 'std';
-  if (params.explicitTeacherQuoteId !== undefined) {
-    return `teacher:${params.cipher}:${modePart}:${params.explicitTeacherQuoteId}`;
+  const offsetSuffix =
+    params.cipher === 'caesar' && params.explicitTeacherCaesarOffset !== undefined
+      ? `:off${params.explicitTeacherCaesarOffset}`
+      : '';
+  if (params.explicitTeacherQuoteId !== undefined || offsetSuffix) {
+    return `teacher:${params.cipher}:${modePart}:${params.explicitTeacherQuoteId ?? 'rand'}${offsetSuffix}`;
   }
   return `solo:${params.cipher}:${modePart}`;
 }
